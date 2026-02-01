@@ -22,8 +22,8 @@
     "internet-computer",
     "clawdbot",
     "goose",
-    "cline"
-    "codeline"
+    "cline",
+    "codeline",
     "autonomous",
     "persistent",
     "reconstructible"
@@ -42,26 +42,26 @@
     "@dfinity/agent": "^0.1.0",
     "@dfinity/candid": "^0.4.0",
     "@dfinity/icp-ledger": "^0.1.0",
-    "vetkd": "^0.7.0"
-    "bip39": "^2.0.0"
-    "bs58": "^0.4.0"
+    "vetkd": "^0.7.0",
+    "bip39": "^2.0.0",
+    "bs58": "^0.4.0",
     "k256": "^2.0.0",
     "@solana/web3.js": "^1.95.0",
-    "@polkadot/api": "^12.3.0"
-    "isomorphic-git": "^1.24.0"
-    "arweave": "^2.0.0"
+    "@polkadot/api": "^12.3.0",
+    "isomorphic-git": "^1.24.0",
+    "arweave": "^2.0.0",
     "cbor-x": "^1.1.0",
     "ethers": "^6.13.0",
-    "viem": "^2.2.0"
-    "argon2-browser": "^2.2.0"
+    "viem": "^2.2.0",
+    "argon2-browser": "^2.2.0",
     "openpgp": "^5.11.0",
     "wasmedge": "^0.1.0",
-    "wasmer": "^0.1.0"
-    "zstd": "^1.5.0"
-    "compression": "^1.7.4"
+    "wasmer": "^0.1.0",
+    "zstd": "^1.5.0",
+    "compression": "^1.7.4",
     "node-fetch": "^3.3.2",
-    "stream": "^0.3.0"
-    "winston": "^3.15.0"
+    "stream": "^0.3.0",
+    "winston": "^3.15.0",
     "commander": "^12.1.0",
     "chalk": "^5.4.1",
     "ora": "^8.1.0",
