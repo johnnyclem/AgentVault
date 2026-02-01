@@ -35,5 +35,12 @@ describe('CLI', () => {
       expect(statusCmd).toBeDefined();
       expect(statusCmd?.description()).toContain('status');
     });
+
+    it('should have package command registered', () => {
+      const program = createProgram();
+      const packageCmd = program.commands.find((cmd) => cmd.name() === 'package');
+      expect(packageCmd).toBeDefined();
+      expect(packageCmd?.description()).toContain('WASM');
+    });
   });
 });

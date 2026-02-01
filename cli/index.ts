@@ -9,6 +9,7 @@ import { Command } from 'commander';
 import { VERSION } from '../src/index.js';
 import { initCommand } from './commands/init.js';
 import { statusCommand } from './commands/status.js';
+import { packageCommand } from './commands/package.js';
 
 export function createProgram(): Command {
   const program = new Command();
@@ -21,6 +22,7 @@ export function createProgram(): Command {
   // Register commands
   program.addCommand(initCommand());
   program.addCommand(statusCommand());
+  program.addCommand(packageCommand());
 
   return program;
 }
