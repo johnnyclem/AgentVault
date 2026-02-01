@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Persistent On-Chain AI Agent Platform - Sovereign, Reconstructible, Autonomous",
   "main": "src/index.ts",
+  "bin": {
+    "agentvault": "./dist/cli/index.js"
+  },
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -38,6 +41,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.18.0",
+    "@types/inquirer": "^9.0.9",
     "@types/node": "^22.10.0",
     "eslint": "^9.18.0",
     "tsx": "^4.19.0",
@@ -46,9 +50,9 @@
     "vitest": "^2.1.0"
   },
   "dependencies": {
-    "commander": "^12.1.0",
     "chalk": "^5.4.1",
-    "ora": "^8.1.0",
-    "inquirer": "^9.3.0"
+    "commander": "^12.1.0",
+    "inquirer": "^9.3.0",
+    "ora": "^8.1.0"
   }
 }
