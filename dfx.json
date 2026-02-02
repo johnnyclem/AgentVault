@@ -1,0 +1,7 @@
+{
+  "canisters": {
+    "agent_vault": {
+      "main": "canister/agent.mo"
+    }
+  }
+}

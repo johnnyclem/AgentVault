@@ -40,6 +40,8 @@
     "node": ">=18.0.0"
   },
   "devDependencies": {
+    "@dfinity/agent": "^3.4.3",
+    "@dfinity/candid": "^3.4.3",
     "@eslint/js": "^9.18.0",
     "@types/inquirer": "^9.0.9",
     "@types/node": "^22.10.0",
@@ -50,8 +52,6 @@
     "vitest": "^2.1.0"
   },
   "dependencies": {
-    "@dfinity/agent": "^2.1.0",
-    "@dfinity/candid": "^2.1.0",
     "@noble/curves": "^1.7.0",
     "bip39": "^3.1.0",
     "bs58": "^6.0.0",
