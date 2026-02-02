@@ -78,3 +78,23 @@ export interface ValidationResult {
   /** List of validation warnings */
   warnings: string[];
 }
+
+/**
+ * Parsed agent configuration with agent-specific settings
+ */
+export interface ParsedAgentConfig {
+  base: {
+    name: string;
+    version?: string;
+    description?: string;
+  };
+  type: 'clawdbot' | 'goose' | 'cline' | 'generic';
+}
+
+/**
+ * Config file location
+ */
+export interface ConfigFilePath {
+  path: string;
+  type: 'json' | 'yaml' | 'directory';
+}
