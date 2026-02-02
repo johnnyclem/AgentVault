@@ -49,6 +49,23 @@ export function displayPreview(sourcePath: string): void {
   console.log(`  Source:      ${config.sourcePath}`);
   console.log(`  Entry Point: ${config.entryPoint ?? chalk.yellow('not detected')}`);
   console.log(`  Version:     ${config.version ?? chalk.yellow('not specified')}`);
+  
+  // Display agent settings for Clawdbot agents if available
+  if (config.type === 'clawdbot' && config.type === 'object' && 'settings' in config) {
+    const settings = config.settings as Record<string, unknown>;
+    console.log();
+    console.log(chalk.cyan('Agent Settings:'));
+    if (settings.model) {
+      console.log(`  Model: ${chalk.bold(settings.model)}`);
+    }
+    if (settings.temperature !== undefined) {
+      console.log(`  Temperature: ${chalk.bold(String(settings.temperature))}`);
+    }
+    if (settings.maxTokens !== undefined) {
+      console.log(`  Max Tokens: ${chalk.bold(String(settings.maxTokens))}`);
+    }
+  }
+}
 
   console.log();
 

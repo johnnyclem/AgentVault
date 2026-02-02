@@ -11,6 +11,8 @@ import { createConfig, readAgentConfig, listAgents, deleteAgentConfig } from '..
 export interface InitOptions {
   name?: string;
   yes?: boolean;
+  verbose?: boolean;
+  v?: boolean;
 }
 
 export interface InitAnswers {
@@ -65,13 +67,45 @@ export async function promptForInitOptions(options: InitOptions): Promise<InitAn
 export async function executeInit(answers: InitAnswers): Promise<void> {
   const spinner = ora('Initializing AgentVault project...').start();
 
+  // Load existing config if it exists (for config editing)
+  const existingConfig = answers.yes ? readAgentConfig(process.cwd()) : null;
+
   // Simulate initialization work
   const config = createConfig(answers.name);
 
   // In a real implementation, this would create files, directories, etc.
   spinner.succeed('AgentVault project initialized successfully!');
-
+  
   console.log();
+  
+  if (answers.verbose && existingConfig) {
+    console.log(chalk.cyan('Loaded existing configuration:'));
+    console.log(chalk.cyan('  Name:'), chalk.bold(existingConfig.name || 'N/A'));
+    console.log(chalk.cyan('  Type:'), chalk.bold(existingConfig.type || 'N/A'));
+    if (existingConfig.version) {
+      console.log(chalk.cyan('  Version:'), chalk.bold(existingConfig.version));
+    }
+    if (existingConfig.entryPoint) {
+      console.log(chalk.cyan('  Entry Point:'), chalk.bold(existingConfig.entryPoint));
+    }
+    console.log();
+  }
+  
+  console.log(chalk.green('✓'), 'Created configuration for:', chalk.bold(config.name));
+  console.log(chalk.green('✓'), 'Version:', chalk.bold(config.version));
+  console.log(chalk.green('✓'), 'Description:', chalk.bold(answers.description));
+  console.log();
+  console.log(chalk.cyan('Next steps:'));
+  console.log('  1. Run', chalk.bold('agentvault status'), 'to check your project');
+  console.log('  2. Configure your agent in the config files');
+  console.log('  3. Deploy with', chalk.bold('agentvault deploy'), 'to upload to ICP');
+}
+    if (existingConfig.entryPoint) {
+      console.log(chalk.cyan('  Entry Point:'), chalk.bold(existingConfig.entryPoint));
+    }
+    console.log();
+  }
+  
   console.log(chalk.green('✓'), 'Created configuration for:', chalk.bold(config.name));
   console.log(chalk.green('✓'), 'Version:', chalk.bold(config.version));
   console.log(chalk.green('✓'), 'Description:', chalk.bold(answers.description));
@@ -87,8 +121,11 @@ export function initCommand(): Command {
 
   command
     .description('Initialize a new AgentVault project')
+    .argument('[source]', 'path to agent source directory', '.')
     .option('-n, --name <name>', 'name of the agent')
     .option('-y, --yes', 'skip prompts and use defaults')
+    .option('-v, --verbose', 'display detailed configuration information')
+    .option('--vv', 'extra verbose mode for debugging')
     .action(async (options: InitOptions) => {
       console.log(chalk.bold('\n🔐 AgentVault Project Initialization\n'));
 
@@ -98,6 +135,12 @@ export function initCommand(): Command {
         console.log(chalk.yellow('Initialization cancelled.'));
         return;
       }
+
+      await executeInit(answers);
+    });
+
+  return command;
+}
 
       await executeInit(answers);
     });

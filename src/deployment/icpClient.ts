@@ -129,7 +129,7 @@ export class ICPClient {
     return buffer.toString('base64');
   }
 
-  export function createICPClient(config: ICPClientConfig): ICPClient {
+  export function createICPClient(config: ICPClientConfig, agent: HttpAgent): ICPClient {
     return new ICPClient(config);
   }
 }
