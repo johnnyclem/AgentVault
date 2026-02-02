@@ -179,7 +179,7 @@ export function generateWasm(config: AgentConfig, javascriptBundle: string): Buf
   sections.push(funcSection);
   
   // 4. Export section
-  const exportSectionNames = ['init', 'step', 'get_state_ptr', 'get_state_size'];
+  const exportSectionNames = ['init', 'step', 'get_state_ptr', 'get_state_size'] as const;
   const exportSectionContent = Buffer.concat([
     // Export 0: init
     concatBuffers([writeUleb128Bytes(exportSectionNames[0].length)]),

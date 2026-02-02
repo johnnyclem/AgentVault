@@ -6,15 +6,14 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
 import * as path from 'node:path';
-import type {
+import {
   packageAgent,
   getPackageSummary,
-  type PackageOptions,
-  type PackageResult,
-  type ValidationError,
-  type ValidationResult,
 } from '../../src/packaging/index.js';
-import { readAgentConfig, writeAgentConfig, listAgents } from '../../src/packaging/config-persistence.js';
+import type {
+  PackageOptions,
+  PackageResult,
+} from '../../src/packaging/index.js';
 
 export interface PackageCommandOptions {
   output?: string;

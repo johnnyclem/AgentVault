@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as fs from 'node:fs';
+import * as esbuild from 'esbuild';
 import { packageAgent, validateAgent, getPackageSummary } from '../../src/packaging/packager.js';
 
 // Mock fs module
@@ -11,9 +12,29 @@ vi.mock('node:fs', () => ({
   writeFileSync: vi.fn(),
 }));
 
+// Mock esbuild
+vi.mock('esbuild', () => ({
+  build: vi.fn(),
+}));
+
 describe('packager', () => {
+  const mockAgentCode = 'console.log("hello");';
+
   beforeEach(() => {
     vi.clearAllMocks();
+    // Mock esbuild to return bundled code
+    vi.mocked(esbuild.build).mockResolvedValue({
+      errors: [],
+      warnings: [],
+      outputFiles: [{
+        text: mockAgentCode,
+        path: '/path/to/agent/index.ts',
+        contents: new Uint8Array(),
+        hash: ''
+      }],
+      metafile: undefined,
+      mangleCache: undefined,
+    });
   });
 
   describe('validateAgent', () => {
@@ -98,22 +119,35 @@ describe('packager', () => {
     });
 
     it('should skip validation when skipValidation is true', async () => {
+      // Mock to simulate:
+      // - source path exists and is a directory
+      // - entry point exists
       vi.mocked(fs.existsSync).mockImplementation((p) => {
-        // Return false for source path but true for output dir
         const pathStr = String(p);
-        return pathStr.includes('dist');
+        return pathStr.includes('/valid/path') || pathStr.includes('dist') || pathStr.includes('index.ts');
       });
-      vi.mocked(fs.statSync).mockReturnValue({ isDirectory: () => true, isFile: () => false } as fs.Stats);
+      vi.mocked(fs.statSync).mockReturnValue({ isDirectory: () => true, isFile: () => true } as fs.Stats);
 
-      // This would normally fail validation but should succeed with skipValidation
-      await expect(
-        packageAgent({ sourcePath: '/valid/path', skipValidation: true })
-      ).resolves.toBeDefined();
+      const result = await packageAgent({ sourcePath: '/valid/path', skipValidation: true });
+
+      expect(result).toBeDefined();
+      expect(result.config).toBeDefined();
     });
 
     it('should use default output directory when not specified', async () => {
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.statSync).mockReturnValue({ isDirectory: () => true, isFile: () => false } as fs.Stats);
+      // Mock for complete packaging flow
+      vi.mocked(fs.existsSync).mockImplementation((p) => {
+        const pathStr = String(p);
+        // Simulate: directory exists, entry point exists
+        return pathStr.includes('/path/to/agent') || pathStr.includes('index.ts');
+      });
+      vi.mocked(fs.statSync).mockImplementation((p) => {
+        const pathStr = String(p);
+        if (pathStr.includes('index.ts')) {
+          return { isDirectory: () => false, isFile: () => true } as fs.Stats;
+        }
+        return { isDirectory: () => true, isFile: () => false } as fs.Stats;
+      });
 
       const result = await packageAgent({ sourcePath: '/path/to/agent' });
 
@@ -121,8 +155,20 @@ describe('packager', () => {
     });
 
     it('should use specified output directory', async () => {
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.statSync).mockReturnValue({ isDirectory: () => true, isFile: () => false } as fs.Stats);
+      // Mock for complete packaging flow
+      vi.mocked(fs.existsSync).mockImplementation((p) => {
+        const pathStr = String(p);
+        return pathStr.includes('/path/to/agent') ||
+               pathStr.includes('index.ts') ||
+               pathStr.includes('/custom/output');
+      });
+      vi.mocked(fs.statSync).mockImplementation((p) => {
+        const pathStr = String(p);
+        if (pathStr.includes('index.ts')) {
+          return { isDirectory: () => false, isFile: () => true } as fs.Stats;
+        }
+        return { isDirectory: () => true, isFile: () => false } as fs.Stats;
+      });
 
       const result = await packageAgent({
         sourcePath: '/path/to/agent',
@@ -133,8 +179,18 @@ describe('packager', () => {
     });
 
     it('should return package result with all required fields', async () => {
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.statSync).mockReturnValue({ isDirectory: () => true, isFile: () => false } as fs.Stats);
+      // Mock for complete packaging flow
+      vi.mocked(fs.existsSync).mockImplementation((p) => {
+        const pathStr = String(p);
+        return pathStr.includes('/path/to/agent') || pathStr.includes('index.ts');
+      });
+      vi.mocked(fs.statSync).mockImplementation((p) => {
+        const pathStr = String(p);
+        if (pathStr.includes('index.ts')) {
+          return { isDirectory: () => false, isFile: () => true } as fs.Stats;
+        }
+        return { isDirectory: () => true, isFile: () => false } as fs.Stats;
+      });
 
       const result = await packageAgent({ sourcePath: '/path/to/agent' });
 

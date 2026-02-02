@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as fs from 'node:fs';
+import * as esbuild from 'esbuild';
 import {
   generateWasm,
   generateWat,
@@ -17,6 +18,11 @@ vi.mock('node:fs', () => ({
   readFileSync: vi.fn(),
 }));
 
+// Mock esbuild
+vi.mock('esbuild', () => ({
+  build: vi.fn(),
+}));
+
 describe('compiler', () => {
   const mockConfig: AgentConfig = {
     name: 'test-agent',
@@ -32,7 +38,8 @@ describe('compiler', () => {
     vi.clearAllMocks();
     // Mock entry point file existence
     vi.mocked(fs.existsSync).mockImplementation((path) => {
-      return String(path).includes('/path/to/agent/index.ts');
+      return String(path).includes('/path/to/agent/index.ts') ||
+             String(path) === '/output/dir';
     });
     // Mock entry point file content
     vi.mocked(fs.readFileSync).mockImplementation((path) => {
@@ -40,6 +47,19 @@ describe('compiler', () => {
         return mockAgentCode;
       }
       return Buffer.from([]);
+    });
+    // Mock esbuild to return bundled code
+    vi.mocked(esbuild.build).mockResolvedValue({
+      errors: [],
+      warnings: [],
+      outputFiles: [{
+        text: mockAgentCode,
+        path: '/path/to/agent/index.ts',
+        contents: new Uint8Array(),
+        hash: ''
+      }],
+      metafile: undefined,
+      mangleCache: undefined,
     });
   });
 
@@ -179,8 +199,10 @@ describe('compiler', () => {
 
   describe('compileToWasm', () => {
     it('should create output directory if it does not exist', async () => {
-      // @ts-expect-error
-      vi.mocked(fs.existsSync).mockReturnValue(false);
+      vi.mocked(fs.existsSync).mockImplementation((path) => {
+        if (String(path) === '/output/dir') return false;
+        return String(path).includes('/path/to/agent/index.ts');
+      });
 
       await compileToWasm(mockConfig, '/output/dir');
 
@@ -195,16 +217,15 @@ describe('compiler', () => {
       expect(fs.mkdirSync).not.toHaveBeenCalled();
     });
 
-    it('should bundle agent code', async () => {
+    it('should bundle agent code with esbuild', async () => {
       vi.mocked(fs.existsSync).mockReturnValue(true);
 
       await compileToWasm(mockConfig, '/output/dir');
 
-      // @ts-expect-error
-      expect(fs.readFileSync).toHaveBeenCalledWith(
-        expect.stringContaining('/path/to/agent/index.ts'),
-        'utf-8'
-      );
+      expect(esbuild.build).toHaveBeenCalledWith(expect.objectContaining({
+        entryPoints: ['/path/to/agent/index.ts'],
+        bundle: true,
+      }));
     });
 
     it('should write four output files', async () => {
@@ -261,6 +282,29 @@ describe('compiler', () => {
       const result = await compileToWasm(mockConfig, '/output/dir');
 
       expect(result.config).toEqual(mockConfig);
+    });
+
+    it('should throw when entry point not found', async () => {
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+
+      await expect(compileToWasm(mockConfig, '/output/dir')).rejects.toThrow(
+        'Entry point not found'
+      );
+    });
+
+    it('should throw when esbuild fails', async () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(esbuild.build).mockResolvedValue({
+        errors: [{ text: 'Build error', location: null, notes: [], id: '', pluginName: '', detail: undefined }],
+        warnings: [],
+        outputFiles: [],
+        metafile: undefined,
+        mangleCache: undefined,
+      });
+
+      await expect(compileToWasm(mockConfig, '/output/dir')).rejects.toThrow(
+        'Bundle failed'
+      );
     });
   });
 

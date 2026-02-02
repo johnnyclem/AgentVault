@@ -7,8 +7,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { AgentType, AgentConfig, ConfigFilePath } from './types.js';
-import { readAgentConfig } from './config-persistence.js';
+import type { AgentType, AgentConfig } from './types.js';
 
 /**
  * Configuration file patterns for each agent type
@@ -97,6 +96,18 @@ function extractAgentName(sourcePath: string, config: Record<string, unknown> | 
 }
 
 /**
+ * Try to read a JSON configuration file
+ */
+function tryReadJsonConfig(filePath: string): Record<string, unknown> | null {
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    return JSON.parse(content) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Find configuration file for a detected agent type
  */
 function findConfigFile(sourcePath: string, agentType: AgentType): string | null {
@@ -172,7 +183,7 @@ export function detectAgent(sourcePath: string): AgentConfig {
     type: agentType,
     sourcePath: absolutePath,
     entryPoint,
-    version: config?.version,
+    version: typeof config?.version === 'string' ? config.version : undefined,
   };
 }
 

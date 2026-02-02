@@ -14,7 +14,7 @@ export class ICPClient {
   private config: ICPClientConfig;
   private host: string;
 
-  constructor(config: ICPClientConfig, agent: HttpAgent) {
+  constructor(config: ICPClientConfig, _agent: HttpAgent) {
     this.config = config;
     this.host = config.host ?? (config.network === 'local' ? 'http://127.0.0.1:4943' : 'https://ic0.app');
   }
@@ -44,13 +44,12 @@ export class ICPClient {
   }
 
   async installCode(
-    canisterId: string,
+    _canisterId: string,
     wasmPath: string
   ): Promise<{ success: boolean; cyclesUsed: bigint }> {
     try {
       const wasmBuffer = fs.readFileSync(wasmPath);
-      const wasmSize = BigInt(wasmBuffer.length);
-      const cyclesUsed = wasmSize * BigInt(1_000_000);
+      const cyclesUsed = BigInt(wasmBuffer.length) * BigInt(1_000_000);
       return {
         success: true,
         cyclesUsed,
@@ -83,7 +82,6 @@ export class ICPClient {
     wasmHash: string;
   }> {
     const wasmBuffer = fs.readFileSync(wasmPath);
-    const wasmSize = BigInt(wasmBuffer.length);
     const wasmHash = wasmBuffer.toString('base64');
 
     let totalCycles = BigInt(0);
@@ -128,8 +126,40 @@ export class ICPClient {
     const buffer = fs.readFileSync(wasmPath);
     return buffer.toString('base64');
   }
+}
 
-  export function createICPClient(config: ICPClientConfig): ICPClient {
-    return new ICPClient(config);
+export function createICPClient(config: ICPClientConfig): ICPClient {
+  const host = config.host ?? (config.network === 'local' ? 'http://127.0.0.1:4943' : 'https://ic0.app');
+  const agent = new HttpAgent({ host });
+  return new ICPClient(config, agent);
+}
+
+/**
+ * Generate a stub canister ID for local development
+ */
+export function generateStubCanisterId(): string {
+  return AGENT_VAULT_CANISTER_ID;
+}
+
+/**
+ * Calculate WASM hash from file path
+ */
+export function calculateWasmHash(wasmPath: string): string {
+  const buffer = fs.readFileSync(wasmPath);
+  return buffer.toString('base64');
+}
+
+/**
+ * Validate WASM file path
+ */
+export function validateWasmPath(wasmPath: string): { valid: boolean; error?: string } {
+  try {
+    if (!fs.existsSync(wasmPath)) {
+      return { valid: false, error: `WASM file not found: ${wasmPath}` };
+    }
+    return { valid: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return { valid: false, error: `Failed to read WASM file: ${message}` };
   }
 }

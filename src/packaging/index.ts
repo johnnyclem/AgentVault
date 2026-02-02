@@ -12,6 +12,8 @@ export type {
   PackageResult,
   ValidationError,
   ValidationResult,
+  ParsedAgentConfig,
+  ConfigFilePath,
 } from './types.js';
 
 // Detection
@@ -37,6 +39,14 @@ export {
   validateState,
 } from './serializer.js';
 
+export type {
+  Memory,
+  Task,
+  AgentState,
+  SerializedAgentState,
+  SerializationOptions,
+} from './serializer.js';
+
 // Parsers
 export {
   parseClawdbotConfig,
@@ -59,51 +69,9 @@ export {
   DEFAULT_CLINE_CONFIG,
 } from './config-schemas.js';
 
-// Summary - used by package command
+// Packager
 export {
+  packageAgent,
   getPackageSummary,
+  validateAgent,
 } from './packager.js';
-
-import { detectAgent, detectAgentType, validateSourcePath } from './detector.js';
-
-export type { AgentType, AgentConfig, PackageOptions, PackageResult };
-export type { ValidationError, ValidationResult, ParsedAgentConfig, ConfigFilePath };
-export {
-  compileToWasm,
-  generateWasm,
-  generateWat,
-  generateStateJson,
-  validateWasmFile,
-};
-export {
-  serializeState,
-  deserializeState,
-  writeStateFile,
-  readStateFile,
-  createEmptyState,
-  mergeStates,
-  validateState,
-};
-export { parseClawdbotConfig, findClawdbotConfigs, getConfigPath, writeAgentConfig, readAgentConfig, listAgents, deleteAgentConfig };
-export { DEFAULT_CLAWDBOT_SETTINGS, DEFAULT_GOOSE_CONFIG, DEFAULT_CLINE_CONFIG };
-
-// Parsers
-export {
-  parseClawdbotConfig,
-  findClawdbotConfigs,
-} from './parsers/index.js';
-
-// Config Schemas
-export {
-  DEFAULT_CLAWDBOT_SETTINGS,
-  DEFAULT_GOOSE_CONFIG,
-  DEFAULT_CLINE_CONFIG,
-} from './config-schemas.js';
-
-export type {
-  Memory,
-  Task,
-  AgentState,
-  SerializedAgentState,
-  SerializationOptions,
-} from './serializer.js';
