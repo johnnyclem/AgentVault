@@ -75,3 +75,20 @@ export {
   getPackageSummary,
   validateAgent,
 } from './packager.js';
+
+// WASM Compiler
+export {
+  WasmCompiler,
+  compileAgentToWasm,
+  validateWasmBinary,
+  getSupportedTargets,
+  isTargetFullySupported,
+} from './wasm-compiler.js';
+
+export type {
+  CompilationTarget,
+  WasmCompilationOptions,
+  WasmMemoryConfig,
+  WasmCompilationResult,
+  WasmCompilationMetadata,
+} from './wasm-compiler.js';
