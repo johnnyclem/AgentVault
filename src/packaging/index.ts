@@ -47,6 +47,50 @@ export type {
   SerializationOptions,
 } from './serializer.js';
 
+// State Format (v1.0.0)
+export {
+  STATE_FORMAT_VERSION,
+  STATE_MAGIC_BYTES,
+  SCHEMA_URL_PATTERN,
+  generateStateId,
+  generateAgentId,
+  parseVersion,
+  isVersionCompatible,
+  calculateChecksum,
+  createStateHeader,
+  createAgentIdentity,
+  createSourceMetadata,
+  calculateStateStats,
+  createSerializedState,
+  serializeStateToJson,
+  deserializeStateFromJson,
+  validateSerializedState,
+  createBinaryHeader,
+  parseBinaryHeader,
+  serializeStateToBinary,
+  deserializeStateFromBinary,
+  createStateDelta,
+  applyStateDelta,
+} from './state-format.js';
+
+export type {
+  StateEncoding,
+  StateEntryType,
+  StateHeader,
+  AgentIdentity,
+  SourceMetadata,
+  RuntimeState,
+  StateStats,
+  DeltaOperation,
+  DeltaEntry,
+  StateDelta,
+  SerializedStateV1,
+  BinaryStateHeader,
+  StateFormatOptions,
+  StateValidationResult,
+  StateValidationError,
+} from './state-format.js';
+
 // Parsers
 export {
   parseClawdbotConfig,
