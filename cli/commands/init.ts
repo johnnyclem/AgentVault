@@ -6,7 +6,7 @@ import { Command } from 'commander';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 import ora from 'ora';
-import { createConfig } from '../../src/index.js';
+import { createConfig, readAgentConfig, listAgents, deleteAgentConfig } from '../../src/packaging/index.js';
 
 export interface InitOptions {
   name?: string;

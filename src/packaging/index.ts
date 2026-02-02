@@ -12,7 +12,6 @@ export type {
   PackageResult,
   ValidationError,
   ValidationResult,
-  ParsedAgentConfig,
 } from './types.js';
 
 // Detection
@@ -44,39 +43,8 @@ export {
   findClawdbotConfigs,
 } from './parsers/index.js';
 
-import type {
-  AgentType,
-  AgentConfig,
-  PackageOptions,
-  PackageResult,
-  ValidationError,
-  ValidationResult,
-} from './types.js';
-
-import {
-  compileToWasm,
-  generateWasm,
-  generateWat,
-  generateStateJson,
-  validateWasmFile,
-} from './compiler.js';
-
-import {
-  serializeState,
-  deserializeState,
-  writeStateFile,
-  readStateFile,
-  createEmptyState,
-  mergeStates,
-  validateState,
-} from './serializer.js';
-
-import {
-  parseClawdbotConfig,
-  findClawdbotConfigs,
-} from './parsers/index.js';
-
-import {
+// Config Persistence
+export {
   getConfigPath,
   writeAgentConfig,
   readAgentConfig,
@@ -84,11 +52,17 @@ import {
   deleteAgentConfig,
 } from './config-persistence.js';
 
-import {
+// Config Schemas
+export {
   DEFAULT_CLAWDBOT_SETTINGS,
   DEFAULT_GOOSE_CONFIG,
   DEFAULT_CLINE_CONFIG,
 } from './config-schemas.js';
+
+// Summary - used by package command
+export {
+  getPackageSummary,
+} from './packager.js';
 
 import { detectAgent, detectAgentType, validateSourcePath } from './detector.js';
 
