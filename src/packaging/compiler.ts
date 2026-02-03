@@ -28,6 +28,17 @@ const WASM_VERSION = Buffer.from([0x01, 0x00, 0x00, 0x00]);
  */
 export async function bundleAgentCode(config: AgentConfig): Promise<string> {
   if (!config.entryPoint) {
+    if (config.type === 'goose') {
+      const pythonCandidates = ['goose.py', 'main.py'];
+      const hasPythonEntrypoint = pythonCandidates.some((candidate) =>
+        fs.existsSync(path.resolve(config.sourcePath, candidate))
+      );
+      if (hasPythonEntrypoint) {
+        throw new Error(
+          'Goose Python entrypoints are not supported in the bundler. Use a JS/TS entrypoint instead.'
+        );
+      }
+    }
     throw new Error(`No entry point found for agent ${config.name}`);
   }
 
@@ -35,6 +46,12 @@ export async function bundleAgentCode(config: AgentConfig): Promise<string> {
   
   if (!fs.existsSync(entryPath)) {
     throw new Error(`Entry point not found: ${entryPath}`);
+  }
+
+  if (path.extname(config.entryPoint) === '.py') {
+    throw new Error(
+      'Goose Python entrypoints are not supported in the bundler. Use a JS/TS entrypoint instead.'
+    );
   }
 
   try {
@@ -178,7 +195,14 @@ export function generateWasm(config: AgentConfig, javascriptBundle: string): Buf
   ]);
   sections.push(funcSection);
   
-  // 4. Export section
+  // 4. Memory section
+  const memorySection = Buffer.concat([
+    Buffer.from([0x05]), // section id: memory
+    Buffer.from([0x01, 0x01]), // 1 memory, min 1 page (64KB)
+  ]);
+  sections.push(memorySection);
+
+  // 5. Export section
   const exportSectionNames = ['init', 'step', 'get_state_ptr', 'get_state_size'];
   const exportSectionContent = Buffer.concat([
     // Export 0: init
@@ -211,7 +235,7 @@ export function generateWasm(config: AgentConfig, javascriptBundle: string): Buf
   ]);
   sections.push(exportSection);
   
-  // 5. Code section with function bodies
+  // 6. Code section with function bodies
   // Function 0: init - returns success (0)
   const funcBody0 = Buffer.concat([
     Buffer.from([0x0b, 0x01]), // func body size
@@ -257,7 +281,7 @@ export function generateWasm(config: AgentConfig, javascriptBundle: string): Buf
   ]);
   sections.push(codeSection);
   
-  // 6. Data section with embedded JavaScript
+  // 7. Data section with embedded JavaScript
   const dataSectionContent = Buffer.concat([
     Buffer.from([0x00, 0x41, 0x00, 0x0b]), // memory 0, i32.const 0
     concatBuffers([writeUleb128Bytes(jsBytes.length)]),
@@ -271,13 +295,6 @@ export function generateWasm(config: AgentConfig, javascriptBundle: string): Buf
     dataSectionContent,
   ]);
   sections.push(dataSection);
-  
-  // 7. Memory section
-  const memorySection = Buffer.concat([
-    Buffer.from([0x05]), // section id: memory
-    Buffer.from([0x01, 0x01]), // 1 memory, min 1 page (64KB)
-  ]);
-  sections.push(memorySection);
   
   // Combine all sections into final WASM
   const wasmBuffer = Buffer.concat([WASM_MAGIC, WASM_VERSION, ...sections]);

@@ -232,51 +232,6 @@ export async function parseClawdbotConfig(
     }
   }
 
-  const configLocation = findClawdbotConfig(sourcePath);
-
-  if (configLocation === null) {
-    throw new Error(
-      'No Clawdbot configuration found. ' +
-        'Expected .clawdbot directory or clawdbot.json file in the agent source path.'
-    );
-  }
-
-  let config: ClawdbotConfig;
-
-  if (configLocation.type === 'json') {
-    if (verbose) {
-      console.log(`[Clawdbot] Found JSON config: ${configLocation.path}`);
-    }
-    const content = fs.readFileSync(configLocation.path, 'utf-8');
-    const parsed = JSON.parse(content);
-    const settings = { ...DEFAULT_CLAWDBOT_SETTINGS, ...parsed.settings };
-    config = {
-      type: 'clawdbot',
-      name: parsed.name || 'clawdbot-agent',
-      version: parsed.version || '1.0.0',
-      description: parsed.description || '',
-      settings,
-      projects: parsed.projects || [],
-      tasks: parsed.tasks || [],
-      context: parsed.context || {},
-    };
-  } else {
-    if (verbose) {
-      console.log(`[Clawdbot] Found directory: ${configLocation.path}`);
-    }
-    config = readClawdbotDirectory(configLocation.path);
-    if (verbose) {
-      console.log(`[Clawdbot] Parsed projects: ${config.projects?.length || 0}`);
-      console.log(`[Clawdbot] Parsed tasks: ${config.tasks?.length || 0}`);
-      console.log(`[Clawdbot] Parsed context keys: ${Object.keys(config.context || {}).length}`);
-      if (config.settings) {
-        console.log(`[Clawdbot] Model: ${config.settings.model}`);
-        console.log(`[Clawdbot] Temperature: ${config.settings.temperature}`);
-        console.log(`[Clawdbot] Max Tokens: ${config.settings.maxTokens}`);
-      }
-    }
-  }
-
   const validation = validateClawdbotConfig(config);
 
   if (verbose || !validation.valid) {

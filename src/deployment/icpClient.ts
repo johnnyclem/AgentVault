@@ -4,7 +4,6 @@
  * Minimal ICP client for deployment.
  */
 
-import { HttpAgent } from '@dfinity/agent';
 import * as fs from 'node:fs';
 import type { NetworkType, ICPClientConfig } from './types.js';
 
@@ -14,7 +13,7 @@ export class ICPClient {
   private config: ICPClientConfig;
   private host: string;
 
-  constructor(config: ICPClientConfig, agent: HttpAgent) {
+  constructor(config: ICPClientConfig) {
     this.config = config;
     this.host = config.host ?? (config.network === 'local' ? 'http://127.0.0.1:4943' : 'https://ic0.app');
   }
@@ -113,23 +112,35 @@ export class ICPClient {
   }
 
   validateWasmPath(wasmPath: string): { valid: boolean; error?: string } {
-    try {
-      if (!fs.existsSync(wasmPath)) {
-        return { valid: false, error: `WASM file not found: ${wasmPath}` };
-      }
-      return { valid: true };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      return { valid: false, error: `Failed to read WASM file: ${message}` };
-    }
+    return validateWasmPath(wasmPath);
   }
 
   calculateWasmHash(wasmPath: string): string {
-    const buffer = fs.readFileSync(wasmPath);
-    return buffer.toString('base64');
+    return calculateWasmHash(wasmPath);
   }
 }
 
-export function createICPClient(config: ICPClientConfig, _agent: HttpAgent): ICPClient {
-  return new ICPClient(config, _agent);
+export function createICPClient(config: ICPClientConfig): ICPClient {
+  return new ICPClient(config);
+}
+
+export function generateStubCanisterId(): string {
+  return AGENT_VAULT_CANISTER_ID;
+}
+
+export function validateWasmPath(wasmPath: string): { valid: boolean; error?: string } {
+  try {
+    if (!fs.existsSync(wasmPath)) {
+      return { valid: false, error: `WASM file not found: ${wasmPath}` };
+    }
+    return { valid: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return { valid: false, error: `Failed to read WASM file: ${message}` };
+  }
+}
+
+export function calculateWasmHash(wasmPath: string): string {
+  const buffer = fs.readFileSync(wasmPath);
+  return buffer.toString('base64');
 }

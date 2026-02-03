@@ -5,6 +5,7 @@
  * Coordinates detection, validation, and compilation.
  */
 
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { PackageOptions, PackageResult, ValidationResult, ValidationError } from './types.js';
 import { detectAgent, validateSourcePath } from './detector.js';
@@ -41,6 +42,18 @@ export function validateAgent(sourcePath: string): ValidationResult {
     warnings.push(
       `No entry point detected for agent '${config.name}'. Consider adding an index.ts or agent.ts file.`
     );
+  }
+
+  if (config.type === 'goose' && !config.entryPoint) {
+    const pythonCandidates = ['goose.py', 'main.py'];
+    const hasPythonEntrypoint = pythonCandidates.some((candidate) =>
+      fs.existsSync(path.join(path.resolve(sourcePath), candidate))
+    );
+    if (hasPythonEntrypoint) {
+      warnings.push(
+        'Goose Python entrypoints are not supported by the bundler. Use a JS/TS entrypoint instead.'
+      );
+    }
   }
 
   // Warn if using generic type

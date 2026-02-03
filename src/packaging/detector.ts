@@ -135,7 +135,7 @@ function detectEntryPoint(sourcePath: string, agentType: AgentType): string | un
   if (agentType === 'clawdbot') {
     entryPoints.unshift('clawdbot.ts', 'clawdbot.js');
   } else if (agentType === 'goose') {
-    entryPoints.unshift('goose.py', 'main.py');
+    entryPoints.unshift('goose.ts', 'goose.js');
   } else if (agentType === 'cline') {
     entryPoints.unshift('cline.ts', 'cline.js');
   }
