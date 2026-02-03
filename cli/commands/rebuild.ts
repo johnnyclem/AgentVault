@@ -8,13 +8,15 @@ import ora from 'ora';
 import inquirer from 'inquirer';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { deserializeState } from '../../src/packaging/serializer.js';
 import { compileToWasm } from '../../src/packaging/compiler.js';
 
 export interface RebuildCommandOptions {
   output?: string;
   force?: boolean;
   skipCompile?: boolean;
+  target?: 'wasmedge' | 'motoko' | 'pure-wasm';
+  debug?: boolean;
+  optimize?: number;
 }
 
 export interface RebuildAnswers {
@@ -38,9 +40,9 @@ export async function executeRebuild(
   const spinner = ora('Reading agent state...').start();
 
   try {
-    // Read and deserialize state
+    // Read and parse state
     const content = fs.readFileSync(resolvedPath, 'utf-8');
-    const state = deserializeState(content);
+    const state = JSON.parse(content);
 
     spinner.succeed('Agent state loaded successfully!');
 
@@ -53,35 +55,22 @@ export async function executeRebuild(
 
     console.log();
     console.log(chalk.cyan('State Info:'));
-    console.log(`  Memories:    ${state.memories.length}`);
-    console.log(`  Tasks:       ${state.tasks.length}`);
-    console.log(`  Context:     ${state.context.size} entries`);
+    console.log(`  Memories:    ${state.memories?.length || 0}`);
+    console.log(`  Tasks:       ${state.tasks?.length || 0}`);
+    console.log(`  Context:     ${Object.keys(state.context || {}).length} entries`);
 
     // Check if source directory exists
     if (!fs.existsSync(state.config.sourcePath)) {
       console.log();
       console.log(chalk.yellow('⚠'), 'Source directory not found:', state.config.sourcePath);
       console.log();
-      console.log('You need to provide the source code to rebuild the agent.');
+      console.log('You need to provide a source code to rebuild the agent.');
       console.log('Options:');
       console.log('  1. Clone the original repository');
       console.log('  2. Provide a new source directory');
 
-      const { sourcePath } = await inquirer.prompt<{ sourcePath: string }>([
-        {
-          type: 'input',
-          name: 'sourcePath',
-          message: 'Enter path to agent source directory:',
-          validate: (input: string) => {
-            if (!input.trim()) {
-              return 'Source path is required';
-            }
-            return true;
-          },
-        },
-      ]);
-
-      state.config.sourcePath = path.resolve(sourcePath);
+      spinner.stop();
+      return;
     }
 
     // Confirm rebuild
@@ -97,6 +86,7 @@ export async function executeRebuild(
 
       if (!confirm) {
         console.log(chalk.yellow('\nRebuild cancelled.'));
+        spinner.stop();
         return;
       }
     }
@@ -110,13 +100,22 @@ export async function executeRebuild(
       console.log('  Memories can be restored');
       console.log('  Tasks can be resumed');
       console.log('  Context is preserved');
+
+      spinner.stop();
       return;
     }
 
     // Compile agent to WASM
     const compileSpinner = ora('Compiling agent to WASM...').start();
+
     try {
-      const result = await compileToWasm(state.config, path.dirname(resolvedPath));
+      const compileOptions = {
+        target: options.target ?? 'wasmedge' as const,
+        debug: options.debug ?? false,
+        optimize: options.optimize ?? 2,
+      };
+
+      const result = await compileToWasm(state.config, compileOptions, path.dirname(resolvedPath));
 
       compileSpinner.succeed(`Agent compiled successfully!`);
 
@@ -134,13 +133,10 @@ export async function executeRebuild(
       console.log('  2. Deploy with:', chalk.bold('agentvault deploy'));
     } catch (error) {
       compileSpinner.fail('Compilation failed');
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      spinner.fail(`Rebuild failed: ${message}`);
       throw error;
     }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    spinner.fail(`Rebuild failed: ${message}`);
-    throw error;
-  }
 }
 
 /**
@@ -155,6 +151,9 @@ export function rebuildCommand(): Command {
     .option('-o, --output <path>', 'output directory for rebuilt agent')
     .option('-f, --force', 'skip confirmation prompts')
     .option('--skip-compile', 'skip WASM compilation')
+    .option('-t, --target <target>', 'compilation target (wasmedge|motoko|pure-wasm)', 'wasmedge')
+    .option('--debug', 'enable debugging features')
+    .option('--optimize <level>', 'optimization level (0-3)', '2')
     .action(async (stateFile: string, options: RebuildCommandOptions) => {
       console.log(chalk.bold('\n🔧 AgentVault Rebuild\n'));
 
