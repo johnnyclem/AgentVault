@@ -14,6 +14,9 @@ export interface PackageCommandOptions {
   force?: boolean;
   skipValidation?: boolean;
   dryRun?: boolean;
+  target?: 'wasmedge' | 'motoko' | 'pure-wasm';
+  debug?: boolean;
+  optimize?: number;
 }
 
 /**
@@ -90,10 +93,23 @@ export function displayResult(result: PackageResult): void {
   console.log();
   console.log(chalk.green('✓'), 'Agent packaged successfully!');
   console.log();
+  console.log(chalk.cyan('Compilation:'));
+  console.log(`  Target:    ${chalk.bold(result.target.toUpperCase())}`);
+  console.log(`  Duration:  ${result.duration ? `${result.duration}ms` : 'N/A'}`);
+  console.log();
   console.log(chalk.cyan('Output Files:'));
-  console.log(`  WASM:  ${result.wasmPath} (${formatSize(result.wasmSize)})`);
-  console.log(`  WAT:   ${result.watPath}`);
-  console.log(`  State: ${result.statePath}`);
+  console.log(`  WASM:     ${result.wasmPath} (${formatSize(result.wasmSize)})`);
+  console.log(`  WAT:      ${result.watPath}`);
+  console.log(`  State:    ${result.statePath}`);
+  if (result.jsBundlePath) {
+    console.log(`  JS Bundle: ${result.jsBundlePath}`);
+  }
+  if (result.sourceMapPath) {
+    console.log(`  Source Map: ${result.sourceMapPath}`);
+  }
+  if (result.manifestPath) {
+    console.log(`  Manifest:  ${result.manifestPath}`);
+  }
   console.log();
   console.log(chalk.cyan('Next steps:'));
   console.log('  1. Review the generated files');
@@ -122,6 +138,9 @@ export async function executePackage(
       outputPath: options.output ? path.resolve(options.output) : undefined,
       force: options.force,
       skipValidation: options.skipValidation,
+      target: options.target,
+      debug: options.debug,
+      optimize: options.optimize,
     };
 
     // Execute packaging
@@ -151,6 +170,9 @@ export function packageCommand(): Command {
     .option('-f, --force', 'overwrite existing output files')
     .option('--skip-validation', 'skip validation checks')
     .option('--dry-run', 'show what would be packaged without executing')
+    .option('-t, --target <target>', 'compilation target (wasmedge|motoko|pure-wasm)', 'wasmedge')
+    .option('--debug', 'enable debugging features (source maps, verbose output)')
+    .option('--optimize <level>', 'optimization level (0-3)', '2')
     .action(async (source: string, options: PackageCommandOptions) => {
       console.log(chalk.bold('\n📦 AgentVault Package\n'));
 

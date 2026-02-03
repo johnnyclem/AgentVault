@@ -45,6 +45,8 @@
     "@eslint/js": "^9.18.0",
     "@types/inquirer": "^9.0.9",
     "@types/node": "^22.10.0",
+    "@wasmedge/sdk": "^0.13.0",
+    "@wasmedge/wasi": "^0.13.0",
     "eslint": "^9.18.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.2",

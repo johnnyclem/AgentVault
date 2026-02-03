@@ -97,7 +97,7 @@ export async function packageAgent(options: PackageOptions): Promise<PackageResu
   const outputDir = outputPath ?? path.join(path.resolve(sourcePath), DEFAULT_OUTPUT_DIR);
 
   // Compile to WASM
-  const result = await compileToWasm(config, outputDir);
+  const result = await compileToWasm(config, options, outputDir);
 
   return result;
 }

@@ -35,6 +35,12 @@ export interface PackageOptions {
   force?: boolean;
   /** Skip validation steps */
   skipValidation?: boolean;
+  /** Compilation target (wasmedge for local, motoko for ICP) */
+  target?: 'wasmedge' | 'motoko' | 'pure-wasm';
+  /** Enable debugging features (source maps, verbose output) */
+  debug?: boolean;
+  /** Optimization level (0-3) */
+  optimize?: number;
 }
 
 /**
@@ -49,10 +55,24 @@ export interface PackageResult {
   watPath: string;
   /** Path to the serialized state JSON */
   statePath: string;
+  /** Path to the generated JavaScript bundle */
+  jsBundlePath?: string;
+  /** Path to the generated source map (if enabled) */
+  sourceMapPath?: string;
+  /** Path to the generated manifest file */
+  manifestPath?: string;
+  /** Path to the generated Candid interface (if motoko target) */
+  didPath?: string;
   /** Size of the WASM file in bytes */
   wasmSize: number;
+  /** Compilation target used */
+  target: 'wasmedge' | 'motoko' | 'pure-wasm';
   /** Timestamp of the packaging operation */
   timestamp: Date;
+  /** Compilation duration in milliseconds */
+  duration?: number;
+  /** Number of functions exported */
+  functionCount?: number;
 }
 
 /**

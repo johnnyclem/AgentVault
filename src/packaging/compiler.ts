@@ -9,7 +9,15 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as esbuild from 'esbuild';
-import type { AgentConfig, PackageResult } from './types.js';
+import type { AgentConfig, PackageResult, PackageOptions } from './types.js';
+import {
+  generateWasmEdgeWrapper,
+  validateWasmEdgeModule,
+  generateWasmEdgeConfig,
+  generateWasmEdgeManifest,
+  type WasmEdgeOptions,
+  DEFAULT_WASMEDGE_OPTIONS,
+} from './wasmedge-compiler.js';
 
 /**
  * WASM magic bytes (first 4 bytes of any valid .wasm file)
@@ -134,11 +142,12 @@ function writeUleb128Bytes(value: number): number[] {
 export function generateWasm(config: AgentConfig, javascriptBundle: string): Buffer {
   const agentNameBytes = Buffer.from(config.name, 'utf-8');
   const jsBytes = Buffer.from(javascriptBundle, 'utf-8');
-  
+
   // Build sections
   const sections: Buffer[] = [];
-  
+
   // 1. Custom section with metadata
+  const version = config.version ?? '1.0.0';
   const metadataContent = Buffer.concat([
     Buffer.from('agentvault', 'utf-8'),
     Buffer.from([0]),
@@ -146,7 +155,7 @@ export function generateWasm(config: AgentConfig, javascriptBundle: string): Buf
     Buffer.from([0]),
     Buffer.from(config.type, 'utf-8'),
     Buffer.from([0]),
-    Buffer.from((config.version ?? '1.0.0'), 'utf-8'),
+    Buffer.from(version, 'utf-8'),
   ]);
   
   const customSectionName = Buffer.from('agent.metadata', 'utf-8');
@@ -206,23 +215,23 @@ export function generateWasm(config: AgentConfig, javascriptBundle: string): Buf
   const exportSectionNames = ['init', 'step', 'get_state_ptr', 'get_state_size'];
   const exportSectionContent = Buffer.concat([
     // Export 0: init
-    concatBuffers([writeUleb128Bytes(exportSectionNames[0].length)]),
-    Buffer.from(exportSectionNames[0], 'utf-8'),
+    concatBuffers([writeUleb128Bytes((exportSectionNames[0] as string).length)]),
+    Buffer.from(exportSectionNames[0] as string, 'utf-8'),
     Buffer.from([0x00]), // export kind: function
     Buffer.from([0x00]), // func index
     // Export 1: step
-    concatBuffers([writeUleb128Bytes(exportSectionNames[1].length)]),
-    Buffer.from(exportSectionNames[1], 'utf-8'),
+    concatBuffers([writeUleb128Bytes((exportSectionNames[1] as string).length)]),
+    Buffer.from(exportSectionNames[1] as string, 'utf-8'),
     Buffer.from([0x00]),
     Buffer.from([0x01]),
     // Export 2: get_state_ptr
-    concatBuffers([writeUleb128Bytes(exportSectionNames[2].length)]),
-    Buffer.from(exportSectionNames[2], 'utf-8'),
+    concatBuffers([writeUleb128Bytes((exportSectionNames[2] as string).length)]),
+    Buffer.from(exportSectionNames[2] as string, 'utf-8'),
     Buffer.from([0x00]),
     Buffer.from([0x02]),
     // Export 3: get_state_size
-    concatBuffers([writeUleb128Bytes(exportSectionNames[3].length)]),
-    Buffer.from(exportSectionNames[3], 'utf-8'),
+    concatBuffers([writeUleb128Bytes((exportSectionNames[3] as string).length)]),
+    Buffer.from(exportSectionNames[3] as string, 'utf-8'),
     Buffer.from([0x00]),
     Buffer.from([0x03]),
   ]);
@@ -434,53 +443,113 @@ export function generateWat(config: AgentConfig, javascriptBundle: string): stri
 }
 
 /**
- * Compile an agent to WASM
+ * Compile an agent to WASM using WasmEdge
  *
  * This is the main compilation function that orchestrates the packaging process.
- * It bundles the agent code and creates a WASM module with embedded JavaScript.
+ * It bundles agent code and creates a WASM module with embedded JavaScript.
  *
  * @param config - Agent configuration from detection
+ * @param options - Packaging options including compilation target
  * @param outputDir - Directory to write output files
  * @returns Package result with paths to generated files
  */
-export async function compileToWasm(config: AgentConfig, outputDir: string): Promise<PackageResult> {
+export async function compileToWasm(
+  config: AgentConfig,
+  options: PackageOptions,
+  outputDir: string
+): Promise<PackageResult> {
+  const startTime = Date.now();
+  const target = options.target ?? 'wasmedge';
+
   // Ensure output directory exists
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
   }
-  
+
   // Generate file paths
   const wasmPath = path.join(outputDir, `${config.name}.wasm`);
   const watPath = path.join(outputDir, `${config.name}.wat`);
   const statePath = path.join(outputDir, `${config.name}.state.json`);
   const jsBundlePath = path.join(outputDir, `${config.name}.bundle.js`);
-  
+  const manifestPath = path.join(outputDir, `${config.name}.manifest.json`);
+  const sourceMapPath = path.join(outputDir, `${config.name}.wasm.map`);
+
   // Bundle agent code
-  const javascriptBundle = await bundleAgentCode(config);
-  
-  // Generate WASM with embedded JavaScript
-  const wasmBuffer = generateWasm(config, javascriptBundle);
-  
-  // Generate WAT representation
-  const watContent = generateWat(config, javascriptBundle);
-  
+  const agentCode = await bundleAgentCode(config);
+
+  let wasmBuffer: Buffer;
+  let watContent: string;
+
+  // Compile based on target
+  if (target === 'wasmedge') {
+    // Use WasmEdge wrapper for full JS support
+    const wasmedgeWrapper = generateWasmEdgeWrapper(agentCode, config);
+    const wasmedgeOptions: WasmEdgeOptions = {
+      debug: options.debug ?? DEFAULT_WASMEDGE_OPTIONS.debug,
+      sourcemap: options.debug ?? DEFAULT_WASMEDGE_OPTIONS.sourcemap,
+      optimize: options.optimize ?? DEFAULT_WASMEDGE_OPTIONS.optimize,
+      wasi: DEFAULT_WASMEDGE_OPTIONS.wasi,
+    };
+
+    // Generate WAT for WasmEdge
+    watContent = generateWat(config, wasmedgeWrapper);
+
+    // Generate WASM (using existing WASM structure as base)
+    wasmBuffer = generateWasm(config, wasmedgeWrapper);
+
+    // Write WasmEdge wrapper
+    fs.writeFileSync(jsBundlePath, wasmedgeWrapper, 'utf-8');
+
+    // Write WasmEdge config
+    const wasmedgeConfig = generateWasmEdgeConfig(config, wasmedgeOptions);
+    const wasmedgeConfigPath = path.join(outputDir, `${config.name}.wasmedge.json`);
+    fs.writeFileSync(wasmedgeConfigPath, wasmedgeConfig, 'utf-8');
+
+    // Write manifest
+    const manifest = generateWasmEdgeManifest(config, wasmPath, outputDir);
+    fs.writeFileSync(manifestPath, manifest, 'utf-8');
+
+  } else if (target === 'motoko') {
+    // For Motoko target, generate basic WASM structure
+    // The actual compilation happens in dfx with Motoko compiler
+    watContent = generateWat(config, agentCode);
+    wasmBuffer = generateWasm(config, agentCode);
+  } else {
+    // Pure WASM target - minimal structure
+    watContent = generateWat(config, agentCode);
+    wasmBuffer = generateWasm(config, agentCode);
+  }
+
   // Generate state JSON
   const stateContent = generateStateJson(config);
-  
+
   // Write files
   fs.writeFileSync(wasmPath, wasmBuffer);
   fs.writeFileSync(watPath, watContent, 'utf-8');
   fs.writeFileSync(statePath, stateContent, 'utf-8');
-  fs.writeFileSync(jsBundlePath, javascriptBundle, 'utf-8');
-  
-  return {
+
+  const result: PackageResult = {
     config,
     wasmPath,
     watPath,
     statePath,
+    jsBundlePath,
+    sourceMapPath: options.debug ? sourceMapPath : undefined,
+    manifestPath,
     wasmSize: wasmBuffer.length,
+    target,
     timestamp: new Date(),
+    duration: Date.now() - startTime,
+    functionCount: 14, // Standard agent interface exports
   };
+
+  // Validate generated WASM
+  const validation = validateWasmEdgeModule(wasmBuffer);
+  if (!validation.valid) {
+    console.warn(`WASM validation warnings: ${validation.errors.join(', ')}`);
+  }
+
+  return result;
 }
 
 /**

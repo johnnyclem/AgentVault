@@ -26,6 +26,16 @@ export {
   validateWasmFile,
 } from './compiler.js';
 
+// WasmEdge Compiler
+export {
+  generateWasmEdgeWrapper,
+  validateWasmEdgeModule,
+  generateWasmEdgeConfig,
+  generateWasmEdgeManifest,
+  type WasmEdgeOptions,
+  DEFAULT_WASMEDGE_OPTIONS,
+} from './wasmedge-compiler.js';
+
 // Serialization
 export {
   serializeState,
