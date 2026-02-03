@@ -10,7 +10,7 @@ export type NetworkType = 'local' | 'ic';
 /**
  * Deployment status codes
  */
-export type DeploymentStatus = 'pending' | 'deploying' | 'deployed' | 'failed';
+export type DeploymentStatus = 'pending' | 'deploying' | 'deployed' | 'failed' | 'running' | 'stopping' | 'stopped';
 
 /**
  * Information about a deployed canister
@@ -73,13 +73,15 @@ export interface DeploymentError {
 }
 
 /**
- * Configuration for the ICP client
+ * Configuration for ICP client
  */
 export interface ICPClientConfig {
   /** Target network */
   network: NetworkType;
   /** Host URL (defaults based on network) */
   host?: string;
-  /** Identity to use for signing */
+  /** Path to dfx identity file for signing */
   identity?: string;
+  /** Canister ID for operations (optional, used when deploying/upgrading) */
+  canisterId?: string;
 }
