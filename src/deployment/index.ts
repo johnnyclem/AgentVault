@@ -20,8 +20,6 @@ export {
   ICPClient,
   createICPClient,
   generateStubCanisterId,
-  calculateWasmHash,
-  validateWasmPath,
 } from './icpClient.js';
 
 // Deployer

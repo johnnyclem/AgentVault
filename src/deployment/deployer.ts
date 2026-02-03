@@ -13,8 +13,9 @@ import type {
   DeploymentError,
   CanisterInfo,
   NetworkType,
+  DeploymentStatus,
 } from './types.js';
-import { createICPClient, validateWasmPath, calculateWasmHash } from './icpClient.js';
+import { createICPClient } from './icpClient.js';
 
 /**
  * Extract agent name from WASM file path
@@ -36,8 +37,9 @@ export function validateDeployOptions(options: DeployOptions): {
   const errors: DeploymentError[] = [];
   const warnings: string[] = [];
 
-  // Validate WASM path
-  const wasmValidation = validateWasmPath(options.wasmPath);
+  // Validate WASM path using client
+  const client = createICPClient({ network: options.network });
+  const wasmValidation = client.validateWasmPath(options.wasmPath);
   if (!wasmValidation.valid) {
     errors.push({
       code: 'INVALID_WASM',
@@ -95,7 +97,8 @@ export function getDeploySummary(options: DeployOptions): {
   let wasmSize = 0;
   if (validation.valid) {
     try {
-      wasmHash = calculateWasmHash(options.wasmPath);
+      const client = createICPClient({ network: options.network });
+      wasmHash = client.calculateWasmHash(options.wasmPath);
       wasmSize = fs.statSync(options.wasmPath).size;
     } catch {
       // File doesn't exist or can't be read
@@ -172,7 +175,7 @@ export async function getCanisterStatus(
   network: NetworkType
 ): Promise<{
   exists: boolean;
-  status?: 'running' | 'stopping' | 'stopped';
+  status?: DeploymentStatus;
   memorySize?: bigint;
   cycles?: bigint;
 }> {
