@@ -7,7 +7,6 @@
 
 import { ethers } from 'ethers';
 import type {
-  ChainType,
   Balance,
   Transaction,
   TransactionRequest,
@@ -31,7 +30,6 @@ interface CkEthConfig extends ProviderConfig {
  */
 export class CkEthProvider extends BaseWalletProvider {
   private provider: ethers.JsonRpcProvider | null = null;
-  private wallet: ethers.Wallet | null = null;
   private chainId: number;
 
   constructor(config: CkEthConfig) {
@@ -63,7 +61,6 @@ export class CkEthProvider extends BaseWalletProvider {
    */
   async disconnect(): Promise<void> {
     this.provider = null;
-    this.wallet = null;
     this.connected = false;
   }
 
@@ -106,12 +103,12 @@ export class CkEthProvider extends BaseWalletProvider {
     try {
       const tx = await this.populateTransaction(from, request);
       const signedTx = await this.signTransaction(tx, from);
-      
+
       // Send transaction
-      const txHash = await this.provider.broadcastTransaction(signedTx.signedTx);
-      
+      const txResponse = await this.provider.broadcastTransaction(signedTx.signedTx);
+
       return {
-        hash: txHash,
+        hash: txResponse.hash,
         from,
         to: request.to,
         amount: request.amount,
@@ -135,12 +132,12 @@ export class CkEthProvider extends BaseWalletProvider {
   ): Promise<SignedTransaction> {
     try {
       const wallet = new ethers.Wallet(privateKey);
-      const signedTx = await wallet.signTransaction(tx);
-      
+      const signedTxSerialized = await wallet.signTransaction(tx);
+
       return {
-        txHash: signedTx.hash,
-        signedTx: signedTx.serialized,
-        signature: signedTx.signature,
+        txHash: tx.hash || '0x0',
+        signedTx: signedTxSerialized,
+        signature: '0x',
         request: tx,
       };
     } catch (error) {
@@ -152,7 +149,7 @@ export class CkEthProvider extends BaseWalletProvider {
   /**
    * Get transaction history
    */
-  async getTransactionHistory(address: string): Promise<Transaction[]> {
+  async getTransactionHistory(_address: string): Promise<Transaction[]> {
     // For MVP, return empty array
     // In production, query blockchain or use Etherscan API
     return [];
@@ -178,13 +175,14 @@ export class CkEthProvider extends BaseWalletProvider {
     }
 
     try {
-      const gasPrice = await this.provider.getFeeData();
+      const feeData = await this.provider.getFeeData();
       const gasLimit = await this.provider.estimateGas({
         to: request.to,
         value: ethers.parseEther(request.amount),
       });
 
-      const fee = gasPrice.gasPrice * gasLimit;
+      const gasPrice = feeData.gasPrice || feeData.maxFeePerGas || BigInt(0);
+      const fee = gasPrice * gasLimit;
       return ethers.formatEther(fee);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -225,7 +223,7 @@ export class CkEthProvider extends BaseWalletProvider {
         to: tx.to || '',
         amount: ethers.formatEther(tx.value),
         chain: this.getChain(),
-        timestamp: await (await this.provider.getBlock(tx.blockNumber || 0))?.getTime(),
+        timestamp: (await this.provider.getBlock(tx.blockNumber || 0))?.timestamp || 0,
         status: receipt ? (receipt.status ? 'confirmed' : 'failed') : 'pending',
         fee: tx.gasPrice ? ethers.formatEther(BigInt(tx.gasPrice) * BigInt(tx.gasLimit || 21000)) : undefined,
       };

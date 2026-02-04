@@ -17,6 +17,7 @@ import { rebuildCommand } from './commands/rebuild.js';
 import { execCommand } from './commands/exec.js';
 import { listCommand } from './commands/list.js';
 import { showCommand } from './commands/show.js';
+import { walletCommand } from './commands/wallet.js';
 
 export function createProgram(): Command {
   const program = new Command();
@@ -37,6 +38,7 @@ export function createProgram(): Command {
   program.addCommand(execCommand());
   program.addCommand(listCommand());
   program.addCommand(showCommand());
+  program.addCommand(walletCommand());
 
   return program;
 }

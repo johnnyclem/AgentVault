@@ -23,9 +23,6 @@ export interface RebuildAnswers {
   confirm: boolean;
 }
 
-/**
- * Execute rebuild command
- */
 export async function executeRebuild(
   stateFile: string,
   options: RebuildCommandOptions
@@ -59,84 +56,95 @@ export async function executeRebuild(
     console.log(`  Tasks:       ${state.tasks?.length || 0}`);
     console.log(`  Context:     ${Object.keys(state.context || {}).length} entries`);
 
-    // Check if source directory exists
-    if (!fs.existsSync(state.config.sourcePath)) {
-      console.log();
-      console.log(chalk.yellow('⚠'), 'Source directory not found:', state.config.sourcePath);
-      console.log();
-      console.log('You need to provide a source code to rebuild the agent.');
-      console.log('Options:');
-      console.log('  1. Clone the original repository');
-      console.log('  2. Provide a new source directory');
+    console.log();
+    console.log(chalk.yellow('Agent tasks can be resumed'));
+    console.log('Context is preserved');
 
+    spinner.stop();
+    return;
+  } catch (error) {
+    spinner.stop();
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    throw new Error(`Failed to parse state file: ${message}`);
+  }
+
+  // Check if source directory exists
+  if (!fs.existsSync(state.config.sourcePath)) {
+    console.log();
+    console.log(chalk.yellow('⚠'), 'Source directory not found:', state.config.sourcePath);
+    console.log();
+    console.log('You need to provide a source code to rebuild agent.');
+    console.log('Options:');
+    console.log('  1. Clone original repository');
+    console.log('  2. Provide a new source directory');
+
+    spinner.stop();
+    return;
+  }
+
+  // Confirm rebuild
+  if (!options.force) {
+    const { confirm } = await inquirer.prompt<RebuildAnswers>([
+      {
+        type: 'confirm',
+        name: 'confirm',
+        message: 'Rebuild agent with this configuration?',
+        default: true,
+      },
+    ]);
+
+    if (!confirm) {
+      console.log(chalk.yellow('\nRebuild cancelled.'));
       spinner.stop();
       return;
     }
+  }
 
-    // Confirm rebuild
-    if (!options.force) {
-      const { confirm } = await inquirer.prompt<RebuildAnswers>([
-        {
-          type: 'confirm',
-          name: 'confirm',
-          message: 'Rebuild agent with this configuration?',
-          default: true,
-        },
-      ]);
+  // Skip compilation if requested
+  if (options.skipCompile) {
+    console.log();
+    console.log(chalk.green('✓'), 'Rebuild skipped compilation step.');
+    console.log();
+    console.log(chalk.cyan('Agent state ready for use'));
+    console.log('Memories can be restored');
 
-      if (!confirm) {
-        console.log(chalk.yellow('\nRebuild cancelled.'));
-        spinner.stop();
-        return;
-      }
-    }
+    spinner.stop();
+    return;
+  }
 
-    // Skip compilation if requested
-    if (options.skipCompile) {
-      console.log();
-      console.log(chalk.green('✓'), 'Rebuild skipped compilation step.');
-      console.log();
-      console.log(chalk.cyan('Agent state ready for use:'));
-      console.log('  Memories can be restored');
-      console.log('  Tasks can be resumed');
-      console.log('  Context is preserved');
+  // Compile agent to WASM
+  const compileSpinner = ora('Compiling agent to WASM...').start();
 
-      spinner.stop();
-      return;
-    }
+  try {
+    const compileOptions = {
+      sourcePath: state.config.sourcePath,
+      target: options.target ?? 'wasmedge' as const,
+      debug: options.debug ?? false,
+      optimize: options.optimize ?? 2,
+    };
 
-    // Compile agent to WASM
-    const compileSpinner = ora('Compiling agent to WASM...').start();
+    const result = await compileToWasm(state.config, compileOptions, path.dirname(resolvedPath));
 
-    try {
-      const compileOptions = {
-        target: options.target ?? 'wasmedge' as const,
-        debug: options.debug ?? false,
-        optimize: options.optimize ?? 2,
-      };
+    compileSpinner.succeed(`Agent compiled successfully!`);
 
-      const result = await compileToWasm(state.config, compileOptions, path.dirname(resolvedPath));
+    console.log();
+    console.log(chalk.cyan('Output Files:'));
+    console.log(`  WASM:  ${result.wasmPath}`);
+    console.log(`  WAT:   ${result.watPath}`);
+    console.log(`  State: ${result.statePath}`);
 
-      compileSpinner.succeed(`Agent compiled successfully!`);
-
-      console.log();
-      console.log(chalk.cyan('Output Files:'));
-      console.log(`  WASM:  ${result.wasmPath}`);
-      console.log(`  WAT:   ${result.watPath}`);
-      console.log(`  State: ${result.statePath}`);
-
-      console.log();
-      console.log(chalk.green('✓'), 'Agent rebuilt successfully!');
-      console.log();
-      console.log(chalk.cyan('Next steps:'));
-      console.log('  1. Test the rebuilt agent locally');
-      console.log('  2. Deploy with:', chalk.bold('agentvault deploy'));
-    } catch (error) {
-      compileSpinner.fail('Compilation failed');
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      spinner.fail(`Rebuild failed: ${message}`);
-      throw error;
-    }
+    console.log();
+    console.log(chalk.green('✓'), 'Agent rebuilt successfully!');
+    console.log();
+    console.log(chalk.cyan('Next steps:'));
+    console.log('  1. Test rebuilt agent locally');
+    console.log('  2. Deploy with:', chalk.bold('agentvault deploy'));
+  } catch (error) {
+    compileSpinner.fail('Compilation failed');
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    spinner.fail(`Rebuild failed: ${message}`);
+    throw error;
+  }
 }
 
 /**
