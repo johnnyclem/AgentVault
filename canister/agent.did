@@ -1,0 +1,72 @@
+service : {
+  // Agent Configuration
+  getAgentConfig : () -> (opt AgentConfig) query;
+  getAgentStatus : () -> (record { initialized : bool; version : text; totalMemories : nat; totalTasks : nat; wasmLoaded : bool; executionCount : nat; lastExecuted : int }) query;
+  setAgentConfig : (AgentConfig) -> (variant { ok : text; err : text });
+
+  // WASM Module Management
+  loadAgentWasm : (vec nat8, vec nat8) -> (variant { ok : text; err : text });
+  getWasmInfo : () -> (opt WasmMetadata) query;
+  isWasmLoaded : () -> (bool) query;
+
+  // Agent Interface: State Functions
+  agent_init : (vec nat8) -> (variant { ok : vec nat8; err : text });
+  agent_step : (vec nat8) -> (variant { ok : vec nat8; err : text });
+  agent_get_state : () -> (vec nat8) query;
+  agent_get_state_size : () -> (nat) query;
+
+  // Agent Interface: Memory Functions
+  agent_add_memory : (nat, vec nat8) -> (variant { ok : vec nat8; err : text });
+  agent_get_memories : () -> (vec nat8) query;
+  agent_get_memories_by_type : (nat) -> (vec nat8) query;
+  agent_clear_memories : () -> (variant { ok : vec nat8; err : text });
+
+  // Agent Interface: Task Functions
+  agent_add_task : (vec nat8, vec nat8) -> (variant { ok : vec nat8; err : text });
+  agent_get_tasks : () -> (vec nat8) query;
+  agent_get_pending_tasks : () -> (vec nat8) query;
+  agent_update_task_status : (vec nat8, nat, vec nat8) -> (variant { ok : vec nat8; err : text });
+  agent_clear_tasks : () -> (variant { ok : vec nat8; err : text });
+
+  // Agent Interface: Info Function
+  agent_get_info : () -> (vec nat8) query;
+
+  // Legacy Functions
+  execute : (text) -> (variant { ok : text; err : text });
+  addMemory : (Memory) -> (variant { ok : text; err : text });
+  getMemories : () -> (vec Memory) query;
+  getMemoriesByType : (variant { fact : null; user_preference : null; task_result : null }) -> (vec Memory) query;
+  clearMemories : () -> (text);
+  addTask : (Task) -> (variant { ok : text; err : text });
+  getTasks : () -> (vec Task) query;
+  getPendingTasks : () -> (vec Task) query;
+  getRunningTasks : () -> (vec Task) query;
+  updateTaskStatus : (text, variant { pending : null; running : null; completed : null; failed : null }, opt text) -> (variant { ok : text; err : text });
+  clearTasks : () -> (text);
+  setContext : (text, text) -> (text);
+  getContext : (text) -> (opt text) query;
+  getAllContext : () -> (vec (text, text)) query;
+  clearContext : () -> (text);
+
+  // Wallet Registry Functions (Phase 5A)
+  registerWallet : (WalletInfo) -> (variant { ok : text; err : text });
+  getWallet : (text) -> (opt WalletInfo) query;
+  listWallets : (text) -> (vec WalletInfo) query;
+  deregisterWallet : (text) -> (variant { ok : text; err : text });
+  updateWalletStatus : (text, variant { active : null; inactive : null; revoked : null }) -> (variant { ok : text; err : text });
+
+  // System Functions
+  getCanisterStatus : () -> (record { status : variant { running : null; stopping : null; stopped : null }; memorySize : nat; cycles : nat }) query;
+  getMetrics : () -> (record { uptime : int; operations : nat; lastActivity : int }) query;
+  heartbeat : () -> (bool);
+}
+
+type AgentConfig = record { name : text; agentType : text; version : text; createdAt : int };
+
+type WasmMetadata = record { hash : vec nat8; size : nat; loadedAt : int; functionNameCount : nat };
+
+type Memory = record { id : text; memoryType : variant { fact : null; user_preference : null; task_result : null }; content : text; timestamp : int; importance : nat8 };
+
+type Task = record { id : text; description : text; status : variant { pending : null; running : null; completed : null; failed : null }; result : opt text; timestamp : int };
+
+type WalletInfo = record { id : text; agentId : text; chain : text; address : text; registeredAt : int; status : variant { active : null; inactive : null; revoked : null } };

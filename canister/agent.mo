@@ -102,6 +102,208 @@ stable var tasks : [Task] = [];
 // Context storage (key-value pairs)
 stable var context : [(Text, Text)] = [];
 
+// ==================== Wallet Registry (Phase 5A) ====================
+
+/**
+ * Wallet information stored in canister (metadata only, NO private keys)
+ */
+public type WalletInfo = {
+  id : Text;
+  agentId : Text;
+  chain : Text;
+  address : Text;
+  registeredAt : Int;
+  status : { #active; #inactive; #revoked };
+};
+
+// Wallet registry (maps walletId -> WalletInfo)
+stable var walletRegistry : [(Text, WalletInfo)] = [];
+
+// ==================== Transaction Queue (Phase 5B) ====================
+
+/**
+ * Transaction action type
+ */
+public type TransactionAction = {
+  walletId : Text;
+  action : { #send_funds; #sign_message; #deploy_contract };
+  parameters : [(Text, Text)];
+  priority : { #low; #normal; #high };
+  threshold : ?Nat;
+};
+
+/**
+ * Transaction status
+ */
+public type TransactionStatus = {
+  #pending;
+  #queued;
+  #signed;
+  #completed;
+  #failed;
+};
+
+/**
+ * Queued transaction
+ */
+public type QueuedTransaction = {
+  id : Text;
+  action : TransactionAction;
+  status : TransactionStatus;
+  result : ?Text;
+  retryCount : Nat;
+  scheduledAt : ?Int;
+  createdAt : Int;
+  signedAt : ?Int;
+  completedAt : ?Int;
+  errorMessage : ?Text;
+};
+
+// Transaction queue storage
+stable var transactionQueue : [QueuedTransaction] = [];
+
+// ==================== Wallet Registry Functions (Phase 5A) ====================
+
+/**
+ * Register a wallet in the canister
+ *
+ * @param walletInfo - Wallet metadata to register
+ * @returns Registration result
+ */
+public shared func registerWallet(walletInfo : WalletInfo) : async {
+  #ok : Text;
+  #err : Text;
+} {
+  // Check if wallet already exists
+  for ((id, _) in walletRegistry.vals()) {
+    if (id == walletInfo.id) {
+      return #err("Wallet already registered: " # walletInfo.id);
+    };
+  };
+
+  // Validate wallet info
+  if (walletInfo.id == "") {
+    return #err("Invalid wallet ID");
+  };
+  if (walletInfo.agentId == "") {
+    return #err("Invalid agent ID");
+  };
+  if (walletInfo.address == "") {
+    return #err("Invalid wallet address");
+  };
+
+  // Register wallet
+  walletRegistry := Array.append<(Text, WalletInfo)>(walletRegistry, [(walletInfo.id, walletInfo)]);
+
+  #ok("Wallet registered: " # walletInfo.id)
+};
+
+/**
+ * Get wallet information
+ *
+ * @param walletId - Wallet ID to query
+ * @returns Wallet info if found
+ */
+public query func getWallet(walletId : Text) : async ?WalletInfo {
+  for ((id, info) in walletRegistry.vals()) {
+    if (id == walletId) {
+      return ?info;
+    };
+  };
+  null
+};
+
+/**
+ * List all wallets for an agent
+ *
+ * @param agentId - Agent ID to filter wallets
+ * @returns Array of wallet info
+ */
+public query func listWallets(agentId : Text) : async [WalletInfo] {
+  var agentWallets : [WalletInfo] = [];
+
+  for ((id, info) in walletRegistry.vals()) {
+    if (info.agentId == agentId) {
+      agentWallets := Array.append<WalletInfo>(agentWallets, [info]);
+    };
+  };
+
+  agentWallets
+};
+
+/**
+ * Deregister a wallet from the canister
+ *
+ * @param walletId - Wallet ID to deregister
+ * @returns Deregistration result
+ */
+public shared func deregisterWallet(walletId : Text) : async {
+  #ok : Text;
+  #err : Text;
+} {
+  var found = false;
+
+  // Remove wallet from registry
+  walletRegistry := Array.filter<(Text, WalletInfo)>(
+    walletRegistry,
+    func(entry : (Text, WalletInfo)) : Bool {
+      let (id, info) = entry;
+      if (id == walletId) {
+        found := true;
+        false
+      } else {
+        true
+      }
+    }
+  );
+
+  if (found) {
+    #ok("Wallet deregistered: " # walletId)
+  } else {
+    #err("Wallet not found: " # walletId)
+  }
+};
+
+/**
+ * Update wallet status
+ *
+ * @param walletId - Wallet ID to update
+ * @param status - New status
+ * @returns Update result
+ */
+public shared func updateWalletStatus(walletId : Text, status : { #active; #inactive; #revoked }) : async {
+  #ok : Text;
+  #err : Text;
+} {
+  var found = false;
+
+  walletRegistry := Array.map<(Text, WalletInfo), (Text, WalletInfo)>(
+    walletRegistry,
+    func(entry : (Text, WalletInfo)) : (Text, WalletInfo) {
+      let (id, info) = entry;
+      if (id == walletId) {
+        found := true;
+        (id, {
+          id = info.id;
+          agentId = info.agentId;
+          chain = info.chain;
+          address = info.address;
+          registeredAt = info.registeredAt;
+          status = status;
+        })
+      } else {
+        entry
+      }
+    }
+  );
+
+  if (found) {
+    #ok("Wallet status updated: " # walletId)
+  } else {
+    #err("Wallet not found: " # walletId)
+  }
+};
+
 // ==================== Agent Lifecycle ====================
 
 /**
@@ -754,6 +956,371 @@ public query func getAllContext() : async [(Text, Text)] {
 public shared func clearContext() : async Text {
   context := [];
   "Context cleared"
+};
+
+// ==================== Transaction Queue Functions (Phase 5B) ====================
+
+/**
+ * Generate unique transaction ID
+ */
+private func generateTransactionId() : Text {
+  "tx_" # Nat.toText(Time.now()) # "_" # Nat.toText(transactionQueue.size());
+};
+
+/**
+ * Queue a transaction
+ *
+ * @param action - Transaction action to queue
+ * @returns Queue result
+ */
+public shared func queueTransaction(action : TransactionAction) : async {
+  #ok : Text;
+  #err : Text;
+} {
+  let tx : QueuedTransaction = {
+    id = generateTransactionId();
+    action = action;
+    status = #pending;
+    result = null;
+    retryCount = 0;
+    scheduledAt = null;
+    createdAt = Time.now();
+    signedAt = null;
+    completedAt = null;
+    errorMessage = null;
+  };
+
+  transactionQueue := Array.append<QueuedTransaction>(transactionQueue, [tx]);
+
+  #ok("Transaction queued: " # tx.id)
+};
+
+/**
+ * Get all queued transactions
+ *
+ * @returns All queued transactions
+ */
+public query func getQueuedTransactions() : async [QueuedTransaction] {
+  transactionQueue
+};
+
+/**
+ * Get pending transactions
+ *
+ * @returns Pending transactions
+ */
+public query func getPendingTransactions() : async [QueuedTransaction] {
+  Array.filter<QueuedTransaction>(
+    transactionQueue,
+    func(tx : QueuedTransaction) : Bool {
+      switch(tx.status) {
+        case(#pending) { true };
+        case(_) { false };
+      }
+    }
+  )
+};
+
+/**
+ * Get queued transactions by wallet
+ *
+ * @param walletId - Wallet ID to filter
+ * @returns Queued transactions for wallet
+ */
+public query func getQueuedTransactionsByWallet(walletId : Text) : async [QueuedTransaction] {
+  Array.filter<QueuedTransaction>(
+    transactionQueue,
+    func(tx : QueuedTransaction) : Bool {
+      tx.action.walletId == walletId
+    }
+  )
+};
+
+/**
+ * Get transaction by ID
+ *
+ * @param txId - Transaction ID
+ * @returns Transaction or null
+ */
+public query func getQueuedTransaction(txId : Text) : async ?QueuedTransaction {
+  for(tx in transactionQueue.vals()) {
+    if(tx.id == txId) {
+      return ?tx;
+    };
+  };
+  null
+};
+
+/**
+ * Mark transaction as signed
+ *
+ * @param txId - Transaction ID
+ * @param signature - Signature data
+ * @returns Update result
+ */
+public shared func markTransactionSigned(txId : Text, signature : Text) : async {
+  #ok : Text;
+  #err : Text;
+} {
+  var found = false;
+
+  transactionQueue := Array.map<QueuedTransaction, QueuedTransaction>(
+    transactionQueue,
+    func(tx : QueuedTransaction) : QueuedTransaction {
+      if(tx.id == txId) {
+        found := true;
+        {
+          id = tx.id;
+          action = tx.action;
+          status = #signed;
+          result = ?signature;
+          retryCount = tx.retryCount;
+          scheduledAt = tx.scheduledAt;
+          createdAt = tx.createdAt;
+          signedAt = ?Time.now();
+          completedAt = tx.completedAt;
+          errorMessage = tx.errorMessage;
+        }
+      } else {
+        tx
+      }
+    }
+  );
+
+  if(found) {
+    #ok("Transaction marked as signed: " # txId)
+  } else {
+    #err("Transaction not found: " # txId)
+  }
+};
+
+/**
+ * Mark transaction as completed
+ *
+ * @param txId - Transaction ID
+ * @param txHash - Transaction hash
+ * @returns Update result
+ */
+public shared func markTransactionCompleted(txId : Text, txHash : Text) : async {
+  #ok : Text;
+  #err : Text;
+} {
+  var found = false;
+
+  transactionQueue := Array.map<QueuedTransaction, QueuedTransaction>(
+    transactionQueue,
+    func(tx : QueuedTransaction) : QueuedTransaction {
+      if(tx.id == txId) {
+        found := true;
+        {
+          id = tx.id;
+          action = tx.action;
+          status = #completed;
+          result = ?txHash;
+          retryCount = tx.retryCount;
+          scheduledAt = tx.scheduledAt;
+          createdAt = tx.createdAt;
+          signedAt = tx.signedAt;
+          completedAt = ?Time.now();
+          errorMessage = tx.errorMessage;
+        }
+      } else {
+        tx
+      }
+    }
+  );
+
+  if(found) {
+    #ok("Transaction marked as completed: " # txId)
+  } else {
+    #err("Transaction not found: " # txId)
+  }
+};
+
+/**
+ * Mark transaction as failed
+ *
+ * @param txId - Transaction ID
+ * @param error - Error message
+ * @returns Update result
+ */
+public shared func markTransactionFailed(txId : Text, error : Text) : async {
+  #ok : Text;
+  #err : Text;
+} {
+  var found = false;
+
+  transactionQueue := Array.map<QueuedTransaction, QueuedTransaction>(
+    transactionQueue,
+    func(tx : QueuedTransaction) : QueuedTransaction {
+      if(tx.id == txId) {
+        found := true;
+        {
+          id = tx.id;
+          action = tx.action;
+          status = #failed;
+          result = null;
+          retryCount = tx.retryCount + 1;
+          scheduledAt = tx.scheduledAt;
+          createdAt = tx.createdAt;
+          signedAt = tx.signedAt;
+          completedAt = ?Time.now();
+          errorMessage = ?error;
+        }
+      } else {
+        tx
+      }
+    }
+  );
+
+  if(found) {
+    #ok("Transaction marked as failed: " # txId)
+  } else {
+    #err("Transaction not found: " # txId)
+  }
+};
+
+/**
+ * Retry failed transaction
+ *
+ * @param txId - Transaction ID
+ * @returns Retry result
+ */
+public shared func retryTransaction(txId : Text) : async {
+  #ok : Text;
+  #err : Text;
+} {
+  var found = false;
+
+  transactionQueue := Array.map<QueuedTransaction, QueuedTransaction>(
+    transactionQueue,
+    func(tx : QueuedTransaction) : QueuedTransaction {
+      if(tx.id == txId) {
+        found := true;
+        {
+          id = tx.id;
+          action = tx.action;
+          status = #queued;
+          result = null;
+          retryCount = tx.retryCount;
+          scheduledAt = ?Time.now();
+          createdAt = tx.createdAt;
+          signedAt = null;
+          completedAt = null;
+          errorMessage = null;
+        }
+      } else {
+        tx
+      }
+    }
+  );
+
+  if(found) {
+    #ok("Transaction queued for retry: " # txId)
+  } else {
+    #err("Transaction not found: " # txId)
+  }
+};
+
+/**
+ * Schedule transaction for future execution
+ *
+ * @param txId - Transaction ID
+ * @param scheduledAt - Scheduled time
+ * @returns Update result
+ */
+public shared func scheduleTransaction(txId : Text, scheduledAt : Int) : async {
+  #ok : Text;
+  #err : Text;
+} {
+  var found = false;
+
+  transactionQueue := Array.map<QueuedTransaction, QueuedTransaction>(
+    transactionQueue,
+    func(tx : QueuedTransaction) : QueuedTransaction {
+      if(tx.id == txId) {
+        found := true;
+        {
+          id = tx.id;
+          action = tx.action;
+          status = #queued;
+          result = null;
+          retryCount = tx.retryCount;
+          scheduledAt = ?scheduledAt;
+          createdAt = tx.createdAt;
+          signedAt = null;
+          completedAt = null;
+          errorMessage = tx.errorMessage;
+        }
+      } else {
+        tx
+      }
+    }
+  );
+
+  if(found) {
+    #ok("Transaction scheduled: " # txId)
+  } else {
+    #err("Transaction not found: " # txId)
+  }
+};
+
+/**
+ * Clear completed transactions
+ *
+ * @returns Clear result
+ */
+public shared func clearCompletedTransactions() : async Text {
+  transactionQueue := Array.filter<QueuedTransaction>(
+    transactionQueue,
+    func(tx : QueuedTransaction) : Bool {
+      switch(tx.status) {
+        case(#completed) { false };
+        case(_) { true };
+      }
+    }
+  );
+
+  "Completed transactions cleared"
+};
+
+/**
+ * Get transaction queue statistics
+ *
+ * @returns Queue statistics
+ */
+public query func getTransactionQueueStats() : async {
+  total : Nat;
+  pending : Nat;
+  queued : Nat;
+  signed : Nat;
+  completed : Nat;
+  failed : Nat;
+} {
+  var pendingCount : Nat = 0;
+  var queuedCount : Nat = 0;
+  var signedCount : Nat = 0;
+  var completedCount : Nat = 0;
+  var failedCount : Nat = 0;
+
+  for(tx in transactionQueue.vals()) {
+    switch(tx.status) {
+      case(#pending) { pendingCount += 1 };
+      case(#queued) { queuedCount += 1 };
+      case(#signed) { signedCount += 1 };
+      case(#completed) { completedCount += 1 };
+      case(#failed) { failedCount += 1 };
+    }
+  };
+
+  {
+    total = transactionQueue.size();
+    pending = pendingCount;
+    queued = queuedCount;
+    signed = signedCount;
+    completed = completedCount;
+    failed = failedCount;
+  }
 };
 
 // ==================== System Functions ====================

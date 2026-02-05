@@ -3,6 +3,7 @@
  *
  * Main wallet management module.
  * Handles wallet creation, storage, and retrieval with per-agent isolation.
+ * Phase 5A: Added canister sync functionality.
  */
 
 import { randomBytes } from 'node:crypto';
@@ -23,6 +24,40 @@ import type {
   WalletCreationOptions,
   WalletStorageOptions,
 } from './types.js';
+
+// Phase 5A: Canister imports (lazy load)
+let _createActor: any = null;
+let _canisterInitialized = false;
+
+/**
+ * Lazy load canister actor
+ */
+async function loadCanister() {
+  if (_canisterInitialized) return;
+
+  try {
+    const { createActor, createAnonymousAgent } = await import('../canister/actor.js');
+    _createActor = createActor;
+    _canisterInitialized = true;
+  } catch (error) {
+    console.warn('Canister integration not available:', error);
+  }
+}
+
+/**
+ * Get or create canister actor
+ */
+async function getCanisterActor(canisterId: string) {
+  await loadCanister();
+
+  if (!_createActor) {
+    throw new Error('Canister actor not initialized');
+  }
+
+  const { createAnonymousAgent } = await import('../canister/actor.js');
+  const agent = createAnonymousAgent();
+  return _createActor(canisterId, agent);
+}
 
 /**
  * In-memory wallet connections cache
@@ -306,4 +341,257 @@ export function clearCachedConnection(
  */
 export function validateSeedPhraseWrapper(seedPhrase: string): boolean {
   return validateSeedPhrase(seedPhrase);
+}
+
+// ==================== Phase 5A: Canister Sync Functions ====================
+
+/**
+ * Sync wallet to canister (register wallet metadata)
+ *
+ * @param agentId - Agent ID
+ * @param walletId - Wallet ID
+ * @param canisterId - Canister ID to sync to
+ * @returns Sync result
+ */
+export async function syncWalletToCanister(
+  agentId: string,
+  walletId: string,
+  canisterId: string
+): Promise<{ success: boolean; error?: string; registeredAt?: number }> {
+  try {
+    await loadCanister();
+
+    if (!_createActor) {
+      return { success: false, error: 'Canister not available' };
+    }
+
+    const wallet = getWallet(agentId, walletId);
+    if (!wallet) {
+      return { success: false, error: 'Wallet not found' };
+    }
+
+    const actor = await getCanisterActor(canisterId);
+
+    const result = await actor.registerWallet({
+      id: walletId,
+      agentId,
+      chain: wallet.chain,
+      address: wallet.address,
+      registeredAt: BigInt(wallet.createdAt),
+      status: { active: null },
+    });
+
+    if ('ok' in result) {
+      return {
+        success: true,
+        registeredAt: wallet.createdAt,
+      };
+    } else {
+      return {
+        success: false,
+        error: result.err,
+      };
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+/**
+ * Sync all wallets for an agent to canister
+ *
+ * @param agentId - Agent ID
+ * @param canisterId - Canister ID to sync to
+ * @returns Sync results
+ */
+export async function syncAgentWallets(
+  agentId: string,
+  canisterId: string
+): Promise<{ synced: string[]; failed: { walletId: string; error: string }[] }> {
+  const walletIds = listAgentWallets(agentId);
+  const synced: string[] = [];
+  const failed: { walletId: string; error: string }[] = [];
+
+  for (const walletId of walletIds) {
+    const result = await syncWalletToCanister(agentId, walletId, canisterId);
+    if (result.success) {
+      synced.push(walletId);
+    } else {
+      failed.push({
+        walletId,
+        error: result.error || 'Unknown error',
+      });
+    }
+  }
+
+  return { synced, failed };
+}
+
+/**
+ * Get wallet sync status
+ *
+ * @param agentId - Agent ID
+ * @param walletId - Wallet ID
+ * @param canisterId - Canister ID
+ * @returns Wallet sync status
+ */
+export async function getWalletSyncStatus(
+  agentId: string,
+  walletId: string,
+  canisterId: string
+): Promise<{
+  walletId: string;
+  inCanister: boolean;
+  canisterStatus?: any;
+  localExists: boolean;
+  synced: boolean;
+}> {
+  try {
+    await loadCanister();
+
+    const localExists = hasWallet(agentId, walletId);
+    let inCanister = false;
+    let canisterStatus;
+
+    if (_createActor) {
+      const actor = await getCanisterActor(canisterId);
+      const result = await actor.getWallet(walletId);
+
+      if (result && result.length > 0) {
+        inCanister = true;
+        canisterStatus = result[0];
+      }
+    }
+
+    const wallet = localExists ? getWallet(agentId, walletId) : null;
+    const synced = inCanister && localExists && wallet && canisterStatus;
+
+    return {
+      walletId,
+      inCanister,
+      canisterStatus,
+      localExists,
+      synced,
+    };
+  } catch (error) {
+    return {
+      walletId,
+      inCanister: false,
+      localExists: hasWallet(agentId, walletId),
+      synced: false,
+    };
+  }
+}
+
+/**
+ * List wallets from canister
+ *
+ * @param agentId - Agent ID
+ * @param canisterId - Canister ID
+ * @returns Array of canister wallet info
+ */
+export async function listCanisterWallets(
+  agentId: string,
+  canisterId: string
+): Promise<any[]> {
+  try {
+    await loadCanister();
+
+    if (!_createActor) {
+      return [];
+    }
+
+    const actor = await getCanisterActor(canisterId);
+    return await actor.listWallets(agentId);
+  } catch (error) {
+    console.error('Failed to list canister wallets:', error);
+    return [];
+  }
+}
+
+/**
+ * Deregister wallet from canister
+ *
+ * @param walletId - Wallet ID
+ * @param canisterId - Canister ID
+ * @returns Deregistration result
+ */
+export async function deregisterWalletFromCanister(
+  walletId: string,
+  canisterId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    await loadCanister();
+
+    if (!_createActor) {
+      return { success: false, error: 'Canister not available' };
+    }
+
+    const actor = await getCanisterActor(canisterId);
+    const result = await actor.deregisterWallet(walletId);
+
+    if ('ok' in result) {
+      return { success: true };
+    } else {
+      return {
+        success: false,
+        error: result.err,
+      };
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+/**
+ * Update wallet status in canister
+ *
+ * @param walletId - Wallet ID
+ * @param status - New status
+ * @param canisterId - Canister ID
+ * @returns Update result
+ */
+export async function updateCanisterWalletStatus(
+  walletId: string,
+  status: 'active' | 'inactive' | 'revoked',
+  canisterId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    await loadCanister();
+
+    if (!_createActor) {
+      return { success: false, error: 'Canister not available' };
+    }
+
+    const actor = await getCanisterActor(canisterId);
+
+    const statusVariant =
+      status === 'active'
+        ? { active: null }
+        : status === 'inactive'
+          ? { inactive: null }
+          : { revoked: null };
+
+    const result = await actor.updateWalletStatus(walletId, statusVariant);
+
+    if ('ok' in result) {
+      return { success: true };
+    } else {
+      return {
+        success: false,
+        error: result.err,
+      };
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
 }
