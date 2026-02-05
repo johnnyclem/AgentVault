@@ -9,6 +9,7 @@ import * as bip39 from 'bip39';
 import * as crypto from 'node:crypto';
 import bs58 from 'bs58';
 import type { WalletCreationMethod } from './types.js';
+import { Keypair } from '@solana/web3.js';
 
 /**
  * Derivation path components
@@ -270,20 +271,23 @@ export function deriveSolanaKey(
   seed: Buffer,
   derivationPath: string = DEFAULT_DERIVATION_PATHS.solana
 ): DerivedKey {
-  // Solana uses Ed25519
-  // For now, we'll use a simplified approach
-  // In production, use @solana/web3.js for proper key derivation
+  // Use BIP44 derivation for Solana
+  const derived = deriveKeyFromSeed(seed, derivationPath);
 
-  const privateKey = seed.slice(0, 32);
+  if (!derived || !derived.privateKey) {
+    throw new Error('Failed to derive Solana key');
+  }
 
-  // Generate Solana public key (Ed25519)
-  const publicKey = derivePublicKey(privateKey);
-  const address = deriveSolanaAddress(publicKey);
+  // Solana uses Ed25519, takes first 32 bytes of derived private key
+  const privateKeyBytes = Buffer.from(derived.privateKey, 'hex').subarray(0, 32);
+
+  // Use Solana's Keypair for proper Ed25519 key generation
+  const keypair = Keypair.fromSecretKey(privateKeyBytes);
 
   return {
-    privateKey: privateKey.toString('hex'),
-    publicKey: publicKey.toString('hex'),
-    address,
+    privateKey: Buffer.from(keypair.secretKey).toString('hex'),
+    publicKey: Buffer.from(keypair.publicKey.toBytes()).toString('hex'),
+    address: keypair.publicKey.toBase58(),
     derivationPath,
   };
 }
