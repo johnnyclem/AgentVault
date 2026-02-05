@@ -6,8 +6,12 @@
  */
 
 import { Actor, HttpAgent } from '@dfinity/agent';
-import { idlFactory } from './actor.idl';
+import { idlFactory } from './actor.idl.js';
 
+/**
+ * AgentVault canister actor interface
+ * Generated from agent.did Candid interface.
+ */
 
 /**
  * Agent configuration stored on-chain
@@ -16,7 +20,7 @@ export type AgentConfig = {
   name: string;
   agentType: string;
   version: string;
-  createdAt: bigint;
+  createdAt: number;
 };
 
 /**
@@ -24,9 +28,9 @@ export type AgentConfig = {
  */
 export type WasmMetadata = {
   hash: Uint8Array;
-  size: bigint;
-  loadedAt: bigint;
-  functionNameCount: bigint;
+  size: number;
+  loadedAt: number;
+  functionNameCount: number;
 };
 
 /**
@@ -38,7 +42,7 @@ export type Memory = {
   id: string;
   memoryType: MemoryType;
   content: string;
-  timestamp: bigint;
+  timestamp: number;
   importance: number;
 };
 
@@ -52,7 +56,7 @@ export type Task = {
   description: string;
   status: TaskStatus;
   result: [string] | [];
-  timestamp: bigint;
+  timestamp: number;
 };
 
 /**
@@ -65,8 +69,8 @@ export type ExecutionResult = { ok: Uint8Array } | { err: string };
  */
 export type AgentState = {
   initialized: boolean;
-  lastExecuted: bigint;
-  executionCount: bigint;
+  lastExecuted: number;
+  executionCount: number;
 };
 
 /**
@@ -79,7 +83,7 @@ export type WalletInfo = {
   agentId: string;
   chain: string;
   address: string;
-  registeredAt: bigint;
+  registeredAt: number;
   status: WalletStatus;
 };
 
@@ -89,11 +93,11 @@ export type WalletInfo = {
 export type AgentStatus = {
   initialized: boolean;
   version: string;
-  totalMemories: bigint;
-  totalTasks: bigint;
+  totalMemories: number;
+  totalTasks: number;
   wasmLoaded: boolean;
-  executionCount: bigint;
-  lastExecuted: bigint;
+  executionCount: number;
+  lastExecuted: number;
 };
 
 /**
@@ -106,7 +110,7 @@ export type CanisterStatus = { running: null } | { stopping: null } | { stopped:
  */
 export type FullCanisterStatus = {
   status: CanisterStatus;
-  memorySize: bigint;
+  memorySize: number;
   cycles: bigint;
 };
 
@@ -114,15 +118,85 @@ export type FullCanisterStatus = {
  * Canister metrics
  */
 export type CanisterMetrics = {
-  uptime: bigint;
-  operations: bigint;
-  lastActivity: bigint;
+  uptime: number;
+  operations: number;
+  lastActivity: number;
 };
 
 /**
  * Operation result
  */
 export type OperationResult = { ok: string } | { err: string };
+
+/**
+ * Transaction action from canister
+ */
+export type CanisterTransactionAction = 'send_funds' | 'sign_message' | 'deploy_contract';
+
+/**
+ * Transaction priority from canister
+ */
+export type CanisterTransactionPriority = 'low' | 'normal' | 'high';
+
+/**
+ * Transaction status from canister
+ */
+export type CanisterTransactionStatus = 'pending' | 'queued' | 'signed' | 'completed' | 'failed';
+
+/**
+ * Queued transaction from canister
+ */
+export type CanisterQueuedTransaction = {
+  id: string;
+  action: {
+    walletId: string;
+    action: CanisterTransactionAction;
+    parameters: [string, string][];
+    priority: CanisterTransactionPriority;
+    threshold?: number;
+  };
+  status: CanisterTransactionStatus;
+  result?: string;
+  retryCount: number;
+  scheduledAt?: number;
+  createdAt: number;
+  signedAt?: number;
+  completedAt?: number;
+  errorMessage?: string;
+};
+
+/**
+ * Transaction queue statistics from canister
+ */
+export type CanisterTransactionQueueStats = {
+  total: number;
+  pending: number;
+  queued: number;
+  signed: number;
+  completed: number;
+  failed: number;
+};
+
+/**
+ * Encrypted secret from canister
+ */
+export type CanisterEncryptedSecret = {
+  id: string;
+  ciphertext: Uint8Array;
+  iv: Uint8Array;
+  tag: Uint8Array;
+  algorithm: 'aes_256_gcm' | 'chacha20_poly1305';
+  createdAt: number;
+};
+
+/**
+ * VetKeys status from canister
+ */
+export type CanisterVetKeysStatus = {
+  enabled: boolean;
+  thresholdSupported: boolean;
+  mode: 'mock' | 'production';
+};
 
 /**
  * AgentVault canister actor interface
@@ -137,15 +211,15 @@ export interface _SERVICE {
   agent_init: (arg_0: Uint8Array) => Promise<ExecutionResult>;
   agent_step: (arg_0: Uint8Array) => Promise<ExecutionResult>;
   agent_get_state: () => Promise<Uint8Array>;
-  agent_get_state_size: () => Promise<bigint>;
-  agent_add_memory: (arg_0: bigint, arg_1: Uint8Array) => Promise<ExecutionResult>;
+  agent_get_state_size: () => Promise<number>;
+  agent_add_memory: (arg_0: number, arg_1: Uint8Array) => Promise<ExecutionResult>;
   agent_get_memories: () => Promise<Uint8Array>;
-  agent_get_memories_by_type: (arg_0: bigint) => Promise<Uint8Array>;
+  agent_get_memories_by_type: (arg_0: number) => Promise<Uint8Array>;
   agent_clear_memories: () => Promise<ExecutionResult>;
   agent_add_task: (arg_0: Uint8Array, arg_1: Uint8Array) => Promise<ExecutionResult>;
   agent_get_tasks: () => Promise<Uint8Array>;
   agent_get_pending_tasks: () => Promise<Uint8Array>;
-  agent_update_task_status: (arg_0: Uint8Array, arg_1: bigint, arg_2: Uint8Array) => Promise<ExecutionResult>;
+  agent_update_task_status: (arg_0: Uint8Array, arg_1: number, arg_2: Uint8Array) => Promise<ExecutionResult>;
   agent_clear_tasks: () => Promise<ExecutionResult>;
   agent_get_info: () => Promise<Uint8Array>;
   execute: (arg_0: string) => Promise<OperationResult>;
@@ -171,6 +245,36 @@ export interface _SERVICE {
   getCanisterStatus: () => Promise<FullCanisterStatus>;
   getMetrics: () => Promise<CanisterMetrics>;
   heartbeat: () => Promise<boolean>;
+
+  queueTransaction: (arg_0: {
+    walletId: string;
+    action: {
+      walletId: string;
+      action: CanisterTransactionAction;
+      parameters: [string, string][];
+      priority: CanisterTransactionPriority;
+      threshold?: number;
+    };
+  }) => Promise<OperationResult>;
+  getQueuedTransactions: () => Promise<CanisterQueuedTransaction[]>;
+  getPendingTransactions: () => Promise<CanisterQueuedTransaction[]>;
+  getQueuedTransactionsByWallet: (arg_0: string) => Promise<CanisterQueuedTransaction[]>;
+  getQueuedTransaction: (arg_0: string) => Promise<[CanisterQueuedTransaction] | []>;
+  markTransactionSigned: (arg_0: string, arg_1: string) => Promise<OperationResult>;
+  markTransactionCompleted: (arg_0: string, arg_1: string) => Promise<OperationResult>;
+  markTransactionFailed: (arg_0: string, arg_1: string) => Promise<OperationResult>;
+  retryTransaction: (arg_0: string) => Promise<OperationResult>;
+  scheduleTransaction: (arg_0: string, arg_1: number) => Promise<OperationResult>;
+  clearCompletedTransactions: () => Promise<string>;
+  getTransactionQueueStats: () => Promise<CanisterTransactionQueueStats>;
+
+  storeEncryptedSecret: (arg_0: CanisterEncryptedSecret) => Promise<OperationResult>;
+  getEncryptedSecret: (arg_0: string) => Promise<[CanisterEncryptedSecret] | []>;
+  listEncryptedSecrets: () => Promise<CanisterEncryptedSecret[]>;
+  deleteEncryptedSecret: (arg_0: string) => Promise<OperationResult>;
+  verifyThresholdSignature: (arg_0: string, arg_1: string) => Promise<OperationResult>;
+  deriveVetKeysKey: (arg_0: string, arg_1: number) => Promise<OperationResult>;
+  getVetKeysStatus: () => Promise<CanisterVetKeysStatus>;
 }
 
 /**
@@ -199,8 +303,6 @@ export function createAnonymousAgent(host = 'http://localhost:4943'): HttpAgent 
   const agent = new HttpAgent({
     host,
   });
-
-  agent.fetchRootKey();
 
   return agent;
 }

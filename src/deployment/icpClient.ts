@@ -11,6 +11,7 @@ import type {
   DeploymentStatus,
 } from './types.js';
 import { HttpAgent } from '@dfinity/agent';
+import { createActor, createAnonymousAgent } from '../canister/actor.js';
 
 /**
  * ICP Client Class
@@ -285,7 +286,7 @@ export class ICPClient {
   }
 
   /**
-   * Call agent function via Actor
+   * Call agent function via Actor (Phase 5B: Real Actor Integration)
    *
    * @param canisterId - Canister ID
    * @param methodName - Agent method name
@@ -293,63 +294,186 @@ export class ICPClient {
    * @returns Method result
    */
   async callAgentMethod<T>(
-    _canisterId: string,
+    canisterId: string,
     methodName: string,
-    _args: any[] = []
+    args: any[] = []
   ): Promise<T> {
-    const agent = new HttpAgent({
-      host: this.host,
-    });
+    try {
+      const actor = createActor(canisterId, createAnonymousAgent());
 
-    // Fetch root key for local networks
-    if (this.config.network === 'local') {
-      await agent.fetchRootKey();
+      switch (methodName) {
+        case 'getAgentConfig':
+          return await actor.getAgentConfig() as T;
+
+        case 'getAgentStatus':
+          return await actor.getAgentStatus() as T;
+
+        case 'setAgentConfig':
+          return await actor.setAgentConfig(args[0]) as T;
+
+        case 'loadAgentWasm':
+          return await actor.loadAgentWasm(args[0], args[1]) as T;
+
+        case 'getWasmInfo':
+          return await actor.getWasmInfo() as T;
+
+        case 'isWasmLoaded':
+          return await actor.isWasmLoaded() as T;
+
+        case 'agent_init':
+          return await actor.agent_init(args[0]) as T;
+
+        case 'agent_step':
+          return await actor.agent_step(args[0]) as T;
+
+        case 'agent_get_state':
+          return await actor.agent_get_state() as T;
+
+        case 'agent_get_state_size':
+          return await actor.agent_get_state_size() as T;
+
+        case 'agent_add_memory':
+          return await actor.agent_add_memory(args[0], args[1]) as T;
+
+        case 'agent_get_memories':
+          return await actor.agent_get_memories() as T;
+
+        case 'agent_get_memories_by_type':
+          return await actor.agent_get_memories_by_type(args[0]) as T;
+
+        case 'agent_clear_memories':
+          return await actor.agent_clear_memories() as T;
+
+        case 'agent_add_task':
+          return await actor.agent_add_task(args[0], args[1]) as T;
+
+        case 'agent_get_tasks':
+          return await actor.agent_get_tasks() as T;
+
+        case 'agent_get_pending_tasks':
+          return await actor.agent_get_pending_tasks() as T;
+
+        case 'agent_update_task_status':
+          return await actor.agent_update_task_status(args[0], args[1], args[2]) as T;
+
+        case 'agent_clear_tasks':
+          return await actor.agent_clear_tasks() as T;
+
+        case 'agent_get_info':
+          return await actor.agent_get_info() as T;
+
+        case 'execute':
+          return await actor.execute(args[0]) as T;
+
+        case 'addMemory':
+          return await actor.addMemory(args[0]) as T;
+
+        case 'getMemories':
+          return await actor.getMemories() as T;
+
+        case 'getMemoriesByType':
+          return await actor.getMemoriesByType(args[0]) as T;
+
+        case 'clearMemories':
+          return await actor.clearMemories() as T;
+
+        case 'addTask':
+          return await actor.addTask(args[0]) as T;
+
+        case 'getTasks':
+          return await actor.getTasks() as T;
+
+        case 'getPendingTasks':
+          return await actor.getPendingTasks() as T;
+
+        case 'getRunningTasks':
+          return await actor.getRunningTasks() as T;
+
+        case 'updateTaskStatus':
+          return await actor.updateTaskStatus(args[0], args[1], args[2]) as T;
+
+        case 'clearTasks':
+          return await actor.clearTasks() as T;
+
+        case 'setContext':
+          return await actor.setContext(args[0], args[1]) as T;
+
+        case 'getContext':
+          return await actor.getContext(args[0]) as T;
+
+        case 'getAllContext':
+          return await actor.getAllContext() as T;
+
+        case 'clearContext':
+          return await actor.clearContext() as T;
+
+        case 'getCanisterStatus':
+          return await actor.getCanisterStatus() as T;
+
+        case 'getMetrics':
+          return await actor.getMetrics() as T;
+
+        case 'heartbeat':
+          return await actor.heartbeat() as T;
+
+        case 'registerWallet':
+          return await actor.registerWallet(args[0]) as T;
+
+        case 'getWallet':
+          return await actor.getWallet(args[0]) as T;
+
+        case 'listWallets':
+          return await actor.listWallets(args[0]) as T;
+
+        case 'deregisterWallet':
+          return await actor.deregisterWallet(args[0]) as T;
+
+        case 'updateWalletStatus':
+          return await actor.updateWalletStatus(args[0], args[1]) as T;
+
+        case 'queueTransaction':
+          return await actor.queueTransaction(args[0]) as T;
+
+        case 'getQueuedTransactions':
+          return await actor.getQueuedTransactions() as T;
+
+        case 'getPendingTransactions':
+          return await actor.getPendingTransactions() as T;
+
+        case 'getQueuedTransactionsByWallet':
+          return await actor.getQueuedTransactionsByWallet(args[0]) as T;
+
+        case 'getQueuedTransaction':
+          return await actor.getQueuedTransaction(args[0]) as T;
+
+        case 'markTransactionSigned':
+          return await actor.markTransactionSigned(args[0], args[1]) as T;
+
+        case 'markTransactionCompleted':
+          return await actor.markTransactionCompleted(args[0], args[1]) as T;
+
+        case 'markTransactionFailed':
+          return await actor.markTransactionFailed(args[0], args[1]) as T;
+
+        case 'retryTransaction':
+          return await actor.retryTransaction(args[0]) as T;
+
+        case 'scheduleTransaction':
+          return await actor.scheduleTransaction(args[0], args[1]) as T;
+
+        case 'clearCompletedTransactions':
+          return await actor.clearCompletedTransactions() as T;
+
+        case 'getTransactionQueueStats':
+          return await actor.getTransactionQueueStats() as T;
+
+        default:
+          throw new Error(`Unknown method: ${methodName}`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      throw new Error(`Failed to call ${methodName}: ${message}`);
     }
-
-    // For MVP: Return simulated result
-    // In production, this would create Actor and call the method
-    void agent;
-
-    if (methodName === 'agent_init') {
-      return { '#ok': [1] } as T;
-    } else if (methodName === 'agent_step') {
-      return { '#ok': new TextEncoder().encode('Executed') } as T;
-    } else if (methodName === 'agent_get_state') {
-      return [1] as T;
-    } else if (methodName === 'agent_get_state_size') {
-      return 1 as T;
-    } else if (methodName === 'agent_add_memory') {
-      return { '#ok': [1] } as T;
-    } else if (methodName === 'agent_get_memories') {
-      return [0] as T;
-    } else if (methodName === 'agent_get_memories_by_type') {
-      return [0] as T;
-    } else if (methodName === 'agent_clear_memories') {
-      return { '#ok': [1] } as T;
-    } else if (methodName === 'agent_add_task') {
-      return { '#ok': [1] } as T;
-    } else if (methodName === 'agent_get_tasks') {
-      return [0] as T;
-    } else if (methodName === 'agent_get_pending_tasks') {
-      return [0] as T;
-    } else if (methodName === 'agent_update_task_status') {
-      return { '#ok': [1] } as T;
-    } else if (methodName === 'agent_clear_tasks') {
-      return { '#ok': [1] } as T;
-    } else if (methodName === 'agent_get_info') {
-      return new TextEncoder().encode('agent|1.0.0|0|0') as T;
-    } else if (methodName === 'loadAgentWasm') {
-      return { '#ok': 'WASM loaded' } as T;
-    } else if (methodName === 'getWasmInfo') {
-      return {
-        hash: [0, 0, 0, 0],
-        size: 0,
-        loadedAt: Date.now() * 1000000,
-        functionNameCount: 14,
-      } as T;
-    }
-
-    throw new Error(`Unknown method: ${methodName}`);
   }
 }
 

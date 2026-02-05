@@ -1,8 +1,9 @@
 /**
- * Wallet Process Queue Command
+ * Wallet Process Queue Command (Phase 5B/5D)
  *
  * CLI command to process pending transactions from canister queue.
  * Part of Phase 5B: Agent-Initiated Transactions.
+ * Phase 5D: VetKeys threshold signing support.
  */
 
 import inquirer from 'inquirer';
@@ -98,7 +99,7 @@ export async function handleProcessQueue(agentId: string, canisterId: string): P
 }
 
 /**
- * Process a single transaction
+ * Process a single transaction with VetKeys threshold signing
  */
 async function processTransaction(
   tx: QueuedTransaction,
@@ -116,25 +117,63 @@ async function processTransaction(
 
     const action = mapActionToRequest(tx.action);
 
-    const signed = await signTransaction(wallet, action);
+    // Phase 5D: VetKeys threshold signing for transactions with threshold > 1
+    const threshold = tx.action.threshold ? Number(tx.action.threshold) : 1;
 
-    if (!signed) {
-      await actor.markTransactionFailed(tx.id, 'Signing failed');
-      return { success: false, error: 'Signing failed' };
+    if (threshold > 1) {
+      console.log(chalk.yellow(`Transaction ${tx.id} requires threshold signatures (${threshold} of ${tx.action.threshold ? Number(tx.action.threshold) : 3})...`));
+
+      const { createVetKeysAdapter } = await import('../../src/wallet/vetkeys-adapter.js');
+      const vetKeys = createVetKeysAdapter({
+        threshold: threshold,
+        totalParties: 3,
+        encryptionAlgorithm: 'aes-256-gcm',
+      });
+
+      const thresholdResult = await vetKeys.initiateThresholdSignature(
+        tx.id,
+        wallet,
+        action
+      );
+
+      if (!thresholdResult.success) {
+        await actor.markTransactionFailed(tx.id, thresholdResult.error);
+        return {
+          success: false,
+          error: thresholdResult.error,
+        };
+      }
+
+      await actor.markTransactionSigned(tx.id, thresholdResult.signature || '');
+
+      console.log(chalk.green(`✓ Threshold signature completed for ${tx.id}`));
+
+      return {
+        success: true,
+      txHash: 'threshold-signed',
+      };
+    } else {
+      // Normal signing (threshold = 1)
+      const signed = await signTransaction(wallet, action);
+
+      if (!signed) {
+        await actor.markTransactionFailed(tx.id, 'Signing failed');
+        return { success: false, error: 'Signing failed' };
+      }
+
+      await actor.markTransactionSigned(tx.id, signed.signature || '');
+
+      const provider = createProvider(wallet.chain);
+
+      const txResult = await provider.sendTransaction(wallet.address, action);
+
+      await actor.markTransactionCompleted(tx.id, txResult.hash);
+
+      return {
+        success: true,
+        txHash: txResult.hash,
+      };
     }
-
-    await actor.markTransactionSigned(tx.id, signed.signature || '');
-
-    const provider = createProvider(wallet.chain);
-
-    const txResult = await provider.sendTransaction(wallet.address, action);
-
-    await actor.markTransactionCompleted(tx.id, txResult.hash);
-
-    return {
-      success: true,
-      txHash: txResult.hash,
-    };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
 
@@ -156,7 +195,7 @@ function mapActionToRequest(action: QueuedTransaction['action']): TransactionReq
   return {
     to: params.get('to') || '',
     amount: params.get('amount') || '0',
-    chain: params.get('chain') || 'cketh',
+    chain: (params.get('chain') || 'cketh') as any,
     memo: params.get('memo'),
     gasPrice: params.get('gasPrice'),
     gasLimit: params.get('gasLimit'),
@@ -197,19 +236,19 @@ function createProvider(chain: string): any {
     case 'cketh':
       return new CkEthProvider({
         chain: 'cketh' as any,
-        rpcUrl: CkEthProvider.getDefaultRpcUrl(),
+        rpcUrl: '',
         isTestnet: false,
       });
     case 'polkadot':
       return new PolkadotProvider({
         chain: 'polkadot' as any,
-        rpcUrl: PolkadotProvider.getDefaultRpcUrl(),
+        rpcUrl: '',
         isTestnet: false,
       });
     case 'solana':
       return new SolanaProvider({
         chain: 'solana' as any,
-        rpcUrl: SolanaProvider.getDefaultRpcUrl(),
+        rpcUrl: '',
         isTestnet: false,
       });
     default:

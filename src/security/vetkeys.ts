@@ -82,7 +82,7 @@ export class VetKeysClient {
 
     try {
       // Derive n secret shares from seed phrase
-      const shares = this.generateSecretShares(seedPhrase, threshold, totalParties, algorithm);
+      const shares = await this.generateSecretShares(seedPhrase, threshold, totalParties, algorithm);
 
       // Generate share metadata
       const shareMetadata = shares.map((share, index) => ({
@@ -94,7 +94,7 @@ export class VetKeysClient {
       }));
 
       // Generate commitment
-      const commitment = this.generateCommitment(shares);
+      const commitment = await this.generateCommitment(shares);
 
       // Generate verification parameters
       const verification = {
@@ -107,7 +107,7 @@ export class VetKeysClient {
       };
 
       // Derive master key from seed phrase (for local use)
-      const derivedKey = this.deriveMasterKey(seedPhrase, algorithm);
+      const derivedKey = await this.deriveMasterKey(seedPhrase, algorithm);
 
       return {
         type: 'threshold',
@@ -136,14 +136,14 @@ export class VetKeysClient {
    * @param algorithm - Encryption algorithm to use
    * @returns Array of encrypted shares
    */
-  private generateSecretShares(
+  private async generateSecretShares(
     seedPhrase: string,
     threshold: number,
     totalParties: number,
     algorithm: EncryptionAlgorithm
-  ): Array<{ shareId: string; participantId: string; encryptedShare: string; commitment: string }> {
-    const shares: Array<{ shareId: string; participantId: string; encryptedShare: string; commitment: string }>(threshold);
-    const commitment = this.generateCommitment(shares);
+  ): Promise<Array<{ shareId: string; participantId: string; encryptedShare: string; commitment: string }>> {
+    const shares: Array<{ shareId: string; participantId: string; encryptedShare: string; commitment: string }> = [];
+    const masterCommitment = await this.generateCommitment(shares);
 
     for (let i = 0; i < threshold; i++) {
       const shareId = this.generateShareId();
@@ -153,17 +153,17 @@ export class VetKeysClient {
       const participantSecret = this.generateParticipantSecret(seedPhrase, i, totalParties);
 
       // Encrypt share with participant's secret
-      const { encryptedShare, commitment } = this.encryptShare(
+      const { encryptedShare, commitment: shareCommitment } = await this.encryptShare(
         participantSecret,
-        commitment,
+        masterCommitment,
         algorithm,
       );
 
       shares.push({
         shareId,
-        participantId,
+        participantId: participantId.toString(),
         encryptedShare,
-        commitment,
+        commitment: shareCommitment,
       });
     }
 
@@ -188,7 +188,7 @@ export class VetKeysClient {
     const secretBytes = Buffer.from(seedPhrase, 'utf8');
 
     // Create unique secret for this participant by adding participant index
-    const participantSuffix = Buffer.from([Buffer.from([participantIndex]), secretBytes]);
+    const participantSuffix = Buffer.concat([Buffer.from([participantIndex]), secretBytes]);
 
     return participantSuffix.toString('hex');
   }
@@ -200,11 +200,11 @@ export class VetKeysClient {
    * @param commitment - Commitment for encryption
    * @param algorithm - Encryption algorithm
    */
-  private encryptShare(
+  private async encryptShare(
     secret: string,
     commitment: string,
     algorithm: EncryptionAlgorithm
-  ): { encryptedShare: string; commitment: string } {
+  ): Promise<{ encryptedShare: string; commitment: string }> {
     const crypto = await import('node:crypto');
 
     let secretBuffer: Buffer;
@@ -241,7 +241,7 @@ export class VetKeysClient {
   /**
    * Generate commitment from all shares
    */
-  private generateCommitment(shares: Array<{ encryptedShare: string }>): string {
+  private async generateCommitment(shares: Array<{ encryptedShare: string }>): Promise<string> {
     const crypto = await import('node:crypto');
     const hash = crypto.createHash('sha256');
 
@@ -260,19 +260,19 @@ export class VetKeysClient {
    * Uses PBKDF2 for key derivation, same as existing implementation.
    * This is NOT the threshold key, but the master secret that participants share.
    */
-  private deriveMasterKey(seedPhrase: string, algorithm: EncryptionAlgorithm): { key: string; method: string } {
+  private async deriveMasterKey(seedPhrase: string, _algorithm: EncryptionAlgorithm): Promise<{ key: string; method: string }> {
     const crypto = await import('node:crypto');
     const bip39 = await import('bip39');
 
     const seed = await bip39.mnemonicToSeed(seedPhrase);
 
     // Derive key using PBKDF2
-    const key = crypto.pbkdf2(
+    const key = crypto.pbkdf2Sync(
       seed,
-      'agentvault-encryption-key', // Salt
-      algorithm: 'sha256', // Hash function
-      iterations: 100000, // Iterations
-      keylen: 32, // Key length (256 bits)
+      'agentvault-encryption-key',
+      100000,
+      32,
+      'sha256',
     );
 
     return {
@@ -295,6 +295,12 @@ export class VetKeysClient {
    * Get encryption status
    */
   public getEncryptionStatus(): {
+    thresholdSupported: boolean;
+    totalParticipants: number;
+    currentThreshold: number;
+    encryptionAlgorithm: EncryptionAlgorithm;
+    keyDerivation: string;
+  } {
     return {
       thresholdSupported: true,
       totalParticipants: this.config.totalParties,
