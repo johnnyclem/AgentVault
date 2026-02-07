@@ -69,9 +69,9 @@ export async function executeRebuild(
   }
 
   // Check if source directory exists
-  if (!fs.existsSync(state.config.sourcePath)) {
+  if (!fs.existsSync(stateconfig.sourcePath)) {
     console.log();
-    console.log(chalk.yellow('⚠'), 'Source directory not found:', state.config.sourcePath);
+    console.log(chalk.yellow('⚠'), 'Source directory not found:', stateconfig.sourcePath);
     console.log();
     console.log('You need to provide a source code to rebuild agent.');
     console.log('Options:');
@@ -117,13 +117,13 @@ export async function executeRebuild(
 
   try {
     const compileOptions = {
-      sourcePath: state.config.sourcePath,
+      sourcePath: stateconfig.sourcePath,
       target: options.target ?? 'wasmedge' as const,
       debug: options.debug ?? false,
       optimize: options.optimize ?? 2,
     };
 
-    const result = await compileToWasm(state.config, compileOptions, path.dirname(resolvedPath));
+    const result = await compileToWasm(stateconfig, compileOptions, path.dirname(resolvedPath));
 
     compileSpinner.succeed(`Agent compiled successfully!`);
 

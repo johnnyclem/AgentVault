@@ -6,4 +6,9 @@
  */
 
 export * from './types.js';
-export * from './vetkeys.js';
+
+// VetKeysClient is exported from types.js, avoid re-exporting from vetkeys.js
+export { VetKeysClient } from './types.js';
+
+// Re-export decryptJSON from vetkeys.js
+export { decryptJSON } from './vetkeys.js';

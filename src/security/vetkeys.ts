@@ -13,29 +13,19 @@
  * - Key derivation using secret sharing
  * - Threshold signature verification
  * - Key reconstruction without revealing secrets
+ *
+ * Note: VetKeysClient interface is defined in types.ts.
+ * This implementation class avoids the naming conflict.
  */
 
 import type {
   EncryptedData,
-  EncryptionResult,
-  SeedPhrase,
-  DerivedKey,
   VetKeysOptions,
   EncryptionAlgorithm,
-  KeyDerivationMethod,
+  VetKeysDerivedKey as DerivedKey,
 } from './types.js';
 
-/**
- * VetKeys threshold key derivation protocol
- *
- * Implements distributed threshold key derivation using secret sharing.
- * Based on Shamir's Secret Sharing Scheme (SSS).
- *
- * Security: Requires t-of-n (out of n) parties to reconstruct secret
- * Privacy: No single participant learns the secret
- * Robustness: Can tolerate up to t-1 malicious participants
- */
-export class VetKeysClient {
+export class VetKeysImplementation {
   private config: VetKeysOptions;
 
   constructor(options: VetKeysOptions = {}) {
@@ -44,6 +34,52 @@ export class VetKeysClient {
       totalParties: options.totalParties ?? 3,
       encryptionAlgorithm: options.encryptionAlgorithm ?? 'aes-256-gcm',
     };
+  }
+
+  /**
+   * Decrypt JSON data using seed phrase
+   *
+   * @param encrypted - Encrypted data to decrypt
+   * @param seedPhrase - Seed phrase for key derivation
+   * @returns Decrypted JSON object
+   */
+  public static async decryptJSON<T = unknown>(
+    encrypted: EncryptedData,
+    seedPhrase: string
+  ): Promise<T> {
+    const crypto = await import('node:crypto');
+    const bip39 = await import('bip39');
+
+    // Derive key from seed phrase
+    const seed = await bip39.mnemonicToSeed(seedPhrase);
+    const key = crypto.pbkdf2Sync(
+      seed,
+      encrypted.salt,
+      100000,
+      32,
+      'sha256',
+    );
+
+    // Decode IV and ciphertext
+    const iv = Buffer.from(encrypted.iv, 'hex');
+    const ciphertext = Buffer.from(encrypted.ciphertext, 'hex');
+
+    // Decrypt based on algorithm
+    let algorithm: string;
+    if (encrypted.algorithm === 'aes-256-gcm') {
+      algorithm = 'aes-256-gcm';
+    } else {
+      algorithm = encrypted.algorithm.replace('-', '');
+    }
+
+    const decipher = crypto.createDecipheriv(algorithm, key, iv);
+
+    const decrypted = Buffer.concat([
+      decipher.update(ciphertext),
+      decipher.final(),
+    ]);
+
+    return JSON.parse(decrypted.toString('utf-8')) as T;
   }
 
   /**
@@ -70,25 +106,25 @@ export class VetKeysClient {
     const algorithm = options.encryptionAlgorithm ?? this.config.encryptionAlgorithm;
 
     // Validate threshold
-    if (threshold < 1 || threshold > totalParties) {
+    if (threshold! < 1 || threshold! > totalParties!) {
       throw new Error(
-        `Threshold must be between 1 and totalParticipants (${totalParties}). Got: ${threshold}`
+        `Threshold must be between 1 and totalParticipants (${totalParties!}). Got: ${threshold}`
       );
     }
 
-    if (threshold > totalParties) {
+    if (threshold! > totalParties!) {
       throw new Error(`Threshold cannot exceed total participants (got ${threshold}, max ${totalParties})`);
     }
 
     try {
       // Derive n secret shares from seed phrase
-      const shares = await this.generateSecretShares(seedPhrase, threshold, totalParties, algorithm);
+      const shares = await this.generateSecretShares(seedPhrase, threshold!, totalParties!, algorithm!);
 
       // Generate share metadata
       const shareMetadata = shares.map((share, index) => ({
         index: index + 1,
         shareId: this.generateShareId(),
-        participantId: index + 1,
+        participantId: (index + 1).toString(),
         encryptedShare: share.encryptedShare,
         commitment: share.commitment,
       }));
@@ -107,20 +143,21 @@ export class VetKeysClient {
       };
 
       // Derive master key from seed phrase (for local use)
-      const derivedKey = await this.deriveMasterKey(seedPhrase, algorithm);
+      const derivedKey = await this.deriveMasterKey(seedPhrase, algorithm!);
 
       return {
         type: 'threshold',
+        key: derivedKey.key,
+        method: derivedKey.method,
         seedPhrase,
-        threshold,
-        totalParties,
-        algorithm,
-        derivedKey: derivedKey.key,
+        threshold: threshold!,
+        totalParties: totalParties!,
+        algorithm: algorithm!,
         shares,
         shareMetadata,
         commitment,
         verification,
-      };
+      } as DerivedKey;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       throw new Error(`Failed to derive threshold key: ${message}`);
@@ -177,14 +214,13 @@ export class VetKeysClient {
     return `share_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
   }
 
-  /**
+   /**
    * Generate unique secret for a participant
    *
    * @param seedPhrase - Master secret
    * @param participantIndex - Participant index (1-based)
-   * @param totalParties - Total participants
    */
-  private generateParticipantSecret(seedPhrase: string, participantIndex: number, totalParties: number): string {
+  private generateParticipantSecret(seedPhrase: string, participantIndex: number, _totalParties: number): string {
     const secretBytes = Buffer.from(seedPhrase, 'utf8');
 
     // Create unique secret for this participant by adding participant index
@@ -197,12 +233,11 @@ export class VetKeysClient {
    * Encrypt a secret share
    *
    * @param secret - Secret to encrypt
-   * @param commitment - Commitment for encryption
    * @param algorithm - Encryption algorithm
    */
   private async encryptShare(
     secret: string,
-    commitment: string,
+    _commitment: string,
     algorithm: EncryptionAlgorithm
   ): Promise<{ encryptedShare: string; commitment: string }> {
     const crypto = await import('node:crypto');
@@ -303,10 +338,24 @@ export class VetKeysClient {
   } {
     return {
       thresholdSupported: true,
-      totalParticipants: this.config.totalParties,
-      currentThreshold: this.config.threshold,
-      encryptionAlgorithm: this.config.encryptionAlgorithm,
+      totalParticipants: this.config.totalParties!,
+      currentThreshold: this.config.threshold!,
+      encryptionAlgorithm: this.config.encryptionAlgorithm!,
       keyDerivation: 'shamir-ss',
     };
   }
+}
+
+/**
+ * Decrypt JSON data using seed phrase
+ *
+ * @param encrypted - Encrypted data to decrypt
+ * @param seedPhrase - Seed phrase for key derivation
+ * @returns Decrypted JSON object
+ */
+export async function decryptJSON<T = unknown>(
+  encrypted: EncryptedData,
+  seedPhrase: string
+): Promise<T> {
+  return VetKeysImplementation.decryptJSON(encrypted, seedPhrase);
 }

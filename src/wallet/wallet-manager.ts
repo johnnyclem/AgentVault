@@ -36,7 +36,7 @@ async function loadCanister() {
   if (_canisterInitialized) return;
 
   try {
-    const { createActor, createAnonymousAgent } = await import('../canister/actor.js');
+     const { createActor } = await import('../canister/actor.js');
     _createActor = createActor;
     _canisterInitialized = true;
   } catch (error) {

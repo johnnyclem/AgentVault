@@ -152,9 +152,9 @@ export class VetKeysAdapter {
     console.log(`Initiating threshold signature for ${transactionId}...`);
 
     if (this.options.threshold && this.options.threshold > 1) {
-      const { VetKeysClient } = await import('../security/vetkeys.js');
+      const { VetKeysImplementation } = await import('../security/vetkeys.js');
 
-      const client = new VetKeysClient({
+      const client = new VetKeysImplementation({
         threshold: this.options.threshold,
         totalParties: this.options.totalParties,
         encryptionAlgorithm: this.options.encryptionAlgorithm,
@@ -175,7 +175,7 @@ export class VetKeysAdapter {
           transactionId,
           success: true,
           partialSignatures: derived.shareMetadata.map((s) => s.encryptedShare),
-          thresholdMet: derived.threshold > 1,
+          thresholdMet: (derived.threshold ?? 0) > 1,
         };
       } catch (error) {
         return {
@@ -230,7 +230,7 @@ export class VetKeysAdapter {
   ): Promise<{ success: boolean; combinedSignature?: string; error?: string }> {
     console.log(`Combining ${partialSignatures.length} partial signatures...`);
 
-    if (partialSignatures.length < this.options.threshold) {
+    if (partialSignatures.length < (this.options.threshold ?? 0)) {
       return {
         success: false,
         error: `Insufficient signatures: ${partialSignatures.length}/${this.options.threshold} required`,
