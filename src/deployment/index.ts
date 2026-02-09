@@ -29,3 +29,15 @@ export {
   getDeploySummary,
   getCanisterStatus,
 } from './deployer.js';
+
+// Promotion
+export {
+  loadDeploymentHistory,
+  saveDeploymentHistory,
+  addDeploymentToHistory,
+  getLatestDeployment,
+  getAllDeployments,
+  promoteCanister,
+  getDeploymentForRollback,
+  getDeploymentsByTimeRange,
+} from './promotion.js';

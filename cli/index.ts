@@ -26,6 +26,16 @@ import { statsCommand } from './commands/stats.js';
 import { monitorCommand } from './commands/monitor.js';
 import { healthCommand } from './commands/health.js';
 
+// Phase 3 commands
+import { networkCmd } from './commands/network.js';
+import { testCmd } from './commands/test.js';
+import { promoteCmd } from './commands/promote.js';
+import { logsCmd } from './commands/logs.js';
+import { rollbackCmd } from './commands/rollback.js';
+import { instrumentCmd } from './commands/instrument.js';
+import { traceCmd } from './commands/trace.js';
+import { profileCmd } from './commands/profile.js';
+
 export function createProgram(): Command {
   const program = new Command();
 
@@ -55,6 +65,16 @@ export function createProgram(): Command {
   program.addCommand(statsCommand());
   program.addCommand(monitorCommand());
   program.addCommand(healthCommand());
+
+  // Phase 3 commands
+  program.addCommand(networkCmd);
+  program.addCommand(testCmd);
+  program.addCommand(promoteCmd);
+  program.addCommand(logsCmd);
+  program.addCommand(rollbackCmd);
+  program.addCommand(instrumentCmd);
+  program.addCommand(traceCmd);
+  program.addCommand(profileCmd);
 
   return program;
 }

@@ -490,3 +490,80 @@ export interface IcpProjectConfig {
   /** Optimization configuration */
   optimization?: IcpOptimizationConfig;
 }
+
+// ─── Phase 3 Types ─────────────────────────────────────────────────────────────
+
+/** Network configuration for local/IC networks */
+export interface NetworkConfig {
+  /** Network name */
+  name: string;
+  /** Network type */
+  type: 'local' | 'ic';
+  /** Number of nodes in the network */
+  nodes?: number;
+  /** Number of replicas */
+  replicaCount?: number;
+  /** Cycles configuration */
+  cycles?: {
+    /** Initial cycles allocation */
+    initial: string;
+    /** Minimum cycles threshold */
+    min?: string;
+    /** Enable automatic top-up */
+    autoTopup?: boolean;
+  };
+  /** When this network config was created */
+  created?: Date;
+  /** Current status of the network */
+  status?: 'running' | 'stopped' | 'error';
+}
+
+/** Deployment history entry */
+export interface DeploymentHistory {
+  /** Agent name */
+  agentName: string;
+  /** Environment deployed to */
+  environment: string;
+  /** Canister ID */
+  canisterId: string;
+  /** WASM hash deployed */
+  wasmHash: string;
+  /** Deployment timestamp */
+  timestamp: Date;
+  /** Deployment version */
+  version: number;
+  /** Whether deployment succeeded */
+  success: boolean;
+}
+
+/** Canister state snapshot */
+export interface CanisterSnapshot {
+  /** Canister ID */
+  canisterId: string;
+  /** Snapshot timestamp */
+  timestamp: Date;
+  /** Serialized state */
+  state: ArrayBuffer;
+  /** Cycles balance at snapshot time */
+  cycles: bigint;
+  /** Memory usage at snapshot time */
+  memory: bigint;
+}
+
+/** Execution trace entry */
+export interface ExecutionTrace {
+  /** Method name */
+  method: string;
+  /** Start time (milliseconds since epoch) */
+  startTime: number;
+  /** End time (milliseconds since epoch) */
+  endTime: number;
+  /** Duration in milliseconds */
+  duration: number;
+  /** Caller principal */
+  caller?: string;
+  /** Nested method calls */
+  children: ExecutionTrace[];
+  /** Memory delta during execution */
+  memoryDelta?: bigint;
+}
