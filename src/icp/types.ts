@@ -74,7 +74,7 @@ export type MetadataVisibility = 'public' | 'private';
 export interface IcWasmMetadataOptions {
   /** Input WASM file path */
   input: string;
-  /** Output WASM file path (for set operations) */
+  /** Output WASM file path (for set operations, file data via -d) */
   output?: string;
   /** Metadata key name */
   name: string;
@@ -114,7 +114,7 @@ export interface IcWasmResult {
   exitCode: number;
 }
 
-/** Result of ic-wasm info command */
+/** Result of an ic-wasm info command */
 export interface IcWasmInfo {
   /** Raw info output text */
   raw: string;
@@ -122,8 +122,121 @@ export interface IcWasmInfo {
   sections?: Record<string, string>;
 }
 
+// ─── icp-cli Types ────────────────────────────────────────────────────
+
+/** Environment name for icp-cli */
+export type IcpEnvironment = 'local' | 'ic' | string;
+
+/** Deploy mode for icp deploy */
+export type IcpDeployMode = 'auto' | 'install' | 'reinstall' | 'upgrade';
+
+/**
+ * Result of an icp-cli command execution
+ */
+export interface IcpCliResult {
+  /** Whether the command succeeded */
+  success: boolean;
+  /** stdout from the command */
+  stdout: string;
+  /** stderr from the command */
+  stderr: string;
+  /** Exit code */
+  exitCode: number;
+}
+
+/**
+ * Result of an ic-wasm command execution
+ */
+export interface IcWasmResult {
+  /** Whether the command succeeded */
+  success: boolean;
+  /** stdout from the command */
+  stdout: string;
+  /** stderr from the command */
+  stderr: string;
+  /** Exit code */
+  exitCode: number;
+}
+
+/**
+ * Options for icp build command */
+export interface IcpBuildOptions extends IcpCommonOptions {
+  /** Canister names to build (omit for all) */
+  canisters?: string[];
+}
+
+/**
+ * Options for icp deploy command */
+export interface IcpDeployOptions extends IcpCommonOptions {
+  /** Deploy mode */
+  mode?: IcpDeployMode;
+  /** Canister names to deploy (omit for all) */
+  canisters?: string[];
+}
+
+/**
+ * Options for icp canister status */
+export interface IcpCanisterStatusOptions extends IcpCommonOptions {
+  /** Canister ID or name */
+  canister: string;
+}
+
+/**
+ * Options for icp canister call */
+export interface IcpCanisterCallOptions extends IcpCommonOptions {
+  /** Canister ID or name */
+  canister: string;
+  /** Method name */
+  method: string;
+  /** Arguments (Candid text format) */
+  args?: string;
+}
+
+/**
+ * Options for icp canister list */
+export interface IcpCommonOptions {}
+
+/**
+ * Result of an icp-cli command execution */
+export interface IcpCliResult {
+  /** Whether the command succeeded */
+  success: boolean;
+  /** stdout from the command */
+  stdout: string;
+  /** stderr from the command */
+  stderr: string;
+  /** Exit code */
+  exitCode: number;
+}
+
+// ─── Optimization Types ─────────────────────────────────────────────────────
+
+/** Options for ic-wasm shrink command */
+export interface IcWasmShrinkOptions {
+  /** Input WASM file path */
+  input: string;
+  /** Output WASM file path */
+  output: string;
+}
+
+/** Options for ic-wasm resource command */
+export interface IcWasmResourceOptions {
+  /** Input WASM file path */
+  input: string;
+  /** Output WASM file path */
+  output: string;
+  /** Resource limit name */
+  name: string;
+  /** Resource limit value */
+  value: string;
+}
+
+/** Combined optimization pipeline options */
+export interface IcWasmOptimizeOptions extends IcWasmOptimizeOptions {
+}
+
 /** Result of an optimization operation with metrics */
-export interface OptimizationResult {
+export interface IcWasmOptimizationResult {
   /** Whether optimization succeeded */
   success: boolean;
   /** Path to the optimized WASM */
@@ -138,19 +251,17 @@ export interface OptimizationResult {
   durationMs: number;
   /** Any warnings from the tool */
   warnings: string[];
-  /** Error message if failed */
-  error?: string;
 }
 
 /** Combined optimization pipeline options */
-export interface OptimizationPipelineOptions {
+export interface IcWasmOptimizationPipelineOptions {
   /** Input WASM file path */
   input: string;
   /** Output WASM file path */
   output: string;
   /** Run ic-wasm optimize (default true if ic-wasm available) */
   optimize?: boolean;
-  /** Optimization level for wasm-opt */
+  /** Optimization level for wasm-opt (0-3, Os, Oz) */
   optimizeLevel?: IcWasmOptLevel;
   /** Run ic-wasm shrink (default true) */
   shrink?: boolean;
@@ -163,7 +274,7 @@ export interface OptimizationPipelineOptions {
 }
 
 /** Result of the full optimization pipeline */
-export interface OptimizationPipelineResult {
+export interface IcWasmOptimizationPipelineResult {
   /** Whether the entire pipeline succeeded */
   success: boolean;
   /** Path to the final optimized WASM */
@@ -184,225 +295,8 @@ export interface OptimizationPipelineResult {
     sizeAfter?: number;
     error?: string;
   }>;
-  /** Validation result (if Candid interface provided) */
+  /** Validation result (if Candid interface was provided) */
   validationPassed?: boolean;
   /** Collected warnings */
   warnings: string[];
-}
-
-// ─── icp-cli Types ─────────────────────────────────────────────────────────
-
-/** Environment name for icp-cli */
-export type IcpEnvironment = 'local' | 'ic' | string;
-
-/** Deploy mode for icp deploy */
-export type IcpDeployMode = 'auto' | 'install' | 'reinstall' | 'upgrade';
-
-/** Common options shared across icp-cli commands */
-export interface IcpCommonOptions {
-  /** Override environment */
-  environment?: IcpEnvironment;
-  /** Override project root */
-  projectRoot?: string;
-  /** Run as a different identity */
-  identity?: string;
-  /** Password file for encrypted identity */
-  identityPasswordFile?: string;
-  /** Enable debug logging */
-  debug?: boolean;
-}
-
-/** Options for icp build command */
-export interface IcpBuildOptions extends IcpCommonOptions {
-  /** Canister names to build (omit for all) */
-  canisters?: string[];
-}
-
-/** Options for icp deploy command */
-export interface IcpDeployOptions extends IcpCommonOptions {
-  /** Deploy mode */
-  mode?: IcpDeployMode;
-  /** Canister names to deploy (omit for all) */
-  canisters?: string[];
-}
-
-/** Options for icp canister status command */
-export interface IcpCanisterStatusOptions extends IcpCommonOptions {
-  /** Canister ID or name */
-  canister: string;
-}
-
-/** Options for icp canister call command */
-export interface IcpCanisterCallOptions extends IcpCommonOptions {
-  /** Canister ID or name */
-  canister: string;
-  /** Method name */
-  method: string;
-  /** Arguments (Candid text format) */
-  args?: string;
-}
-
-/** Options for icp cycles balance command */
-export interface IcpCyclesBalanceOptions extends IcpCommonOptions {
-  /** Canister ID */
-  canister: string;
-}
-
-/** Options for icp cycles mint command */
-export interface IcpCyclesMintOptions extends IcpCommonOptions {
-  /** Amount to mint */
-  amount: string;
-}
-
-/** Options for icp cycles transfer command */
-export interface IcpCyclesTransferOptions extends IcpCommonOptions {
-  /** Amount to transfer */
-  amount: string;
-  /** Destination canister ID */
-  to: string;
-}
-
-/** Options for icp identity list */
-export interface IcpIdentityListOptions extends IcpCommonOptions {}
-
-/** Options for icp identity new */
-export interface IcpIdentityNewOptions extends IcpCommonOptions {
-  /** Identity name */
-  name: string;
-}
-
-/** Options for icp identity export */
-export interface IcpIdentityExportOptions extends IcpCommonOptions {
-  /** Identity name */
-  name: string;
-}
-
-/** Options for icp identity import */
-export interface IcpIdentityImportOptions extends IcpCommonOptions {
-  /** Identity name */
-  name: string;
-  /** PEM file path */
-  pemFile: string;
-}
-
-/** Options for icp network start */
-export interface IcpNetworkStartOptions extends IcpCommonOptions {
-  /** Network name (default: local) */
-  name?: string;
-}
-
-/** Options for icp network stop */
-export interface IcpNetworkStopOptions extends IcpCommonOptions {
-  /** Network name (default: local) */
-  name?: string;
-}
-
-/** Options for icp sync command */
-export interface IcpSyncOptions extends IcpCommonOptions {}
-
-/** Options for icp token balance */
-export interface IcpTokenBalanceOptions extends IcpCommonOptions {
-  /** Canister ID of the token ledger */
-  canister?: string;
-}
-
-/** Options for icp token transfer */
-export interface IcpTokenTransferOptions extends IcpCommonOptions {
-  /** Amount to transfer */
-  amount: string;
-  /** Recipient principal or account ID */
-  to: string;
-  /** Token canister ID (for ICRC-1 tokens) */
-  canister?: string;
-}
-
-/** Options for icp environment list */
-export interface IcpEnvironmentListOptions extends IcpCommonOptions {}
-
-/** Result of an icp-cli command execution */
-export interface IcpCliResult {
-  /** Whether the command succeeded */
-  success: boolean;
-  /** stdout from the command */
-  stdout: string;
-  /** stderr from the command */
-  stderr: string;
-  /** Exit code */
-  exitCode: number;
-}
-
-// ─── Environment Configuration ─────────────────────────────────────────────
-
-/** Network type in icp.yaml configuration */
-export interface IcpNetworkConfig {
-  type: 'local' | 'ic';
-  replicaCount?: number;
-}
-
-/** Cycles configuration in icp.yaml */
-export interface IcpCyclesConfig {
-  initial?: string;
-}
-
-/** Single environment definition in icp.yaml */
-export interface IcpEnvironmentConfig {
-  network: IcpNetworkConfig;
-  cycles?: IcpCyclesConfig;
-  identity?: string;
-}
-
-/** Optimization configuration in icp.yaml */
-export interface IcpOptimizationConfig {
-  level?: number;
-  shrink?: boolean;
-  removeDebug?: boolean;
-  wasmOptFlags?: string[];
-}
-
-/** Top-level icp.yaml configuration */
-export interface IcpProjectConfig {
-  environments?: Record<string, IcpEnvironmentConfig>;
-  optimization?: IcpOptimizationConfig;
-}
-
-// ─── Monitoring Types (Phase 2) ────────────────────────────────────────────
-
-/** Canister health status */
-export type CanisterHealthStatus = 'healthy' | 'warning' | 'critical' | 'unknown';
-
-/** Alert severity levels */
-export type AlertSeverity = 'info' | 'warning' | 'critical';
-
-/** Canister status info from monitoring */
-export interface CanisterStatusInfo {
-  canisterId: string;
-  status: string;
-  memorySize?: bigint;
-  cycles?: bigint;
-  moduleHash?: string;
-  controllers?: string[];
-  health: CanisterHealthStatus;
-}
-
-/** Monitoring alert */
-export interface MonitoringAlert {
-  severity: AlertSeverity;
-  message: string;
-  canisterId: string;
-  metric: string;
-  value: string;
-  threshold: string;
-  timestamp: Date;
-}
-
-/** Health check thresholds */
-export interface HealthThresholds {
-  /** Cycles below this value trigger a warning */
-  cyclesWarning?: bigint;
-  /** Cycles below this value trigger a critical alert */
-  cyclesCritical?: bigint;
-  /** Memory usage above this percentage triggers a warning (0-100) */
-  memoryWarningPercent?: number;
-  /** Memory usage above this percentage triggers a critical alert (0-100) */
-  memoryCriticalPercent?: number;
 }

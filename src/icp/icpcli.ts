@@ -12,7 +12,6 @@
 import { execa } from 'execa';
 import type {
   IcpCliResult,
-  IcpCommonOptions,
   IcpBuildOptions,
   IcpDeployOptions,
   IcpCanisterStatusOptions,
@@ -30,7 +29,8 @@ import type {
   IcpTokenBalanceOptions,
   IcpTokenTransferOptions,
   IcpEnvironmentListOptions,
-} from './types.js';
+  IcpCommonOptions,
+} from './icp/types.js';
 
 const ICP_BIN = 'icp';
 
