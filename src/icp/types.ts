@@ -194,7 +194,20 @@ export interface IcpCanisterCallOptions extends IcpCommonOptions {
 
 /**
  * Options for icp canister list */
-export interface IcpCommonOptions {}
+export interface IcpCommonOptions {
+  /** Environment name */
+  environment?: string;
+  /** Project root override path */
+  projectRoot?: string;
+  /** Identity to use */
+  identity?: string;
+  /** Identity name */
+  name?: string;
+  /** Identity password file */
+  identityPasswordFile?: string;
+  /** Enable debug output */
+  debug?: boolean;
+}
 
 /**
  * Result of an icp-cli command execution */
@@ -327,11 +340,13 @@ export interface IcpCyclesTransferOptions extends IcpCommonOptions {
 /** Options for icp token balance */
 export interface IcpTokenBalanceOptions extends IcpCommonOptions {
   /** Token canister ID */
-  canister: string;
+  canister?: string;
 }
 
 /** Options for icp token transfer */
 export interface IcpTokenTransferOptions extends IcpCommonOptions {
+  /** Token canister ID */
+  canister?: string;
   /** Amount to transfer */
   amount: string;
   /** Recipient principal or account */
@@ -416,20 +431,32 @@ export interface IcpCyclesConfig {
   topUpAmount?: bigint;
   /** Whether to automatically top up */
   autoTopUp?: boolean;
+  /** Initial cycles allocation (for new canisters) */
+  initial?: string;
 }
 
 // ─── Environment Config ─────────────────────────────────────────────────────
+
+/** Network configuration for environments */
+export interface IcpEnvNetworkConfig {
+  /** Network type */
+  type: 'local' | 'ic';
+  /** Number of replicas (optional) */
+  replicaCount?: number;
+}
 
 /** Environment configuration */
 export interface IcpEnvironmentConfig {
   /** Environment name */
   name: string;
   /** Network to use */
-  network: string;
+  network: string | IcpEnvNetworkConfig;
   /** Cycles configuration */
   cycles?: IcpCyclesConfig;
   /** Optimization configuration */
   optimization?: IcpOptimizationConfig;
+  /** Identity to use (optional) */
+  identity?: string;
 }
 
 // ─── Optimization Config ─────────────────────────────────────────────────────
@@ -439,9 +466,13 @@ export interface IcpOptimizationConfig {
   /** Whether to enable WASM optimization */
   enabled: boolean;
   /** Optimization level */
-  level?: IcWasmOptLevel;
+  level?: IcWasmOptLevel | number;
   /** Whether to shrink the WASM */
   shrink?: boolean;
+  /** Remove debug symbols */
+  removeDebug?: boolean;
+  /** Additional wasm-opt flags */
+  wasmOptFlags?: string[];
 }
 
 // ─── Project Config ─────────────────────────────────────────────────────────────

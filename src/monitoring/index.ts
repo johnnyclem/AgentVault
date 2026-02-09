@@ -4,12 +4,13 @@
  * Provides canister health monitoring and alerting capabilities.
  */
 
-// Types
+// Health
 export {
   determineHealthStatus,
   generateHealthAlerts,
   checkHealth,
-} from './types.js';
+  checkMultipleHealth,
+} from './health.js';
 
 // Info
 export {
@@ -33,4 +34,5 @@ export type {
   MonitoringOptions,
   MonitoringAlert,
   AlertSeverity,
+  ResourceUsageSnapshot,
 } from './types.js';

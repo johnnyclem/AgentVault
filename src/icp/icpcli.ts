@@ -30,7 +30,7 @@ import type {
   IcpTokenTransferOptions,
   IcpEnvironmentListOptions,
   IcpCommonOptions,
-} from './icp/types.js';
+} from './types.js';
 
 const ICP_BIN = 'icp';
 
@@ -257,7 +257,7 @@ export async function identityList(options: IcpIdentityListOptions = {}): Promis
  * @returns Command result
  */
 export async function identityNew(options: IcpIdentityNewOptions): Promise<IcpCliResult> {
-  const args = ['identity', 'new', options.name, ...buildCommonArgs(options)];
+  const args = ['identity', 'new', ...(options.name ? [options.name] : []), ...buildCommonArgs(options)];
   return runIcp(args, 15_000, options.projectRoot);
 }
 
@@ -268,7 +268,7 @@ export async function identityNew(options: IcpIdentityNewOptions): Promise<IcpCl
  * @returns Command result with PEM data in stdout
  */
 export async function identityExport(options: IcpIdentityExportOptions): Promise<IcpCliResult> {
-  const args = ['identity', 'export', options.name, ...buildCommonArgs(options)];
+  const args = ['identity', 'export', ...(options.name ? [options.name] : []), ...buildCommonArgs(options)];
   return runIcp(args, 15_000, options.projectRoot);
 }
 
@@ -279,7 +279,7 @@ export async function identityExport(options: IcpIdentityExportOptions): Promise
  * @returns Command result
  */
 export async function identityImport(options: IcpIdentityImportOptions): Promise<IcpCliResult> {
-  const args = ['identity', 'import', options.name, options.pemFile, ...buildCommonArgs(options)];
+  const args = ['identity', 'import', ...(options.name ? [options.name] : []), ...(options.pemFile ? [options.pemFile] : []), ...buildCommonArgs(options)];
   return runIcp(args, 15_000, options.projectRoot);
 }
 
@@ -315,8 +315,8 @@ export async function identityDefault(options: IcpCommonOptions = {}): Promise<I
  */
 export async function networkStart(options: IcpNetworkStartOptions = {}): Promise<IcpCliResult> {
   const args = ['network', 'start', ...buildCommonArgs(options)];
-  if (options.name) {
-    args.push(options.name);
+  if (options.network) {
+    args.push(options.network);
   }
   return runIcp(args, 60_000, options.projectRoot);
 }
@@ -329,8 +329,8 @@ export async function networkStart(options: IcpNetworkStartOptions = {}): Promis
  */
 export async function networkStop(options: IcpNetworkStopOptions = {}): Promise<IcpCliResult> {
   const args = ['network', 'stop', ...buildCommonArgs(options)];
-  if (options.name) {
-    args.push(options.name);
+  if (options.network) {
+    args.push(options.network);
   }
   return runIcp(args, 30_000, options.projectRoot);
 }

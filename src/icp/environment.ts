@@ -28,6 +28,7 @@ const CONFIG_SEARCH_PATHS = [
  * Default environment configuration when nothing is specified.
  */
 const DEFAULT_LOCAL_ENV: IcpEnvironmentConfig = {
+  name: 'local',
   network: { type: 'local' },
   cycles: { initial: '100T' },
 };
@@ -36,6 +37,7 @@ const DEFAULT_LOCAL_ENV: IcpEnvironmentConfig = {
  * Default optimization settings.
  */
 const DEFAULT_OPTIMIZATION: IcpOptimizationConfig = {
+  enabled: true,
   level: 3,
   shrink: true,
   removeDebug: true,
@@ -120,6 +122,7 @@ export function getEnvironment(
   // For 'ic' or 'mainnet', return a mainnet default
   if (envName === 'ic' || envName === 'mainnet') {
     return {
+      name: envName,
       network: { type: 'ic' },
       cycles: { initial: '1T' },
     };
@@ -180,22 +183,28 @@ export function writeConfig(
  */
 export function generateDefaultConfig(): IcpProjectConfig {
   return {
+    name: 'agentvault-project',
+    defaultEnvironment: 'local',
     environments: {
       local: {
+        name: 'local',
         network: { type: 'local', replicaCount: 4 },
         cycles: { initial: '100T' },
       },
       dev: {
+        name: 'dev',
         network: { type: 'ic', replicaCount: 13 },
         cycles: { initial: '1T' },
         identity: 'dev-wallet',
       },
       staging: {
+        name: 'staging',
         network: { type: 'ic', replicaCount: 28 },
         cycles: { initial: '10T' },
         identity: 'staging-wallet',
       },
       production: {
+        name: 'production',
         network: { type: 'ic', replicaCount: 28 },
         cycles: { initial: '100T' },
         identity: 'main-wallet',

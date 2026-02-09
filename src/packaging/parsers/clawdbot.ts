@@ -266,7 +266,7 @@ export async function findClawdbotConfigs(dir: string): Promise<string[]> {
     
     if (entry.isDirectory()) {
       try {
-        const config = await parseClawdbotConfig(entryPath);
+        await parseClawdbotConfig(entryPath);
         results.push(entry.name);
       } catch {
         // Skip directories that aren't valid Clawdbot configs

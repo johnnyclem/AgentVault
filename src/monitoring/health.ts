@@ -12,7 +12,6 @@ import type {
   HealthThresholds,
   MonitoringOptions,
   MonitoringAlert,
-  AlertSeverity,
 } from './types.js';
 
 /**
@@ -127,10 +126,10 @@ export function generateHealthAlerts(
   if (currentHealth !== 'healthy') {
     alerts.push({
       severity: 'warning',
-      message: `Canister status: ${status}`,
+      message: `Canister status: ${statusInfo.status}`,
       canisterId: statusInfo.canisterId,
       metric: 'status',
-      value: status,
+      value: statusInfo.status,
       threshold: 'healthy',
       timestamp: new Date(),
     });
@@ -156,12 +155,14 @@ function formatCycles(cycles: bigint): string {
  * @param options - Monitoring options
  * @returns Canister status with health status
  */
-export async function checkHealth(
-  options: MonitoringOptions,
+ export async function checkHealth(
+  canisterId: string,
+  options?: Partial<MonitoringOptions>,
 ): Promise<CanisterStatusInfo> {
-  const statusInfo = await getCanisterInfo(options.canisterId, options);
+  const monitoringOptions: MonitoringOptions = { canister: canisterId, ...options };
+  const statusInfo = await getCanisterInfo(canisterId, monitoringOptions);
 
-  const health = determineHealthStatus(statusInfo, options.thresholds ?? {});
+  const health = determineHealthStatus(statusInfo, options?.thresholds ?? {});
 
   return {
     ...statusInfo,
@@ -176,16 +177,16 @@ export async function checkHealth(
  * @param options - Monitoring options applied to all
  * @returns Array of canister status info
  */
-export async function checkMultipleHealth(
+ export async function checkMultipleHealth(
   canisterIds: string[],
-  options: MonitoringOptions = {},
+  options?: Partial<MonitoringOptions>,
 ): Promise<CanisterStatusInfo[]> {
   const results = await Promise.all(
-    canisterIds.map((id) => getCanisterInfo(id, options))
+    canisterIds.map((id) => getCanisterInfo(id, { canister: id, ...options }))
   );
 
   return results.map((statusInfo) => ({
     ...statusInfo,
-    health: determineHealthStatus(statusInfo, options.thresholds ?? {}),
+    health: determineHealthStatus(statusInfo, options?.thresholds ?? {}),
   }));
 }

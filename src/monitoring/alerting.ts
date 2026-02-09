@@ -11,7 +11,6 @@ import type {
   MonitoringAlert,
   CanisterStatusInfo,
   HealthThresholds,
-  MonitoringOptions,
 } from './types.js';
 
 /**

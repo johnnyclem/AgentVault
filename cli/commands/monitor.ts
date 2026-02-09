@@ -43,7 +43,7 @@ export function monitorCommand(): Command {
         while (true) {
           const statusInfo = await checkHealth(canisterId, monitoringOpts);
 
-          if (statusInfo.health === 'stopped') {
+          if (statusInfo.status === 'stopped') {
             console.log(chalk.yellow('Canister stopped - stopping monitoring'));
             break;
           }

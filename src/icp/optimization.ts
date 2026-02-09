@@ -11,33 +11,22 @@ import * as path from 'node:path';
 import { detectTool } from './tool-detector.js';
 import * as icwasm from './icwasm.js';
 import type {
-  OptimizationPipelineOptions,
-  OptimizationPipelineResult,
+  IcWasmOptimizationPipelineOptions,
+  IcWasmOptimizationPipelineResult,
   IcWasmOptLevel,
 } from './types.js';
 
 /**
  * Run the full optimization pipeline on a WASM file.
  *
- * Steps (in order, each optional):
- *   1. ic-wasm shrink   - remove unused functions & debug info
- *   2. ic-wasm optimize - wasm-opt transformations
- *   3. ic-wasm resource - set resource limits
- *   4. ic-wasm metadata - inject metadata sections
- *   5. ic-wasm check-endpoints - validate against Candid interface
- *
- * Each step writes to a temporary file and the final result is moved
- * to the output path. If ic-wasm is not available, the pipeline copies
- * the input to the output unchanged and reports a warning.
- *
  * @param options - Pipeline options
  * @returns Pipeline result with metrics
  */
 export async function runOptimizationPipeline(
-  options: OptimizationPipelineOptions,
-): Promise<OptimizationPipelineResult> {
+  options: IcWasmOptimizationPipelineOptions,
+): Promise<IcWasmOptimizationPipelineResult> {
   const startTime = Date.now();
-  const steps: OptimizationPipelineResult['steps'] = [];
+  const steps: IcWasmOptimizationPipelineResult['steps'] = [];
   const warnings: string[] = [];
   let currentInput = options.input;
 
@@ -138,9 +127,9 @@ export async function runOptimizationPipeline(
   if (options.resourceLimits && Object.keys(options.resourceLimits).length > 0) {
     for (const [name, value] of Object.entries(options.resourceLimits)) {
       const stepStart = Date.now();
-      const tempOut = nextTemp();
+      const tempOut: string = nextTemp();
       const result = await icwasm.setResource({
-        input: currentInput,
+        input: currentInput as string,
         output: tempOut,
         name,
         value,
@@ -237,7 +226,7 @@ export async function runOptimizationPipeline(
     ? Math.round(((originalSize - finalSize) / originalSize) * 100)
     : 0;
 
-  const allStepsSucceeded = steps.every((s) => s.success);
+  const allStepsSucceeded = steps.every((s: any) => s.success);
 
   return {
     success: allStepsSucceeded,
