@@ -27,13 +27,18 @@ import type {
 
 export class VetKeysImplementation {
   private config: VetKeysOptions;
+  private canisterId?: string;
+  private useCanister: boolean;
 
-  constructor(options: VetKeysOptions = {}) {
+  constructor(options: VetKeysOptions & { canisterId?: string; useCanister?: boolean } = {}) {
     this.config = {
       threshold: options.threshold ?? 2,
       totalParties: options.totalParties ?? 3,
       encryptionAlgorithm: options.encryptionAlgorithm ?? 'aes-256-gcm',
+      vetKeysCanisterId: options.canisterId,
     };
+    this.canisterId = options.canisterId;
+    this.useCanister = options.useCanister ?? !!options.canisterId;
   }
 
   /**
@@ -343,6 +348,236 @@ export class VetKeysImplementation {
       encryptionAlgorithm: this.config.encryptionAlgorithm!,
       keyDerivation: 'shamir-ss',
     };
+  }
+
+  /**
+   * Store encrypted secret on canister
+   *
+   * @param secretId - ID of the secret
+   * @param encryptedSecret - Encrypted secret data
+   * @returns True if stored successfully
+   */
+  public async storeEncryptedSecretOnCanister(
+    secretId: string,
+    encryptedSecret: {
+      ciphertext: Uint8Array;
+      iv: Uint8Array;
+      tag: Uint8Array;
+      algorithm: EncryptionAlgorithm;
+    }
+  ): Promise<boolean> {
+    if (!this.useCanister) {
+      console.warn('Canister integration disabled, skipping canister storage');
+      return false;
+    }
+
+    if (!this.canisterId) {
+      console.warn('Canister ID not configured, skipping canister storage');
+      return false;
+    }
+
+    try {
+      const { createActor } = await import('../canister/actor.js');
+      const actor = createActor(this.canisterId);
+
+      const algVariant = encryptedSecret.algorithm === 'aes-256-gcm'
+        ? { aes_256_gcm: null }
+        : { chacha20_poly1305: null } as any;
+
+      const result = await actor.storeEncryptedSecret({
+        id: secretId,
+        ciphertext: new Uint8Array(encryptedSecret.ciphertext),
+        iv: new Uint8Array(encryptedSecret.iv),
+        tag: new Uint8Array(encryptedSecret.tag),
+        algorithm: algVariant,
+        createdAt: Date.now(),
+      });
+
+      if ('ok' in result) {
+        console.log('Encrypted secret stored on canister:', secretId);
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.warn(`Failed to store encrypted secret on canister: ${message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Retrieve encrypted secret from canister
+   *
+   * @param secretId - ID of the secret
+   * @returns Encrypted secret data or null
+   */
+  public async getEncryptedSecretFromCanister(
+    secretId: string
+  ): Promise<{ ciphertext: Uint8Array; iv: Uint8Array; tag: Uint8Array; algorithm: EncryptionAlgorithm } | null> {
+    if (!this.canisterId) {
+      return null;
+    }
+
+    try {
+      const { createActor } = await import('../canister/actor.js');
+      const actor = createActor(this.canisterId);
+
+      const result = await actor.getEncryptedSecret(secretId);
+
+      if (!result || result.length === 0) {
+        return null;
+      }
+
+      const [secret] = result;
+
+      return {
+        ciphertext: new Uint8Array(secret.ciphertext),
+        iv: new Uint8Array(secret.iv),
+        tag: new Uint8Array(secret.tag),
+        algorithm: secret.algorithm as any as EncryptionAlgorithm,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.warn(`Failed to retrieve encrypted secret from canister: ${message}`);
+      return null;
+    }
+  }
+
+  /**
+   * List all encrypted secrets from canister
+   *
+   * @returns Array of secret IDs
+   */
+  public async listEncryptedSecretsOnCanister(): Promise<string[]> {
+    if (!this.canisterId) {
+      return [];
+    }
+
+    try {
+      const { createActor } = await import('../canister/actor.js');
+      const actor = createActor(this.canisterId);
+
+      const secrets = await actor.listEncryptedSecrets();
+
+      return secrets.map(s => s.id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.warn(`Failed to list encrypted secrets from canister: ${message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Delete encrypted secret from canister
+   *
+   * @param secretId - ID of the secret
+   * @returns True if deleted successfully
+   */
+  public async deleteEncryptedSecretFromCanister(secretId: string): Promise<boolean> {
+    if (!this.canisterId) {
+      return false;
+    }
+
+    try {
+      const { createActor } = await import('../canister/actor.js');
+      const actor = createActor(this.canisterId);
+
+      const result = await actor.deleteEncryptedSecret(secretId);
+
+      if ('ok' in result) {
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.warn(`Failed to delete encrypted secret from canister: ${message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Verify threshold signature with canister
+   *
+   * @param signature - Signature to verify
+   * @param message - Original message
+   * @returns True if signature is valid
+   */
+  public async verifyThresholdSignatureCanister(
+    signature: string,
+    message: string
+  ): Promise<boolean> {
+    if (!this.canisterId) {
+      return true;
+    }
+
+    try {
+      const { createActor } = await import('../canister/actor.js');
+      const actor = createActor(this.canisterId);
+
+      const result = await actor.verifyThresholdSignature(signature, message);
+
+      if ('ok' in result && result.ok === 'verified') {
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.warn(`Failed to verify threshold signature on canister: ${message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Get VetKeys status from canister
+   *
+   * @returns VetKeys status information
+   */
+  public async getVetKeysStatusFromCanister(): Promise<{
+    enabled: boolean;
+    thresholdSupported: boolean;
+    mode: 'mock' | 'production';
+  }> {
+    if (!this.canisterId) {
+      return {
+        enabled: false,
+        thresholdSupported: true,
+        mode: 'mock',
+      };
+    }
+
+    try {
+      const { createActor } = await import('../canister/actor.js');
+      const actor = createActor(this.canisterId);
+
+      const status = await actor.getVetKeysStatus();
+
+      let mode: 'mock' | 'production' = 'mock';
+      const hasMockMode = status.mode && typeof status.mode === 'object' && 'mock' in status.mode;
+      const hasProductionMode = status.mode && typeof status.mode === 'object' && 'production' in status.mode;
+
+      if (hasMockMode) {
+        mode = 'mock';
+      } else if (hasProductionMode) {
+        mode = 'production';
+      }
+
+      return {
+        enabled: status.enabled,
+        thresholdSupported: status.thresholdSupported,
+        mode: mode,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.warn(`Failed to get VetKeys status from canister: ${message}`);
+      return {
+        enabled: false,
+        thresholdSupported: true,
+        mode: 'mock',
+      };
+    }
   }
 }
 
