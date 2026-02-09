@@ -232,8 +232,7 @@ export interface IcWasmResourceOptions {
 }
 
 /** Combined optimization pipeline options */
-export interface IcWasmOptimizeOptions extends IcWasmOptimizeOptions {
-}
+export interface IcWasmOptimizeOptions {}
 
 /** Result of an optimization operation with metrics */
 export interface IcWasmOptimizationResult {
@@ -299,4 +298,164 @@ export interface IcWasmOptimizationPipelineResult {
   validationPassed?: boolean;
   /** Collected warnings */
   warnings: string[];
+}
+
+// ─── Cycles Types ─────────────────────────────────────────────────────────────
+
+/** Options for icp cycles balance */
+export interface IcpCyclesBalanceOptions extends IcpCommonOptions {
+  /** Canister ID or name */
+  canister: string;
+}
+
+/** Options for icp cycles mint */
+export interface IcpCyclesMintOptions extends IcpCommonOptions {
+  /** Amount to mint */
+  amount: string;
+}
+
+/** Options for icp cycles transfer */
+export interface IcpCyclesTransferOptions extends IcpCommonOptions {
+  /** Amount to transfer */
+  amount: string;
+  /** Recipient principal or canister ID */
+  to: string;
+}
+
+// ─── Token Types ─────────────────────────────────────────────────────────────
+
+/** Options for icp token balance */
+export interface IcpTokenBalanceOptions extends IcpCommonOptions {
+  /** Token canister ID */
+  canister: string;
+}
+
+/** Options for icp token transfer */
+export interface IcpTokenTransferOptions extends IcpCommonOptions {
+  /** Amount to transfer */
+  amount: string;
+  /** Recipient principal or account */
+  to: string;
+}
+
+// ─── Identity Types ─────────────────────────────────────────────────────────────
+
+/** Options for icp identity list */
+export interface IcpIdentityListOptions extends IcpCommonOptions {}
+
+/** Options for icp identity new */
+export interface IcpIdentityNewOptions extends IcpCommonOptions {
+  /** Identity name */
+  name?: string;
+}
+
+/** Options for icp identity export */
+export interface IcpIdentityExportOptions extends IcpCommonOptions {
+  /** Identity name */
+  name?: string;
+  /** Output PEM file path */
+  output?: string;
+}
+
+/** Options for icp identity import */
+export interface IcpIdentityImportOptions extends IcpCommonOptions {
+  /** Identity name */
+  name?: string;
+  /** PEM file path */
+  pemFile?: string;
+}
+
+// ─── Network Types ─────────────────────────────────────────────────────────────
+
+/** Options for icp network start */
+export interface IcpNetworkStartOptions extends IcpCommonOptions {
+  /** Network name */
+  network?: string;
+}
+
+/** Options for icp network stop */
+export interface IcpNetworkStopOptions extends IcpCommonOptions {
+  /** Network name */
+  network?: string;
+}
+
+// ─── Sync Types ─────────────────────────────────────────────────────────────
+
+/** Options for icp sync */
+export interface IcpSyncOptions extends IcpCommonOptions {
+  /** Network name */
+  network?: string;
+}
+
+// ─── Environment Types ─────────────────────────────────────────────────────
+
+/** Options for icp environment list */
+export interface IcpEnvironmentListOptions extends IcpCommonOptions {}
+
+// ─── Network Config ─────────────────────────────────────────────────────────────
+
+/** Network configuration for deployment */
+export interface IcpNetworkConfig {
+  /** Network name (local, ic, staging) */
+  name: string;
+  /** Network URL */
+  url: string;
+  /** Whether this is a local network */
+  isLocal: boolean;
+  /** Cycles wallet principal (if any) */
+  walletPrincipal?: string;
+}
+
+// ─── Cycles Config ─────────────────────────────────────────────────────────────
+
+/** Cycles configuration for a project */
+export interface IcpCyclesConfig {
+  /** Minimum cycles to maintain */
+  minCycles?: bigint;
+  /** Top-up amount when cycles fall below minimum */
+  topUpAmount?: bigint;
+  /** Whether to automatically top up */
+  autoTopUp?: boolean;
+}
+
+// ─── Environment Config ─────────────────────────────────────────────────────
+
+/** Environment configuration */
+export interface IcpEnvironmentConfig {
+  /** Environment name */
+  name: string;
+  /** Network to use */
+  network: string;
+  /** Cycles configuration */
+  cycles?: IcpCyclesConfig;
+  /** Optimization configuration */
+  optimization?: IcpOptimizationConfig;
+}
+
+// ─── Optimization Config ─────────────────────────────────────────────────────
+
+/** Optimization configuration for builds */
+export interface IcpOptimizationConfig {
+  /** Whether to enable WASM optimization */
+  enabled: boolean;
+  /** Optimization level */
+  level?: IcWasmOptLevel;
+  /** Whether to shrink the WASM */
+  shrink?: boolean;
+}
+
+// ─── Project Config ─────────────────────────────────────────────────────────────
+
+/** Project configuration loaded from .icprc.json */
+export interface IcpProjectConfig {
+  /** Project name */
+  name: string;
+  /** Default environment */
+  defaultEnvironment: string;
+  /** Environments */
+  environments: Record<string, IcpEnvironmentConfig>;
+  /** Cycles configuration */
+  cycles?: IcpCyclesConfig;
+  /** Optimization configuration */
+  optimization?: IcpOptimizationConfig;
 }

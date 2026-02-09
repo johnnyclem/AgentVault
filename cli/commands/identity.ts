@@ -21,51 +21,24 @@ export function identityCommand(): Command {
 
   command
     .description('Manage ICP identities')
-    .action(async (subcommand, options) => {
-      switch (subcommand) {
-        case 'list':
-          return executeList(options);
-        case 'create':
-          return executeCreate(options);
-        case 'export':
-          return executeExport(options);
-        case 'import':
-          return executeImport(options);
-        case 'principal':
-          return executePrincipal(options);
-        case 'default':
-          return executeSetDefault(options);
-        default:
-          console.log(chalk.red('Subcommand required. Use one of: list, create, export, import, principal, default'));
-      }
-    });
+    .action(() => {
+      command.outputHelp();
+    })
+    .addCommand(listSubcommand())
+    .addCommand(createSubcommand())
+    .addCommand(exportSubcommand())
+    .addCommand(importSubcommand())
+    .addCommand(principalSubcommand())
+    .addCommand(defaultSubcommand());
 
-  command
-    .description('Manage ICP identities')
-    .action((subcommand, options) => {
-      switch (subcommand) {
-        case 'list':
-          return executeList(options);
-        case 'create':
-          return executeCreate(options);
-        case 'export':
-          return executeExport(options);
-        case 'import':
-          return executeImport(options);
-        case 'principal':
-          return executePrincipal(options);
-        case 'default':
-          return executeSetDefault(options);
-        default:
-          console.log(chalk.red('Subcommand required. Use one of: list, create, export, import, principal, default'));
-      }
-    });
+  return command;
+}
 
-async function executeList(options: any = {}): Promise<void> {
+async function executeList(): Promise<void> {
   const spinner = ora('Listing identities...').start();
 
   try {
-    const result = await listIdentities(options);
+    const result = await listIdentities();
     spinner.succeed('Identities listed successfully');
     console.log();
     console.log(chalk.cyan('Available Identities:'));
@@ -82,7 +55,7 @@ async function executeCreate(options: any): Promise<void> {
   const spinner = ora('Creating identity...').start();
 
   try {
-    await createIdentity(name, options);
+    await createIdentity(name);
     spinner.succeed(`Identity '${name}' created successfully`);
   } catch (error) {
     spinner.fail(`Failed to create identity: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -96,7 +69,7 @@ async function executeExport(options: any): Promise<void> {
   const spinner = ora('Exporting identity...').start();
 
   try {
-    const result = await exportIdentity(name, options);
+    const result = await exportIdentity(name);
     spinner.succeed(`Identity '${name}' exported successfully`);
     console.log();
     console.log(chalk.cyan('PEM Content:'));
@@ -113,7 +86,7 @@ async function executeImport(options: any): Promise<void> {
   const spinner = ora('Importing identity...').start();
 
   try {
-    await importIdentity(name, pemFile, options);
+    await importIdentity(name, pemFile);
     spinner.succeed(`Identity '${name}' imported successfully`);
     console.log(chalk.cyan('Imported from:'), pemFile);
   } catch (error) {
@@ -128,8 +101,8 @@ async function executePrincipal(options: any): Promise<void> {
   const spinner = ora('Getting identity principal...').start();
 
   try {
-    const result = await getIdentityPrincipal(name, options);
-    spinner.succeed(`Identity '${name}' principal: ${result.stdout || 'N/A'}`);
+    const result = await getIdentityPrincipal(name);
+    spinner.succeed(`Identity '${name}' principal: ${result || 'N/A'}`);
   } catch (error) {
     spinner.fail(`Failed to get identity principal: ${error instanceof Error ? error.message : 'Unknown error'}`);
     throw error;
@@ -142,26 +115,20 @@ async function executeSetDefault(options: any): Promise<void> {
   const spinner = ora('Setting default identity...').start();
 
   try {
-    await setDefaultIdentity(name, options);
+    await setDefaultIdentity(name);
     spinner.succeed(`Identity '${name}' set as default`);
-    } catch (error) {
-    spinner.fail(`Failed to set default identity: ${error instanceof Error ? error.message : 'Unknown error}`);
+  } catch (error) {
+    spinner.fail(`Failed to set default identity: ${error instanceof Error ? error.message : 'Unknown error'}`);
     throw error;
   }
 }
 
-/**
- * Create the identity subcommand
- */
 function listSubcommand(): Command {
   return new Command('list')
-    .description('List all ICP identities');
+    .description('List all ICP identities')
     .action(executeList);
 }
 
-/**
- * Create the create subcommand
- */
 function createSubcommand(): Command {
   return new Command('create')
     .description('Create a new ICP identity')
@@ -169,9 +136,6 @@ function createSubcommand(): Command {
     .action(executeCreate);
 }
 
-/**
- * Export the export subcommand
- */
 function exportSubcommand(): Command {
   return new Command('export')
     .description('Export identity to PEM file')
@@ -180,9 +144,6 @@ function exportSubcommand(): Command {
     .action(executeExport);
 }
 
-/**
- * Import the import subcommand
- */
 function importSubcommand(): Command {
   return new Command('import')
     .description('Import identity from PEM file')
@@ -191,9 +152,6 @@ function importSubcommand(): Command {
     .action(executeImport);
 }
 
-/**
- * Principal the principal subcommand
- */
 function principalSubcommand(): Command {
   return new Command('principal')
     .description('Get the principal of an identity')
@@ -201,9 +159,6 @@ function principalSubcommand(): Command {
     .action(executePrincipal);
 }
 
-/**
- * Default the default subcommand
- */
 function defaultSubcommand(): Command {
   return new Command('default')
     .description('Set the default identity')

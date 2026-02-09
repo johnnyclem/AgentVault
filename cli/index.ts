@@ -18,6 +18,13 @@ import { execCommand } from './commands/exec.js';
 import { listCommand } from './commands/list.js';
 import { showCommand } from './commands/show.js';
 import { walletCommand } from './commands/wallet.js';
+import { identityCommand } from './commands/identity.js';
+import { cyclesCommand } from './commands/cycles.js';
+import { tokensCommand } from './commands/tokens.js';
+import { infoCommand } from './commands/info.js';
+import { statsCommand } from './commands/stats.js';
+import { monitorCommand } from './commands/monitor.js';
+import { healthCommand } from './commands/health.js';
 
 export function createProgram(): Command {
   const program = new Command();
@@ -39,6 +46,15 @@ export function createProgram(): Command {
   program.addCommand(listCommand());
   program.addCommand(showCommand());
   program.addCommand(walletCommand());
+
+  // Phase 2 commands
+  program.addCommand(identityCommand());
+  program.addCommand(cyclesCommand());
+  program.addCommand(tokensCommand());
+  program.addCommand(infoCommand());
+  program.addCommand(statsCommand());
+  program.addCommand(monitorCommand());
+  program.addCommand(healthCommand());
 
   return program;
 }

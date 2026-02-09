@@ -7,7 +7,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
-import { getCanisterInfo } from '../../src/monitoring/index.js';
+import { getCanisterInfo } from '../../src/monitoring/info.js';
 import type { MonitoringOptions } from '../../src/monitoring/types.js';
 
 export function infoCommand(): Command {
@@ -21,13 +21,13 @@ export function infoCommand(): Command {
     .option('--max-alerts <n>', 'Maximum number of alerts to display');
 
   command
-    .action(async (canisterId: string, options: {
+    .action(async (canisterId: string, options: any) => {
       const thresholds = options.thresholds ? JSON.parse(options.thresholds) : undefined;
       const monitoringOpts: MonitoringOptions = {
-        canisterId,
+        canister: canisterId,
         thresholds,
-        pollInterval: options.interval,
-        maxSnapshots: options.maxAlerts,
+        pollInterval: options.interval ? parseInt(options.interval) : undefined,
+        maxSnapshots: options.maxAlerts ? parseInt(options.maxAlerts) : undefined,
       };
 
       const spinner = ora('Fetching canister info...').start();
@@ -46,9 +46,6 @@ export function infoCommand(): Command {
   return command;
 }
 
-/**
- * Display canister information.
- */
 function displayInfo(statusInfo: any): void {
   console.log();
   console.log(chalk.cyan('Canister ID:'), chalk.bold(statusInfo.canisterId));
@@ -65,5 +62,5 @@ function displayInfo(statusInfo: any): void {
     console.log(chalk.cyan('WASM Hash:'), chalk.bold(statusInfo.moduleHash.substring(0, 16)));
   }
   console.log();
-  console.log(chalk.cyan('Timestamp:'), statusInfo.timestamp.toISOString());
+  console.log(chalk.cyan('Timestamp:'), statusInfo.timestamp?.toISOString() || 'N/A');
 }

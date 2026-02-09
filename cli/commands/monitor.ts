@@ -7,7 +7,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
-import { checkHealth, generateHealthAlerts, getRecentAlerts } from '../../src/monitoring/index.js';
+import { checkHealth, getRecentAlerts } from '../../src/monitoring/index.js';
 import type { MonitoringOptions } from '../../src/monitoring/types.js';
 
 export function monitorCommand(): Command {
@@ -21,13 +21,13 @@ export function monitorCommand(): Command {
     .option('-a, --alerts', 'Display all alerts (default: latest 10)');
 
   command
-    .action(async (canisterId: string, options: MonitoringOptions = {}) => {
+    .action(async (canisterId: string, options: any) => {
       const thresholds = options.thresholds ? JSON.parse(options.thresholds) : undefined;
       const monitoringOpts: MonitoringOptions = {
-        canisterId,
+        canister: canisterId,
         thresholds,
-        pollInterval: options.interval ?? 10000,
-        maxSnapshots: options.alerts ?? 10,
+        pollInterval: options.interval ? parseInt(options.interval) : 10000,
+        maxSnapshots: options.alerts ? parseInt(options.alerts) : 10,
       };
 
       const spinner = ora(`Monitoring canister ${canisterId}...`).start();
@@ -37,7 +37,8 @@ export function monitorCommand(): Command {
         spinner.succeed(`Monitoring ${canisterId} started`);
 
         console.log(chalk.gray(`Press Ctrl+C to stop monitoring`));
-        console.log(chalk.cyan(`Polling every ${(monitoringOpts.pollInterval / 1000).toFixed(1)}s`));
+        const pollInterval = monitoringOpts.pollInterval || 10000;
+        console.log(chalk.cyan(`Polling every ${(pollInterval / 1000).toFixed(1)}s`));
 
         while (true) {
           const statusInfo = await checkHealth(canisterId, monitoringOpts);
@@ -56,14 +57,14 @@ export function monitorCommand(): Command {
             }
           }
 
-          await new Promise((resolve) => resolve(setTimeout(1000)));
+          await new Promise((resolve) => setTimeout(resolve, 1000));
         }
       } catch (error) {
-        if (error.name === 'AbortError') {
+        if (error instanceof Error && error.name === 'AbortError') {
           console.log(chalk.gray('\nMonitoring stopped'));
           process.exit(0);
         } else {
-          spinner.fail(`Monitoring error: ${error.message}`);
+          spinner.fail(`Monitoring error: ${error instanceof Error ? error.message : 'Unknown error'}`);
           throw error;
         }
       }
@@ -75,7 +76,7 @@ export function monitorCommand(): Command {
 function displayStatus(statusInfo: any): void {
   console.log();
   console.log(chalk.cyan('Status:'), statusInfo.status);
-  console.log(chalk.cyan('Memory:'), statusInfo.memorySize ? `${Number(statusInfo.memorySize) / (1024 * 1024)).toFixed(2)} MB` : 'N/A');
+  console.log(chalk.cyan('Memory:'), statusInfo.memorySize ? `${(Number(statusInfo.memorySize) / (1024 * 1024)).toFixed(2)} MB` : 'N/A');
   console.log(chalk.cyan('Cycles:'), statusInfo.cycles ? statusInfo.cycles.toString() : 'N/A');
   console.log(chalk.cyan('Health:'), statusInfo.health);
 }

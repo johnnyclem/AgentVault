@@ -6,62 +6,53 @@
  * import/export identities and manage default identity.
  */
 
-import { icpcli } from '../icp/icpcli.js';
+import {
+  identityList,
+  identityNew,
+  identityExport,
+  identityPrincipal,
+  identityImport,
+  identityDefault,
+} from './icpcli.js';
 
 /**
  * List all available identities.
  *
- * @param options - Common ICP options
  * @returns Command result with identity list
  */
-export async function listIdentities(
-  options: any = {},
-): Promise<any> {
-  return icpcli.identityList(options);
+export async function listIdentities(): Promise<any> {
+  return identityList({});
 }
 
 /**
  * Create a new identity.
  *
  * @param name - Identity name
- * @param options - Common ICP options
  * @returns Command result
  */
-export async function createIdentity(
-  name: string,
-  options: any = {},
-): Promise<any> {
-  return icpcli.identityNew({ name }, options);
+export async function createIdentity(name: string): Promise<any> {
+  return identityNew({ name });
 }
 
 /**
  * Export an identity to PEM file.
  *
  * @param name - Identity name
- * @param pemFile - Path to PEM file (for export)
- * @param options - Common ICP options
  * @returns Command result with PEM content
  */
-export async function exportIdentity(
-  name: string,
-  pemFile: string,
-  options: any = {},
-): Promise<any> {
-  return icpcli.identityExport({ name, pemFile }, options);
+export async function exportIdentity(name: string): Promise<any> {
+  return identityExport({ name });
 }
 
 /**
  * Get the principal of a default or named identity.
  *
  * @param name - Identity name (if null, use default)
- * @param options - Common ICP options
  * @returns Command result with principal
  */
-export async function getIdentityPrincipal(
-  name?: string,
-  options: any = {},
-): Promise<string> {
-  return icpcli.identityPrincipal({ name }, options);
+export async function getIdentityPrincipal(name?: string): Promise<string> {
+  const result = await identityPrincipal({ name });
+  return result.stdout || '';
 }
 
 /**
@@ -69,27 +60,18 @@ export async function getIdentityPrincipal(
  *
  * @param name - Identity name to import
  * @param pemFile - Path to PEM file
- * @param options - Common ICP options
  * @returns Command result
  */
-export async function importIdentity(
-  name: string,
-  pemFile: string,
-  options: any = {},
-): Promise<any> {
-  return icpcli.identityImport({ name, pemFile }, options);
+export async function importIdentity(name: string, pemFile: string): Promise<any> {
+  return identityImport({ name, pemFile });
 }
 
 /**
  * Set a default identity.
  *
  * @param name - Identity name to set as default
- * @param options - Common ICP options
  * @returns Command result
  */
-export async function setDefaultIdentity(
-  name: string,
-  options: any = {},
-): Promise<any> {
-  return icpcli.identityPrincipal({ name }, options);
+export async function setDefaultIdentity(name: string): Promise<any> {
+  return identityDefault({ name });
 }

@@ -21,9 +21,9 @@ export type {
   IcWasmResult,
   IcWasmInfo,
   MetadataVisibility,
-  OptimizationResult,
-  OptimizationPipelineOptions,
-  OptimizationPipelineResult,
+  IcWasmOptimizationResult,
+  IcWasmOptimizationPipelineOptions,
+  IcWasmOptimizationPipelineResult,
   IcpEnvironment,
   IcpDeployMode,
   IcpCommonOptions,
@@ -50,12 +50,18 @@ export type {
   IcpEnvironmentConfig,
   IcpOptimizationConfig,
   IcpProjectConfig,
+} from './types.js';
+
+// Re-export monitoring types
+export type {
   CanisterHealthStatus,
   AlertSeverity,
   CanisterStatusInfo,
   MonitoringAlert,
   HealthThresholds,
-} from './types.js';
+  MonitoringOptions,
+  ResourceUsageSnapshot,
+} from '../monitoring/types.js';
 
 // Tool detection
 export {

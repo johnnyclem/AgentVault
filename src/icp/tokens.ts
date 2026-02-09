@@ -5,7 +5,7 @@
  * Supports ICP and ICRC-1/ICRC-2 tokens.
  */
 
-import { icpcli } from '../icp/icpcli.js';
+import { tokenBalance, tokenTransfer } from './icpcli.js';
 
 /**
  * Check token balance for a canister.
@@ -16,9 +16,8 @@ import { icpcli } from '../icp/icpcli.js';
  */
 export async function checkBalance(
   canister: string,
-  options: any = {},
 ): Promise<any> {
-  return icpcli.tokenBalance({ canister }, options);
+  return tokenBalance({ canister });
 }
 
 /**
@@ -32,7 +31,6 @@ export async function checkBalance(
 export async function transferTokens(
   amount: string,
   to: string,
-  options: any = {},
 ): Promise<any> {
-  return icpcli.tokenTransfer({ amount, to }, options);
+  return tokenTransfer({ amount, to });
 }

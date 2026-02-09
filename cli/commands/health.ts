@@ -23,13 +23,13 @@ export function healthCommand(): Command {
     .option('-w, --watch', 'Watch canister health continuously');
 
   command
-    .action(async (canisterId: string, options: MonitoringOptions = {}) => {
+    .action(async (canisterId: string, options: any) => {
       const thresholds = options.thresholds ? JSON.parse(options.thresholds) : undefined;
       const monitoringOpts: MonitoringOptions = {
-        canisterId,
+        canister: canisterId,
         thresholds,
-        pollInterval: options.interval,
-        maxSnapshots: options.maxAlerts ?? 10,
+        pollInterval: options.interval ? parseInt(options.interval) : undefined,
+        maxSnapshots: options.maxAlerts ? parseInt(options.maxAlerts) : 10,
       };
 
       const spinner = ora('Checking canister health...').start();
@@ -39,27 +39,25 @@ export function healthCommand(): Command {
         spinner.succeed('Health check completed');
         displayHealth(statusInfo);
 
-        if (!options.clear) {
-          const alerts = await getRecentAlerts(canisterId, monitoringOpts.maxSnapshots);
-          if (alerts.length > 0) {
-            console.log();
-            console.log(chalk.cyan('Recent Alerts:'));
-            for (const alert of alerts) {
-              const severityColor =
-                alert.severity === 'critical'
-                  ? chalk.red
-                  : alert.severity === 'warning'
-                  ? chalk.yellow
-                  : chalk.gray;
-              console.log(
-                `  [${new Date(alert.timestamp).toISOString()}]`,
-                `  ${severityColor(alert.severity)} ${alert.severity.toUpperCase()}]:`,
-                `  Canister: ${alert.canisterId}`,
-                `  Metric: ${alert.metric}`,
-                `  Value: ${alert.value}`,
-                `  Threshold: ${alert.threshold}`
-              );
-            }
+        const alerts = await getRecentAlerts(canisterId, monitoringOpts.maxSnapshots || 10);
+        if (alerts.length > 0) {
+          console.log();
+          console.log(chalk.cyan('Recent Alerts:'));
+          for (const alert of alerts) {
+            const severityColor =
+              alert.severity === 'critical'
+                ? chalk.red
+                : alert.severity === 'warning'
+                ? chalk.yellow
+                : chalk.gray;
+            console.log(
+              `  [${new Date(alert.timestamp).toISOString()}]`,
+              `  ${severityColor(alert.severity)} ${alert.severity.toUpperCase()}:`,
+              `  Canister: ${alert.canisterId}`,
+              `  Metric: ${alert.metric}`,
+              `  Value: ${alert.value}`,
+              `  Threshold: ${alert.threshold}`
+            );
           }
         } else {
           console.log(chalk.gray('No recent alerts'));

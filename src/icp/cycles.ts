@@ -5,34 +5,34 @@
  * Check balances, mint cycles, transfer cycles.
  */
 
-import { icpcli } from '../icp/icpcli.js';
+import {
+  cyclesBalance,
+  cyclesMint,
+  cyclesTransfer,
+} from './icpcli.js';
 
 /**
  * Check cycle balance of a canister.
  *
- * @param canisterId - Canister ID or name
- * @param options - Common ICP options
+ * @param canister - Canister ID or name
  * @returns Command result with balance in stdout
  */
 export async function checkBalance(
   canister: string,
-  options: any = {},
-): Promise<IcpCliResult> {
-  return icpcli.cyclesBalance({ canister }, options);
+): Promise<any> {
+  return cyclesBalance({ canister });
 }
 
 /**
  * Mint cycles to a canister.
  *
  * @param amount - Amount to mint
- * @param options - Common ICP options
  * @returns Command result
  */
 export async function mintCycles(
   amount: string,
-  options: any = {},
-): Promise<IcpCliResult> {
-  return icpcli.cyclesMint({ amount }, options);
+): Promise<any> {
+  return cyclesMint({ amount });
 }
 
 /**
@@ -40,13 +40,11 @@ export async function mintCycles(
  *
  * @param amount - Amount to transfer
  * @param to - Recipient principal or canister ID
- * @param options - Common ICP options
  * @returns Command result
  */
 export async function transferCycles(
   amount: string,
   to: string,
-  options: any = {},
-): Promise<IcpCliResult> {
-  return icpcli.cyclesTransfer({ amount, to }, options);
+): Promise<any> {
+  return cyclesTransfer({ amount, to });
 }
