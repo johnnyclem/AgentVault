@@ -101,12 +101,19 @@ describe('init command', () => {
     it('should execute without throwing', async () => {
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
+      const answers = {
+        name: 'test-agent',
+        description: 'Test description',
+      } as any;
+
+      const options = {
+        confirm: true,
+      } as any;
+
+      const sourcePath = process.cwd();
+
       await expect(
-        executeInit({
-          name: 'test-agent',
-          description: 'Test description',
-          confirm: true,
-        })
+        executeInit(answers, options, sourcePath)
       ).resolves.not.toThrow();
 
       consoleSpy.mockRestore();
