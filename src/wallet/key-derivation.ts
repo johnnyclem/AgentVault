@@ -77,7 +77,7 @@ export function parseDerivationPath(path: string): DerivationPathComponents {
   };
 
   for (let i = 1; i < parts.length; i++) {
-    const part = parts[i].replace(/'/g, '');
+    const part = parts[i]?.replace(/'/g, '') || '0';
     const num = parseInt(part, 10);
 
     switch (i) {
@@ -207,7 +207,7 @@ function deriveKeyFromSeed(
  */
 export function deriveEthKey(
   seed: Buffer,
-  derivationPath: string = DEFAULT_DERIVATION_PATHS.eth
+  derivationPath: string = DEFAULT_DERIVATION_PATHS.eth!
 ): DerivedKey {
   const derived = deriveKeyFromSeed(seed, derivationPath);
 
@@ -239,7 +239,7 @@ export function deriveEthKey(
  */
 export function derivePolkadotKey(
   seed: Buffer,
-  derivationPath: string = DEFAULT_DERIVATION_PATHS.polkadot
+  derivationPath: string = DEFAULT_DERIVATION_PATHS.polkadot!
 ): DerivedKey {
   // Polkadot uses SR25519 and different derivation scheme
   // For now, we'll use a simplified approach
@@ -269,7 +269,7 @@ export function derivePolkadotKey(
  */
 export function deriveSolanaKey(
   seed: Buffer,
-  derivationPath: string = DEFAULT_DERIVATION_PATHS.solana
+  derivationPath: string = DEFAULT_DERIVATION_PATHS.solana!
 ): DerivedKey {
   // Use BIP44 derivation for Solana
   const derived = deriveKeyFromSeed(seed, derivationPath);
@@ -279,7 +279,7 @@ export function deriveSolanaKey(
   }
 
   // Solana uses Ed25519, takes first 32 bytes of derived private key
-  const privateKeyBytes = Buffer.from(derived.privateKey, 'hex').subarray(0, 32);
+  const privateKeyBytes = derived.privateKey.subarray(0, 32);
 
   // Use Solana's Keypair for proper Ed25519 key generation
   const keypair = Keypair.fromSecretKey(privateKeyBytes);
@@ -372,15 +372,15 @@ export function getDefaultDerivationPath(chain: string): string {
     case 'cketh':
     case 'ethereum':
     case 'eth':
-      return DEFAULT_DERIVATION_PATHS.eth;
+      return DEFAULT_DERIVATION_PATHS.eth!;
     case 'polkadot':
     case 'dot':
-      return DEFAULT_DERIVATION_PATHS.polkadot;
+      return DEFAULT_DERIVATION_PATHS.polkadot!;
     case 'solana':
     case 'sol':
-      return DEFAULT_DERIVATION_PATHS.solana;
+      return DEFAULT_DERIVATION_PATHS.solana!;
     default:
-      return DEFAULT_DERIVATION_PATHS.eth;
+      return DEFAULT_DERIVATION_PATHS.eth!;
   }
 }
 

@@ -1,54 +1,29 @@
 'use client'
 
-import { CheckCircle2, Clock, XCircle, AlertCircle } from 'lucide-react'
-import { cn } from '@/lib/utils'
-
 interface TaskStatusBadgeProps {
   status: 'pending' | 'running' | 'completed' | 'failed'
   className?: string
+  showDot?: boolean
 }
 
-export function TaskStatusBadge({ status, className }: TaskStatusBadgeProps) {
-  const getStatusConfig = () => {
+export function TaskStatusBadge({ status, className, showDot = true }: TaskStatusBadgeProps) {
+  const getStatusIcon = () => {
     switch (status) {
       case 'pending':
-        return {
-          icon: Clock,
-          bgColor: 'bg-yellow-100',
-          textColor: 'text-yellow-700',
-          label: 'Pending',
-        }
+        return <Clock className="w-4 h-4 text-yellow-500" />
       case 'running':
-        return {
-          icon: Clock,
-          bgColor: 'bg-blue-100',
-          textColor: 'text-blue-700',
-          label: 'Running',
-        }
+        return null
       case 'completed':
-        return {
-          icon: CheckCircle2,
-          bgColor: 'bg-green-100',
-          textColor: 'text-green-700',
-          label: 'Completed',
-        }
+        return <CheckCircle2 className="w-4 h-4 text-green-500" />
       case 'failed':
-        return {
-          icon: XCircle,
-          bgColor: 'bg-red-100',
-          textColor: 'text-red-700',
-          label: 'Failed',
-        }
+        return <XCircle className="w-4 h-4 text-red-500" />
     }
   }
 
-  const config = getStatusConfig()
-  const Icon = config.icon
-
   return (
-    <span className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium', config.bgColor, config.textColor, className)}>
-      <Icon className="w-3.5 h-3.5" />
-      {config.label}
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full ${className}`}>
+      {showDot && getStatusIcon()}
+      <span className="capitalize">{status}</span>
     </span>
   )
 }

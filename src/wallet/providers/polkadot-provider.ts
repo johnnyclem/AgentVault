@@ -18,11 +18,9 @@ import {
   sr25519PairFromSeed,
   sr25519Sign,
   checkAddress,
-  blake2AsU8a,
   cryptoWaitReady,
 } from '@polkadot/util-crypto';
 import {
-  stringToU8a,
   u8aToHex,
   hexToU8a,
 } from '@polkadot/util';
@@ -57,6 +55,25 @@ export class PolkadotProvider extends BaseWalletProvider {
     super(config);
     this.ss58Format = config.ss58Format || 0;
     this.chainType = config.chainType || 'polkadot';
+  }
+
+  private getApi() {
+    if (!this.api) {
+      throw new Error('API not connected');
+    }
+    return this.api;
+  }
+
+  private getSystemQuery() {
+    return this.getApi().query.system as any;
+  }
+
+  private getBalancesTx() {
+    return this.getApi().tx.balances as any;
+  }
+
+  private getRpcChain() {
+    return this.getApi().rpc.chain as any;
   }
 
   /**
@@ -102,7 +119,7 @@ export class PolkadotProvider extends BaseWalletProvider {
     }
 
      try {
-      const accountInfo = await this.api.query.system.account(address);
+      const accountInfo = await this.getSystemQuery().account(address);
       const data = accountInfo.toJSON() as any;
       const freeBalance = ((data?.data?.free as string) ?? '0');
       const reserved = ((data?.data?.reserved as string) ?? '0');
@@ -110,7 +127,7 @@ export class PolkadotProvider extends BaseWalletProvider {
 
       const balanceInDot = parseFloat(totalBalance) / 10_000_000_000;
 
-      const blockNumber = await this.api.query.system.number();
+      const blockNumber = await this.getSystemQuery().number();
 
       return {
         amount: balanceInDot.toString(),
@@ -139,7 +156,7 @@ export class PolkadotProvider extends BaseWalletProvider {
     try {
       const transferAmount = this.parseDotAmount(request.amount);
 
-      const tx = this.api.tx.balances.transfer(request.to, transferAmount);
+      const tx = this.getBalancesTx().transfer(request.to, transferAmount);
 
       const hash = await tx.signAndSend(this.keyringPair);
 
@@ -177,7 +194,7 @@ export class PolkadotProvider extends BaseWalletProvider {
       const keypair = this.createKeyringPair(privateKey);
       const transferAmount = this.parseDotAmount(tx.amount);
 
-      const unsignedTx = this.api.tx.balances.transfer(tx.to, transferAmount);
+      const unsignedTx = this.getBalancesTx().transfer(tx.to, transferAmount);
       const signedTx = await unsignedTx.signAsync(keypair);
 
       return {
@@ -203,13 +220,13 @@ export class PolkadotProvider extends BaseWalletProvider {
     try {
       const transactions: Transaction[] = [];
 
-      const blockNumber = await this.api.query.system.number();
+      const blockNumber = await this.getSystemQuery().number();
       const latestBlocks = Math.min(Number(blockNumber), 100);
 
       for (let i = 0; i < latestBlocks; i++) {
-        const blockHash = await this.api.rpc.chain.getBlockHash(Number(blockNumber) - i);
+        const blockHash = await this.getRpcChain().getBlockHash(Number(blockNumber) - i);
 
-        const events = await this.api.query.system.events.at(blockHash);
+        const events = await this.getSystemQuery().events.at(blockHash);
         const eventRecords = events.toHuman() as any[];
 
         for (const event of eventRecords) {
@@ -264,7 +281,7 @@ export class PolkadotProvider extends BaseWalletProvider {
     try {
       const transferAmount = this.parseDotAmount(request.amount);
 
-      const tx = this.api.tx.balances.transfer(request.to, transferAmount);
+      const tx = this.getBalancesTx().transfer(request.to, transferAmount);
 
       const info = await tx.paymentInfo(this.keyringPair);
 
@@ -286,7 +303,7 @@ export class PolkadotProvider extends BaseWalletProvider {
     }
 
     try {
-      const blockNumber = await this.api.query.system.number();
+      const blockNumber = await this.getSystemQuery().number();
       return Number(blockNumber);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -303,8 +320,8 @@ export class PolkadotProvider extends BaseWalletProvider {
     }
 
     try {
-      const blockHash = await this.api.rpc.chain.getBlockHash();
-      const events = await this.api.query.system.events.at(blockHash || undefined);
+      const blockHash = await this.getRpcChain().getBlockHash();
+      const events = await this.getSystemQuery().events.at(blockHash || undefined);
       const eventRecords = events.toHuman() as any[];
 
       let from = '';
@@ -314,7 +331,7 @@ export class PolkadotProvider extends BaseWalletProvider {
 
       for (const event of eventRecords) {
         if (event.event?.section === 'balances' && event.event?.method === 'Transfer' && event.event?.data) {
-          const eventData = event.event?.data as { from?: string; to?: string; amount?: string };
+          const eventData = event.event?.data as [string, string, string];
           [from, to, amount] = eventData;
           found = true;
         }
@@ -417,15 +434,6 @@ export class PolkadotProvider extends BaseWalletProvider {
   }
 
   /**
-   * Generate mock transaction hash
-   */
-  private generateTxHash(from: string, to: string, amount: string): string {
-    const txData = stringToU8a(`${from}:${to}:${amount}:${Date.now()}`);
-    const hash = blake2AsU8a(txData, 256);
-    return u8aToHex(hash);
-  }
-
-  /**
    * Parse DOT amount (convert from string to Plancks)
    */
   private parseDotAmount(amountStr: string): bigint {
@@ -482,6 +490,6 @@ export class PolkadotProvider extends BaseWalletProvider {
       astar: 'wss://rpc.astar.network',
     };
 
-    return defaultUrls[this.chainType] || defaultUrls.polkadot;
+    return defaultUrls[this.chainType] || defaultUrls.polkadot!;
   }
 }

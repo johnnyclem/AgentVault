@@ -1,57 +1,139 @@
 'use client'
 
-import { Wallet, Plus, CheckCircle2, AlertTriangle } from 'lucide-react'
-import { formatCycles, formatTimestamp, truncatePrincipal } from '@/lib/utils'
-import type { Wallet as WalletType } from '@/lib/types'
+import { Plus, ArrowUp, ArrowDown, Copy, Check, ExternalLink, Wallet as WalletIcon } from 'lucide-react'
+import { formatCycles, formatTimestamp } from '@/lib/utils'
+import { Wallet as WalletType } from '@/lib/types'
 
 interface WalletOverviewProps {
   wallets: WalletType[]
   onConnectWallet?: () => void
 }
 
+interface BalanceCardProps {
+  wallet: WalletType
+  onSend?: () => void
+  onReceive?: () => void
+}
+
 export function WalletOverview({ wallets, onConnectWallet }: WalletOverviewProps) {
   const totalCycles = wallets.reduce((sum, wallet) => sum + wallet.balance, 0n)
-  const connectedWallets = wallets.length
 
   return (
     <div className="space-y-6">
       <div className="grid gap-6 md:grid-cols-3">
         <div className="border rounded-lg p-6">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-gray-600">Total Balance</span>
-            <Wallet className="w-5 h-5 text-blue-500" />
+          <div className="flex items-center gap-2 mb-4">
+            <WalletIcon className="w-8 h-8 text-blue-500" />
+            <span className="font-semibold">Total Balance</span>
           </div>
           <p className="text-3xl font-bold">{formatCycles(totalCycles)}</p>
-          <p className="text-sm text-gray-500 mt-1">Across all wallets</p>
+          <p className="text-sm text-gray-600">Across all wallets</p>
         </div>
 
         <div className="border rounded-lg p-6">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-gray-600">Connected Wallets</span>
-            <CheckCircle2 className="w-5 h-5 text-green-500" />
+          <div className="flex items-center gap-2 mb-4">
+            <Check className="w-8 h-8 text-green-500" />
+            <span className="font-semibold">Connected Wallets</span>
           </div>
-          <p className="text-3xl font-bold">{connectedWallets}</p>
-          <p className="text-sm text-gray-500 mt-1">Active connections</p>
+          <p className="text-sm text-gray-600">{wallets.length} active connections</p>
         </div>
 
         <div className="border rounded-lg p-6">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-gray-600">Status</span>
-            <AlertTriangle className="w-5 h-5 text-yellow-500" />
+          <div className="flex items-center gap-2 mb-4">
+            <WalletIcon className="w-8 h-8 text-yellow-500" />
+            <span className="font-semibold">Status</span>
           </div>
-          <p className="text-3xl font-bold">Good</p>
-          <p className="text-sm text-gray-500 mt-1">All wallets operational</p>
+          <p className="text-sm text-gray-600">All systems operational</p>
         </div>
       </div>
 
       <div className="flex justify-end">
         <button
           onClick={onConnectWallet}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+          className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
         >
           <Plus className="w-4 h-4" />
           Connect New Wallet
         </button>
+      </div>
+    </div>
+  )
+}
+
+export function BalanceCard({ wallet, onSend, onReceive }: BalanceCardProps) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopyPrincipal = () => {
+    navigator.clipboard.writeText(wallet.principal)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="border rounded-lg p-6">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <WalletIcon className="w-8 h-8 text-blue-500" />
+          <span className="font-semibold capitalize">{wallet.type} Wallet</span>
+        </div>
+        <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded">
+          {wallet.status === 'connected' ? 'Connected' : 'Disconnected'}
+        </span>
+      </div>
+        <button
+          onClick={() => handleCopyPrincipal()}
+          className="text-gray-400 hover:text-gray-600 transition-colors"
+          title={copied ? 'Copied!' : 'Copy to clipboard'}
+        >
+          <Copy className="w-4 h-4" />
+          {copied ? <Check className="w-4 h-4 text-green-500" /> : ''}
+        </button>
+      </div>
+
+      <div>
+        <p className="text-3xl font-bold">{formatCycles(wallet.balance)}</p>
+        <p className="text-sm text-gray-600">Balance</p>
+      </div>
+
+      {wallet.address && (
+        <div className="mt-4 text-sm">
+          <div className="flex items-center gap-2">
+            <span className="text-gray-600">Address:</span>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 min-w-0">
+                <span className="text-sm text-gray-600 font-mono">{wallet.address.slice(0, 12)}...{wallet.address.slice(-4)}</span>
+              </div>
+              <button
+                onClick={() => handleCopyPrincipal()}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <Copy className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <p className="text-xs text-gray-600">
+        Created {formatTimestamp(wallet.createdAt)}
+      </p>
+
+      <div className="mt-4 pt-4 border-t flex gap-2">
+        <button
+          onClick={onSend}
+          className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-50 text-white rounded hover:bg-blue-100 transition"
+          >
+          <ArrowUp className="w-4 h-4" />
+          Send
+        </button>
+        <button
+          onClick={onReceive}
+          className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-50 text-white rounded hover:bg-green-100 transition"
+          >
+            <ArrowDown className="w-4 h-4" />
+            Receive
+          </button>
+        </div>
       </div>
     </div>
   )

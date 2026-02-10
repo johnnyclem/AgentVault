@@ -1,65 +1,75 @@
-'use client'
+import { CheckCircle2, Clock, XCircle, AlertCircle } from 'lucide-react'
+import { formatTimestamp } from '@/lib/utils'
 
-import { CheckCircle2, Clock, XCircle } from 'lucide-react'
-import { StatusBadge } from '@/components/common/StatusBadge'
-import { TimeAgo } from '@/components/common/TimeAgo'
-import type { Task } from '@/lib/types'
+export interface Task {
+  id: string
+  type: 'deploy' | 'backup' | 'restore' | 'upgrade'
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  progress: number
+  message: string
+  createdAt: string
+  completedAt?: string
+  error?: string
+}
 
-export function TaskQueueTable({ tasks }: { tasks: Task[] }) {
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'running':
-        return <Clock className="w-4 h-4 text-blue-500" />
-      case 'completed':
-        return <CheckCircle2 className="w-4 h-4 text-green-500" />
-      case 'failed':
-        return <XCircle className="w-4 h-4 text-red-500" />
-      default:
-        return <Clock className="w-4 h-4 text-yellow-500" />
-    }
+interface TaskQueueTableProps {
+  tasks: Task[]
+  emptyMessage?: string
+  isLoading?: boolean
+}
+
+export function TaskQueueTable({ tasks, emptyMessage = 'No tasks found', isLoading = false }: TaskQueueTableProps) {
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-transparent">
+        </div>
+      </div>
+    )
+  }
+
+  if (tasks.length === 0) {
+    return (
+      <div className="py-12 text-center text-gray-500">
+        {emptyMessage}
+      </div>
+    )
   }
 
   return (
     <div className="border rounded-lg divide-y">
-      {tasks.length === 0 ? (
-        <div className="p-12 text-center text-gray-500">
-          No tasks found
-        </div>
-      ) : (
-        tasks.map((task) => (
-          <div key={task.id} className="p-4 hover:bg-gray-50">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                {getStatusIcon(task.status)}
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium capitalize">{task.type}</span>
-                    <StatusBadge status={task.status} showDot={false} />
-                  </div>
-                  <p className="text-sm text-gray-600">{task.message}</p>
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="w-32">
-                  <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-blue-500 transition-all"
-                      style={{ width: `${task.progress}%` }}
-                    />
-                  </div>
-                  <span className="text-xs text-gray-600">{task.progress}%</span>
-                </div>
-                <TimeAgo timestamp={task.createdAt} className="text-xs" />
-              </div>
+      {tasks.map((task) => (
+        <div key={task.id} className="p-4 hover:bg-gray-50">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              {task.status === 'running' && <Clock className="w-5 h-5 text-blue-500" />}
+              {task.status === 'completed' && <CheckCircle2 className="w-5 h-5 text-green-500" />}
+              {task.status === 'failed' && <XCircle className="w-5 h-5 text-red-500" />}
+              <task.status === 'pending' && <Clock className="w-5 h-5 text-yellow-500" />}
             </div>
-            {task.error && (
-              <div className="mt-2 text-sm text-red-600 bg-red-50 p-2 rounded">
-                {task.error}
-              </div>
-            )}
+            <div className="flex items-center gap-4">
+              <div className="font-medium capitalize">{task.type}</div>
+              <div className="text-sm text-gray-600">{task.message}</div>
+            </div>
           </div>
-        ))
-      )}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-32 h-2 bg-gray-200 rounded">
+                <div className="h-full flex items-center">
+                  <div className="w-32 h-2 bg-blue-500 rounded-full" style={{ width: `${task.progress}%` }}></div>
+                <span className="text-xs text-gray-600">{task.progress}%</span>
+              </div>
+              <TimeAgo timestamp={task.createdAt} />
+            </div>
+            <TimeAgo timestamp={task.createdAt} />
+          </div>
+          {task.error && (
+            <div className="mt-2 text-sm text-red-600">
+              {task.error}
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   )
 }

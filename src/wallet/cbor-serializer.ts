@@ -266,7 +266,10 @@ export function deserializeSignedTransaction(data: Uint8Array): SignedTransactio
 function calculateChecksum(data: Uint8Array): Uint8Array {
   let checksum = 0;
   for (let i = 0; i < data.length; i++) {
-    checksum = ((checksum << 8) ^ data[i]) >>> 0;
+    const byte = data[i];
+    if (byte !== undefined) {
+      checksum = ((checksum << 8) ^ byte) >>> 0;
+    }
   }
 
   const result = new Uint8Array(4);

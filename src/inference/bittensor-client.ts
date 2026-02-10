@@ -5,7 +5,7 @@
  * Supports subnet discovery, module queries, and response handling.
  */
 
-import type { AxiosInstance } from 'axios';
+
 
 export interface BittensorConfig {
   apiEndpoint?: string;
@@ -58,7 +58,7 @@ export interface InferenceResponse {
 
 export class BittensorClient {
   private config: Required<BittensorConfig>;
-  private axiosInstance: AxiosInstance | null = null;
+  private axiosInstance: any = null;
 
   constructor(config: BittensorConfig = {}) {
     this.config = {
@@ -71,7 +71,7 @@ export class BittensorClient {
   /**
    * Initialize HTTP client (lazy loading)
    */
-  private getClient(): AxiosInstance {
+  private getClient(): any {
     if (!this.axiosInstance) {
       const axios = this.requireAxios();
       this.axiosInstance = axios.create({
