@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as fs from 'node:fs';
+import * as esbuild from 'esbuild';
 import {
   generateWasm,
   generateWat,
@@ -15,6 +16,32 @@ vi.mock('node:fs', () => ({
   mkdirSync: vi.fn(),
   writeFileSync: vi.fn(),
   readFileSync: vi.fn(),
+}));
+
+// Mock esbuild
+vi.mock('esbuild', () => ({
+  build: vi.fn().mockResolvedValue({
+    errors: [],
+    warnings: [],
+    outputFiles: [{ text: 'console.log("bundled");', path: '', contents: new Uint8Array() }],
+  }),
+}));
+
+// Mock fs module
+vi.mock('node:fs', () => ({
+  existsSync: vi.fn(),
+  mkdirSync: vi.fn(),
+  writeFileSync: vi.fn(),
+  readFileSync: vi.fn(),
+}));
+
+// Mock esbuild
+vi.mock('esbuild', () => ({
+  build: vi.fn().mockResolvedValue({
+    errors: [],
+    warnings: [],
+    outputFiles: [{ text: 'console.log("bundled");', path: '', contents: new Uint8Array() }],
+  }),
 }));
 
 describe('compiler', () => {
@@ -186,7 +213,10 @@ describe('compiler', () => {
     };
 
     it('should create output directory if it does not exist', async () => {
-      vi.mocked(fs.existsSync).mockReturnValue(false);
+      vi.mocked(fs.existsSync).mockImplementation((path) => {
+        // Output directory doesn't exist
+        return String(path).includes('/path/to/agent/index.ts');
+      });
 
       await compileToWasm(mockConfig, mockOptions, '/output/dir');
 
@@ -206,9 +236,10 @@ describe('compiler', () => {
 
       await compileToWasm(mockConfig, mockOptions, '/output/dir');
 
-      expect(fs.readFileSync).toHaveBeenCalledWith(
-        expect.stringContaining('/path/to/agent/index.ts'),
-        'utf-8'
+      expect(vi.mocked(esbuild.build)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entryPoints: ['/path/to/agent/index.ts'],
+        })
       );
     });
 

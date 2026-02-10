@@ -62,7 +62,7 @@ describe('runOptimizationPipeline', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.warnings).toContain(expect.stringContaining('ic-wasm not found'));
+    expect(result.warnings).toEqual(expect.arrayContaining([expect.stringContaining('ic-wasm not found')]));
     expect(result.reductionPercent).toBe(0);
     expect(fs.existsSync(outputPath)).toBe(true);
   });
@@ -208,7 +208,7 @@ describe('runOptimizationPipeline', () => {
 
     expect(result.validationPassed).toBe(false);
     expect(result.success).toBe(false);
-    expect(result.warnings).toContain(expect.stringContaining('Candid validation failed'));
+    expect(result.warnings).toEqual(expect.arrayContaining([expect.stringContaining('Candid validation failed')]));
   });
 
   it('should handle missing input file', async () => {
@@ -218,7 +218,7 @@ describe('runOptimizationPipeline', () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.warnings).toContain(expect.stringContaining('not found'));
+    expect(result.warnings).toEqual(expect.arrayContaining([expect.stringContaining('not found')]));
   });
 
   it('should continue on step failure and report warnings', async () => {

@@ -50,12 +50,13 @@ export function validateDeployOptions(options: DeployOptions): {
     });
   }
 
-  // Validate network - now accepts any string (environment names from icp.yaml)
+  // Validate network - requires standard network name or an explicit environment config
   const knownNetworks = ['local', 'ic', 'mainnet', 'dev', 'staging', 'production'];
-  if (!knownNetworks.includes(options.network) && !options.environment) {
-    warnings.push(
-      `Network '${options.network}' is not a standard name. Ensure it is defined in your icp.yaml.`
-    );
+  if (!knownNetworks.includes(options.network)) {
+    errors.push({
+      code: 'INVALID_NETWORK',
+      message: `Network '${options.network}' is not a standard name. Ensure it is defined in your icp.yaml.`,
+    });
   }
 
   // Warn about mainnet deployment

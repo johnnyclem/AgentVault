@@ -6,6 +6,9 @@ import {
   getDeploySummary,
   getCanisterStatus,
 } from '../../src/deployment/deployer.js';
+import { createICPClient } from '../../src/deployment/icpClient.js';
+import { detectToolchain } from '../../src/icp/tool-detector.js';
+import * as icpcli from '../../src/icp/icpcli.js';
 
 // Mock fs module
 vi.mock('node:fs', () => ({
@@ -13,6 +16,44 @@ vi.mock('node:fs', () => ({
   statSync: vi.fn(),
   readFileSync: vi.fn(),
 }));
+
+// Mock crypto module
+vi.mock('node:crypto', () => ({
+  createHash: vi.fn(() => ({
+    update: vi.fn().mockReturnThis(),
+    digest: vi.fn().mockReturnValue('abcd1234567890abcd1234567890abcd1234567890abcd1234'),
+  })),
+}));
+
+// Mock tool detector
+vi.mock('../../src/icp/tool-detector.js', () => ({
+  detectToolchain: vi.fn(),
+}));
+
+// Mock icpcli
+vi.mock('../../src/icp/icpcli.js', () => ({
+  deploy: vi.fn(),
+}));
+
+// Mock environment
+vi.mock('../../src/icp/environment.js', () => ({
+  getEnvironment: vi.fn(() => ({
+    name: 'local',
+    network: { type: 'local' },
+    cycles: { initial: '100T' },
+  })),
+}));
+
+// Mock @dfinity/agent HttpAgent to avoid real network calls
+vi.mock('@dfinity/agent', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@dfinity/agent')>();
+  return {
+    ...original,
+    HttpAgent: vi.fn().mockImplementation(() => ({
+      fetchRootKey: vi.fn().mockResolvedValue(new ArrayBuffer(0)),
+    })),
+  };
+});
 
 // Mock crypto module
 vi.mock('node:crypto', () => ({
@@ -162,6 +203,21 @@ describe('deployer', () => {
       vi.mocked(fs.readFileSync).mockReturnValue(
         Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00])
       );
+      // Mock toolchain to prefer SDK for these tests
+      vi.mocked(detectToolchain).mockResolvedValue({
+        icWasm: { name: 'ic-wasm', available: false, path: '', version: '' },
+        icp: { name: 'icp', available: false, path: '', version: '' },
+        dfx: { name: 'dfx', available: false, path: '', version: '' },
+        preferredDeployTool: 'dfx',
+        canOptimize: false,
+      });
+      // Mock icpcli.deploy to succeed
+      vi.mocked(icpcli.deploy).mockResolvedValue({
+        success: true,
+        stdout: 'Deployed canister: rrkah-fqaaa-aaaaa-aaaaa-aaaaa-cai',
+        stderr: '',
+        exitCode: 0,
+      });
     });
 
     it('should throw when validation fails', async () => {
@@ -234,14 +290,22 @@ describe('deployer', () => {
     });
   });
 
-  describe('getCanisterStatus', () => {
+   describe('getCanisterStatus', () => {
     it('should return canister status when exists', async () => {
-      const status = await getCanisterStatus('test-canister-id', 'local');
+      const status = await getCanisterStatus('rrkah-fqaaa-aaaaa-aaaaa-aaaaa-cai', 'local');
 
       expect(status.exists).toBe(true);
       expect(status.status).toBe('running');
       expect(status.memorySize).toBeDefined();
       expect(status.cycles).toBeDefined();
+    });
+
+    it('should return error for non-existent canister', async () => {
+      const client = createICPClient({ network: 'local' });
+
+      await expect(
+        client.getCanisterStatus('nonexistent-canister-id')
+      ).rejects.toThrow();
     });
   });
 });

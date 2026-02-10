@@ -42,19 +42,19 @@ describe('Project Files', () => {
       expect(content).toContain('# AgentVault');
     });
 
-    it('should have overview section', () => {
+    it('should have current status section', () => {
       const content = readFileSync(readmePath, 'utf-8');
-      expect(content).toContain('## Overview');
+      expect(content).toContain('## Current Status');
     });
 
-    it('should have features section', () => {
+    it('should have repository layout section', () => {
       const content = readFileSync(readmePath, 'utf-8');
-      expect(content).toContain('## Features');
+      expect(content).toContain('## Repository Layout');
     });
 
-    it('should have installation section', () => {
+    it('should have quick start section', () => {
       const content = readFileSync(readmePath, 'utf-8');
-      expect(content).toContain('## Installation');
+      expect(content).toContain('## Quick Start (Local Build)');
     });
 
     it('should have license section', () => {
