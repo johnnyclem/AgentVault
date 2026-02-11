@@ -298,7 +298,7 @@ export class ICPClient {
 
     try {
       // Query canister status using dfx
-      const statusResult = await execa('dfx', ['canister', 'status', canisterId, '--network', this.config.network, '--output-mode', 'json'], {
+      const statusResult = await execa('dfx', ['canister', 'status', canisterId, '--network', this.config.network], {
         cwd: process.cwd(),
       });
 
@@ -306,9 +306,10 @@ export class ICPClient {
 
       // Map dfx status to our DeploymentStatus
       let deploymentStatus: DeploymentStatus = 'stopped';
-      if (statusData.status === 'running') {
+      const status = statusData.status;
+      if (status && typeof status === 'string' && status.toLowerCase() === 'running') {
         deploymentStatus = 'running';
-      } else if (statusData.status === 'stopping') {
+      } else if (status && typeof status === 'string' && status.toLowerCase() === 'stopping') {
         deploymentStatus = 'stopping';
       }
 

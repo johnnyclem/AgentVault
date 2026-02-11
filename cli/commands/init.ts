@@ -2,6 +2,8 @@
  * Init command - Initialize a new AgentVault project
  */
 
+import * as path from 'node:path';
+import * as fs from 'node:fs';
 import { Command } from 'commander';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
@@ -67,45 +69,74 @@ export async function promptForInitOptions(options: InitOptions): Promise<InitAn
 export async function executeInit(answers: InitAnswers, options: InitOptions, sourcePath: string): Promise<void> {
   const spinner = ora('Initializing AgentVault project...').start();
 
-  // Create a simple config object for display purposes
-  const config = {
-    name: answers.name,
-    version: '1.0.0',
-  };
+  const projectDir = path.resolve(sourcePath, '.agentvault');
 
-  // In a real implementation, this would create files, directories, etc.
-  spinner.succeed('AgentVault project initialized successfully!');
+  const agentDir = path.join(projectDir, 'agent');
+  const canisterDir = path.join(projectDir, 'canister');
+  const configDir = path.join(projectDir, 'config');
+  const srcDir = path.join(projectDir, 'src');
+  const canisterWasmDir = path.join(canisterDir, 'wasm');
 
-  console.log();
-
-  // Try to detect existing config in source directory
-  if (options.verbose) {
-    try {
-      const { detectAgent } = await import('../../src/packaging/detector.js');
-      const existingConfig = detectAgent(sourcePath);
-
-      if (existingConfig) {
-        console.log(chalk.cyan('Detected existing configuration:'));
-        console.log(chalk.cyan('  Name:'), chalk.bold(existingConfig.name));
-        console.log(chalk.cyan('  Type:'), chalk.bold(existingConfig.type));
-        if (existingConfig.version) {
-          console.log(chalk.cyan('  Version:'), chalk.bold(existingConfig.version));
-        }
-        console.log();
-      }
-    } catch (error) {
-      // Ignore detection errors
+  const directories = [agentDir, canisterDir, configDir, srcDir, canisterWasmDir];
+  for (const dir of directories) {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
     }
   }
 
-  console.log(chalk.green('✓'), 'Created configuration for:', chalk.bold(config.name));
-  console.log(chalk.green('✓'), 'Version:', chalk.bold(config.version));
-  console.log(chalk.green('✓'), 'Description:', chalk.bold(answers.description));
+  const configPath = path.join(configDir, 'agent.config.json');
+  const configContent = {
+    name: answers.name,
+    type: 'generic',
+    version: '1.0.0',
+    createdAt: Date.now(),
+    description: answers.description || 'An AgentVault agent',
+  };
+  fs.writeFileSync(configPath, JSON.stringify(configContent, null, 2), 'utf-8');
+
+  const gitignorePath = path.join(projectDir, '.gitignore');
+  const gitignoreContent = `# AgentVault dependencies
+node_modules/
+dist/
+*.log
+.env
+*.local
+.DS_Store
+
+# AgentVault generated files
+*.wasm
+*.backup
+*.state.json
+
+# AgentVault project structure
+.agentvault/
+src/
+canister/
+config/
+`;
+  fs.writeFileSync(gitignorePath, gitignoreContent, 'utf-8');
+
+  spinner.succeed('AgentVault project initialized successfully!');
+
+  console.log();
+  console.log(chalk.green('✓'), 'Project initialized at:', chalk.bold(projectDir));
+  console.log(chalk.cyan('Directory structure:'));
+  console.log('  ├── src/', chalk.yellow('(agent source code)'));
+  console.log('  ├── canister/', chalk.yellow('(WASM files)'));
+  console.log('  ├── config/', chalk.yellow('(agent config)'));
+  console.log('  └── .gitignore', chalk.yellow('(git ignore file)'));
+  console.log();
+  console.log(chalk.cyan('Configuration:'));
+  console.log('  ├── Name:', chalk.bold(configContent.name));
+  console.log('  ├── Type:', chalk.bold(configContent.type));
+  console.log('  ├── Version:', chalk.bold(configContent.version));
+  console.log('  ├── Description:', chalk.bold(configContent.description));
   console.log();
   console.log(chalk.cyan('Next steps:'));
   console.log('  1. Run', chalk.bold('agentvault status'), 'to check your project');
-  console.log('  2. Configure your agent in the config files');
-  console.log('  3. Deploy with', chalk.bold('agentvault deploy'), 'to upload to ICP');
+  console.log('  2. Configure your agent in', chalk.bold('agent.config.json'), '(add agent type, description, etc.)');
+  console.log('  3. Compile agent with', chalk.bold('agentvault package'), 'to prepare for deployment');
+  console.log('  4. Deploy with', chalk.bold('agentvault deploy'), 'to upload to ICP');
 }
 
 export function initCommand(): Command {
