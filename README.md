@@ -181,6 +181,13 @@ agentvault/
 └── examples/               # Sample agents
 ```
 
+## Documentation (v1.0)
+
+- [Documentation index](docs/user/index-v1.0.md)
+- [Comprehensive tutorial](docs/user/tutorial-v1.0.md)
+- [Clawdbot/Claude skill runbook](docs/user/clawdbot-claude-skill.md)
+- [Marketing site plan for agentvault.cloud](docs/marketing/agentvault-cloud-site.md)
+
 ## Development
 
 ```bash
