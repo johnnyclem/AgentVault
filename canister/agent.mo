@@ -560,7 +560,13 @@ public shared func registerWallet(walletInfo : WalletInfo) : async {
   for ((id, _) in walletRegistry.vals()) {
     if (id == walletInfo.id) {
       return #err("Wallet already registered: " # walletInfo.id);
+    };
   };
+
+  // Register wallet metadata
+  walletRegistry := Array.append<(Text, WalletInfo)>(walletRegistry, [(walletInfo.id, walletInfo)]);
+
+  #ok("Wallet registered: " # walletInfo.id)
 };
 
 // ==================== VetKeys Canister Functions (Phase 5D - Mock) ====================

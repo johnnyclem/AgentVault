@@ -71,9 +71,9 @@ export class BittensorClient {
   /**
    * Initialize HTTP client (lazy loading)
    */
-  private getClient(): any {
+  private async getClient(): Promise<any> {
     if (!this.axiosInstance) {
-      const axios = this.requireAxios();
+      const axios = await this.importAxios();
       this.axiosInstance = axios.create({
         baseURL: this.config.apiEndpoint,
         timeout: this.config.timeout,
@@ -89,9 +89,13 @@ export class BittensorClient {
   /**
    * Dynamically import axios (optional dependency)
    */
-  private requireAxios(): any {
+  private async importAxios(): Promise<any> {
     try {
-      return require('axios');
+      const dynamicImport = new Function('modulePath', 'return import(modulePath)') as (
+        modulePath: string
+      ) => Promise<{ default: any }>;
+      const axiosModule = await dynamicImport('axios');
+      return axiosModule.default;
     } catch (error) {
       throw new Error(
         'axios is required for BittensorClient. Install with: npm install axios',
@@ -104,7 +108,7 @@ export class BittensorClient {
    */
   async getSubnets(): Promise<SubnetInfo[]> {
     try {
-      const client = this.getClient();
+      const client = await this.getClient();
       const response = await client.get('/subnets');
 
       return response.data.subnets || [];
@@ -132,7 +136,7 @@ export class BittensorClient {
    */
   async getModules(netuid: number): Promise<ModuleInfo[]> {
     try {
-      const client = this.getClient();
+      const client = await this.getClient();
       const response = await client.get(`/subnets/${netuid}/modules`);
 
       return response.data.modules || [];
@@ -162,7 +166,7 @@ export class BittensorClient {
     const startTime = Date.now();
 
     try {
-      const client = this.getClient();
+      const client = await this.getClient();
       const response = await client.post(`/subnets/${request.netuid}/infer`, {
         uid: request.uid,
         inputs: request.inputs,
@@ -283,7 +287,7 @@ export class BittensorClient {
    */
   async getApiStatus(): Promise<{ online: boolean; version?: string; error?: string }> {
     try {
-      const client = this.getClient();
+      const client = await this.getClient();
       const response = await client.get('/status');
 
       return {

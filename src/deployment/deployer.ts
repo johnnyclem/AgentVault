@@ -258,8 +258,12 @@ export async function getCanisterStatus(
 
   try {
     const status = await client.getCanisterStatus(canisterId);
+    if (!status.exists) {
+      return { exists: false };
+    }
+
     return {
-      exists: true,
+      exists: status.exists,
       status: status.status,
       memorySize: status.memorySize,
       cycles: status.cycles,

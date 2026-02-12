@@ -2,7 +2,9 @@
 
 **Status**: Production ready for core flows (package → deploy → execute → fetch), with documented stubs for advanced features.
 
-## Quick Start
+## Current Status
+
+## Quick Start (Local Build)
 
 ```bash
 npm install

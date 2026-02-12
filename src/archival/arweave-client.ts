@@ -55,10 +55,10 @@ export class ArweaveClient {
   /**
    * Initialize Arweave client (lazy loading)
    */
-  private getClient(): any {
+  private async getClient(): Promise<any> {
     if (!this.client) {
       try {
-        const Arweave = this.requireArweave();
+        const Arweave = await this.importArweave();
         this.client = new Arweave({
           host: this.config.host,
           port: this.config.port,
@@ -78,9 +78,13 @@ export class ArweaveClient {
   /**
    * Dynamically import arweave (optional dependency)
    */
-  private requireArweave(): any {
+  private async importArweave(): Promise<any> {
     try {
-      return require('arweave');
+      const dynamicImport = new Function('modulePath', 'return import(modulePath)') as (
+        modulePath: string
+      ) => Promise<{ default: any }>;
+      const arweaveModule = await dynamicImport('arweave');
+      return arweaveModule.default;
     } catch (error) {
       throw new Error(
         'arweave is required for ArweaveClient. Install with: npm install arweave',
@@ -97,7 +101,7 @@ export class ArweaveClient {
     options: UploadOptions = {},
   ): Promise<UploadResult> {
     try {
-      const client = this.getClient();
+      const client = await this.getClient();
       const transaction = await client.createTransaction(
         {
           data: typeof data === 'string' ? data : data.toString('base64'),
@@ -156,7 +160,7 @@ export class ArweaveClient {
    */
   async getTransactionData(transactionId: string): Promise<string | null> {
     try {
-      const client = this.getClient();
+      const client = await this.getClient();
       const data = await client.transactions.getData(transactionId, {
         decode: true,
       });
@@ -174,7 +178,7 @@ export class ArweaveClient {
     transactionId: string,
   ): Promise<'pending' | 'confirmed' | 'not_found' | 'error'> {
     try {
-      const client = this.getClient();
+      const client = await this.getClient();
       const status = await client.transactions.getStatus(transactionId);
 
       if (!status) {
@@ -197,7 +201,7 @@ export class ArweaveClient {
    */
   async getTransaction(transactionId: string): Promise<ArchiveTransaction | null> {
     try {
-      const client = this.getClient();
+      const client = await this.getClient();
       const transaction = await client.transactions.get(transactionId);
 
       const tags: Record<string, string> = {};
@@ -237,7 +241,7 @@ export class ArweaveClient {
    */
   async getWalletBalance(address: string): Promise<string> {
     try {
-      const client = this.getClient();
+      const client = await this.getClient();
       const balance = await client.wallets.getBalance(address);
       return client.ar.winstonToAr(balance);
     } catch (error) {
@@ -251,7 +255,7 @@ export class ArweaveClient {
    */
   async estimateUploadCost(dataSizeBytes: number): Promise<string> {
     try {
-      const client = this.getClient();
+      const client = await this.getClient();
       const price = await client.transactions.getPrice(dataSizeBytes);
       return client.ar.winstonToAr(price);
     } catch (error) {
@@ -264,7 +268,7 @@ export class ArweaveClient {
    * Generate a new Arweave wallet
    */
   async generateWallet(): Promise<JWKInterface> {
-    const client = this.getClient();
+    const client = await this.getClient();
     return client.wallets.generate();
   }
 
@@ -272,14 +276,14 @@ export class ArweaveClient {
    * Get wallet address from JWK
    */
   async getAddressFromJWK(jwk: JWKInterface): Promise<string> {
-    const client = this.getClient();
+    const client = await this.getClient();
     return client.wallets.jwkToAddress(jwk);
   }
 
   /**
    * Create Arweave instance
    */
-  getClientInstance(): any {
+  async getClientInstance(): Promise<any> {
     return this.getClient();
   }
 }
