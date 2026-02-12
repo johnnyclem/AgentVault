@@ -50,3 +50,4 @@ package-lock.json
 
 # agent backups / keys
 backups/
+.vercel
