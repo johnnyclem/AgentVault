@@ -10,6 +10,7 @@ import * as crypto from 'node:crypto';
 import bs58 from 'bs58';
 import type { WalletCreationMethod } from './types.js';
 import { Keypair } from '@solana/web3.js';
+import { HDNodeWallet, SigningKey, computeAddress } from 'ethers';
 
 /**
  * Derivation path components
@@ -209,22 +210,16 @@ export function deriveEthKey(
   seed: Buffer,
   derivationPath: string = DEFAULT_DERIVATION_PATHS.eth!
 ): DerivedKey {
-  const derived = deriveKeyFromSeed(seed, derivationPath);
+  const root = HDNodeWallet.fromSeed(seed);
+  const node = root.derivePath(derivationPath);
 
-  if (!derived || !derived.privateKey) {
-    throw new Error('Failed to derive Ethereum key');
-  }
-
-  // Generate Ethereum public key (secp256k1)
-  // For now, we'll return the private key and a placeholder address
-  // In production, use elliptic or secp256k1 library for proper key derivation
-
-  const publicKey = derivePublicKey(derived.privateKey);
-  const address = deriveEthAddress(publicKey);
+  const privateKeyHex = stripHexPrefix(node.privateKey);
+  const publicKeyHex = stripHexPrefix(SigningKey.computePublicKey(node.privateKey, false));
+  const address = node.address;
 
   return {
-    privateKey: derived.privateKey.toString('hex'),
-    publicKey: publicKey.toString('hex'),
+    privateKey: privateKeyHex,
+    publicKey: publicKeyHex,
     address,
     derivationPath,
   };
@@ -278,11 +273,11 @@ export function deriveSolanaKey(
     throw new Error('Failed to derive Solana key');
   }
 
-  // Solana uses Ed25519, takes first 32 bytes of derived private key
+  // Solana uses Ed25519, takes first 32 bytes as seed material
   const privateKeyBytes = derived.privateKey.subarray(0, 32);
 
   // Use Solana's Keypair for proper Ed25519 key generation
-  const keypair = Keypair.fromSecretKey(privateKeyBytes);
+  const keypair = Keypair.fromSeed(privateKeyBytes);
 
   return {
     privateKey: Buffer.from(keypair.secretKey).toString('hex'),
@@ -299,29 +294,11 @@ export function deriveSolanaKey(
  * @returns Public key bytes
  */
 function derivePublicKey(privateKey: Buffer): Buffer {
-  // This is a simplified version
-  // In production, use proper elliptic curve libraries:
-  // - Ethereum: secp256k1
-  // - Polkadot: sr25519
-  // - Solana: ed25519
-
-  // For now, generate a deterministic public key from private key
-  const hash = crypto.createHash('sha256').update(privateKey).digest();
-  return hash.slice(0, 32);
-}
-
-/**
- * Derive Ethereum address from public key
- *
- * @param publicKey - Public key bytes
- * @returns Ethereum address
- */
-function deriveEthAddress(publicKey: Buffer): string {
-  // Simplified Ethereum address derivation
-  // In production, use keccak256 and proper address derivation
-  const hash = crypto.createHash('sha256').update(publicKey).digest();
-  const addressBytes = hash.slice(0, 20);
-  return '0x' + addressBytes.toString('hex');
+  // Default to secp256k1 for generic key derivation paths.
+  // Chain-specific derivation functions should prefer their own primitives.
+  const privateKeyHex = `0x${privateKey.toString('hex')}`;
+  const publicKeyHex = SigningKey.computePublicKey(privateKeyHex, false);
+  return Buffer.from(stripHexPrefix(publicKeyHex), 'hex');
 }
 
 /**
@@ -341,23 +318,6 @@ function derivePolkadotAddress(publicKey: Buffer): string {
     return bs58.encode(addressBytes);
   } catch (error) {
     return 'placeholder-polkadot-address';
-  }
-}
-
-/**
- * Derive Solana address from public key
- *
- * @param publicKey - Public key bytes
- * @returns Solana address (Base58 format)
- */
-function deriveSolanaAddress(publicKey: Buffer): string {
-  // Simplified Solana address derivation
-  // In production, use proper Base58 encoding
-  const addressBytes = publicKey.slice(0, 32);
-  try {
-    return bs58.encode(addressBytes);
-  } catch (error) {
-    return 'placeholder-solana-address';
   }
 }
 
@@ -405,22 +365,31 @@ export function deriveWalletKey(
     derivationPath || getDefaultDerivationPath(chain);
 
   if (method === 'private-key' && privateKey) {
-    // Direct use of private key
-    const privateKeyBuffer = Buffer.from(privateKey, 'hex');
-    const publicKey = derivePublicKey(privateKeyBuffer);
+    const normalizedPrivateKey = normalizePrivateKey(privateKey);
+    const privateKeyBuffer = Buffer.from(stripHexPrefix(normalizedPrivateKey), 'hex');
 
     let address: string;
+    let publicKeyHex: string;
+
     if (chain === 'cketh' || chain === 'ethereum') {
-      address = deriveEthAddress(publicKey);
+      publicKeyHex = stripHexPrefix(SigningKey.computePublicKey(normalizedPrivateKey, false));
+      address = computeAddress(normalizedPrivateKey);
     } else if (chain === 'polkadot') {
+      const publicKey = derivePublicKey(privateKeyBuffer);
+      publicKeyHex = publicKey.toString('hex');
       address = derivePolkadotAddress(publicKey);
     } else {
-      address = deriveSolanaAddress(publicKey);
+      // Solana accepts either 32-byte seed or 64-byte secret key material.
+      const keypair = privateKeyBuffer.length >= 64
+        ? Keypair.fromSecretKey(privateKeyBuffer.subarray(0, 64))
+        : Keypair.fromSeed(privateKeyBuffer.subarray(0, 32));
+      publicKeyHex = Buffer.from(keypair.publicKey.toBytes()).toString('hex');
+      address = keypair.publicKey.toBase58();
     }
 
     return {
-      privateKey,
-      publicKey: publicKey.toString('hex'),
+      privateKey: stripHexPrefix(normalizedPrivateKey),
+      publicKey: publicKeyHex,
       address,
       derivationPath: effectiveDerivationPath,
     };
@@ -446,4 +415,12 @@ export function deriveWalletKey(
   }
 
   throw new Error(`Invalid wallet creation method: ${method}`);
+}
+
+function stripHexPrefix(value: string): string {
+  return value.startsWith('0x') ? value.slice(2) : value;
+}
+
+function normalizePrivateKey(value: string): string {
+  return value.startsWith('0x') ? value : `0x${value}`;
 }

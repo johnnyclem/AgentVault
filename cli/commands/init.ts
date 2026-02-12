@@ -66,7 +66,7 @@ export async function promptForInitOptions(options: InitOptions): Promise<InitAn
   return answers;
 }
 
-export async function executeInit(answers: InitAnswers, options: InitOptions, sourcePath: string): Promise<void> {
+export async function executeInit(answers: InitAnswers, _options: InitOptions, sourcePath: string): Promise<void> {
   const spinner = ora('Initializing AgentVault project...').start();
 
   const projectDir = path.resolve(sourcePath, '.agentvault');

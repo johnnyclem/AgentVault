@@ -74,17 +74,29 @@ export async function executeShow(
       lastUpdated: new Date().toISOString(),
     };
 
-    // In a real implementation, this would query actual canister for tasks/memories
     if (options.tasks) {
-      state.tasks = [];
+      try {
+        state.tasks = await client.callAgentMethod<unknown[]>(resolvedCanisterId, 'agent_get_tasks');
+      } catch {
+        state.tasks = [];
+      }
     }
 
     if (options.memories) {
-      state.memories = [];
+      try {
+        state.memories = await client.callAgentMethod<unknown[]>(resolvedCanisterId, 'agent_get_memories');
+      } catch {
+        state.memories = [];
+      }
     }
 
     if (options.context) {
-      state.context = {};
+      try {
+        const context = await client.callAgentMethod<unknown>(resolvedCanisterId, 'getAllContext');
+        state.context = (context as Record<string, unknown>) ?? {};
+      } catch {
+        state.context = {};
+      }
     }
 
     // Display

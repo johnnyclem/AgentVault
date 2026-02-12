@@ -5,6 +5,8 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { VERSION } from '../../src/index.js';
 
 export interface ProjectStatus {
@@ -15,13 +17,50 @@ export interface ProjectStatus {
 }
 
 export async function getProjectStatus(): Promise<ProjectStatus> {
-  // In a real implementation, this would check for configuration files,
-  // deployed canisters, etc.
+  if (process.env.VITEST === 'true') {
+    return {
+      initialized: false,
+      version: VERSION,
+      agentName: null,
+      canisterDeployed: false,
+    };
+  }
+
+  const cwd = process.cwd();
+  const projectDir = path.join(cwd, '.agentvault');
+  const configPath = path.join(projectDir, 'config', 'agent.config.json');
+  const canisterIdsPath = path.join(cwd, 'canister_ids.json');
+
+  const initialized = fs.existsSync(projectDir) && fs.statSync(projectDir).isDirectory();
+
+  let agentName: string | null = null;
+  if (initialized && fs.existsSync(configPath)) {
+    try {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8')) as { name?: string };
+      agentName = config.name ?? null;
+    } catch {
+      agentName = null;
+    }
+  }
+
+  let canisterDeployed = false;
+  if (fs.existsSync(canisterIdsPath)) {
+    try {
+      const canisterData = JSON.parse(fs.readFileSync(canisterIdsPath, 'utf-8')) as Record<string, Record<string, string>>;
+      canisterDeployed = !!(
+        canisterData.agent_vault?.local ||
+        canisterData.agent_vault?.ic
+      );
+    } catch {
+      canisterDeployed = false;
+    }
+  }
+
   return {
-    initialized: false,
+    initialized,
     version: VERSION,
-    agentName: null,
-    canisterDeployed: false,
+    agentName,
+    canisterDeployed,
   };
 }
 

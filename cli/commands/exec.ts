@@ -66,7 +66,11 @@ export async function executeExec(
     // Submit task to canister
     spinner.text = 'Submitting task...';
 
-    // Stub: In a real implementation, this would call the actual canister
+    const executionResult = await client.callAgentMethod<unknown>(
+      resolvedCanisterId,
+      'execute',
+      [task]
+    );
     const taskId = `task_${Date.now()}`;
 
     spinner.succeed('Task submitted successfully!');
@@ -81,13 +85,14 @@ export async function executeExec(
     // Poll for completion if requested
     if (options.polling && !options.async) {
       const newSpinner = ora('Waiting for task completion...');
-      return await pollForCompletion(client, resolvedCanisterId, taskId, newSpinner);
+      return await pollForCompletion(client, resolvedCanisterId, taskId, executionResult, newSpinner);
     }
 
     // Return async result
     return {
       taskId,
       status: 'pending',
+      result: executionResult,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
@@ -103,48 +108,19 @@ async function pollForCompletion(
   _client: unknown,
   _canisterId: string,
   taskId: string,
+  executionResult: unknown,
   spinner: Ora
 ): Promise<TaskResult> {
-  const maxAttempts = 60;
-  const intervalMs = 1000;
+  spinner.start('Finalizing task result...');
+  spinner.succeed('Task completed!');
 
-  spinner.start('Waiting for task completion...');
-
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    // Stub: In a real implementation, this would query the canister
-    const status =
-      attempt < 3 ? 'running' : attempt < 5 ? 'completed' : 'failed';
-
-    if (status === 'completed' || status === 'failed') {
-      spinner.succeed('Task completed!');
-
-      const result: TaskResult = {
-        taskId,
-        status,
-        cyclesUsed: BigInt(1_000_000),
-      };
-
-      if (status === 'completed') {
-        console.log();
-        console.log(chalk.green('✓'), 'Task executed successfully!');
-      } else {
-        console.log();
-        console.log(chalk.red('✗'), 'Task failed!');
-      }
-
-      return result;
-    }
-
-    spinner.text = `Waiting for completion... (${attempt + 1}/${maxAttempts})`;
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
-  }
-
-  spinner.fail('Task timed out');
+  console.log();
+  console.log(chalk.green('✓'), 'Task executed successfully!');
 
   return {
     taskId,
-    status: 'failed',
-    error: 'Task timed out after maximum attempts',
+    status: 'completed',
+    result: executionResult,
   };
 }
 

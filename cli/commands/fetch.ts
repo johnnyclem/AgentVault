@@ -77,17 +77,27 @@ export async function executeFetch(
     // Fetch state from canister
     spinner.text = 'Querying canister state...';
 
-    // Stub: In a real implementation, this would query the actual canister
+    const canisterStatus = await client.getCanisterStatus(resolvedCanisterId);
+
+    const [agentStateResult, memoriesResult, tasksResult, contextResult] = await Promise.allSettled([
+      client.callAgentMethod<unknown>(resolvedCanisterId, 'agent_get_state'),
+      client.callAgentMethod<unknown[]>(resolvedCanisterId, 'agent_get_memories'),
+      client.callAgentMethod<unknown[]>(resolvedCanisterId, 'agent_get_tasks'),
+      client.callAgentMethod<unknown>(resolvedCanisterId, 'getAllContext'),
+    ]);
+
     const stateData = {
       canisterId: resolvedCanisterId,
       network,
       fetchedAt: new Date().toISOString(),
+      canisterStatus,
       state: {
-        initialized: true,
+        initialized: canisterStatus.exists,
         data: {
-          memories: [],
-          tasks: [],
-          context: {},
+          agentState: agentStateResult.status === 'fulfilled' ? agentStateResult.value : null,
+          memories: memoriesResult.status === 'fulfilled' ? memoriesResult.value : [],
+          tasks: tasksResult.status === 'fulfilled' ? tasksResult.value : [],
+          context: contextResult.status === 'fulfilled' ? contextResult.value : {},
         },
       },
     };
