@@ -1,8 +1,18 @@
 /**
  * Multi-Signature Approval Workflows
  *
- * Manages approval workflows requiring multiple signatures.
- * Supports approval policies, signature tracking, and state management.
+ * Manages local approval workflows requiring multiple signatures.
+ * This is a LOCAL approval tracking system, not cryptographic multisig.
+ *
+ * IMPORTANT: For production blockchain multisig, use:
+ * - ICP canister-based threshold signatures (VetKeys)
+ * - The canister multisig module for on-chain verification
+ *
+ * This module provides:
+ * - Approval request tracking
+ * - Signature collection and counting
+ * - Policy-based approval thresholds
+ * - Audit trail for approvals
  */
 
 import fs from 'node:fs';
@@ -28,14 +38,21 @@ export interface ApprovalRequest {
   expiresAt?: Date;
   policy: ApprovalPolicy;
   requiredApprovals: number;
-  approvals: Signature[];
+  approvals: ApprovalSignature[];
   status: ApprovalStatus;
-  data?: Record<string, any>;
+  data?: Record<string, unknown>;
 }
 
-export interface Signature {
+/**
+ * Approval signature (NOT cryptographic - for audit trail only)
+ *
+ * This represents an approval action, not a cryptographic signature.
+ * For cryptographic multisig, use the VetKeys canister integration.
+ */
+export interface ApprovalSignature {
   signer: string;
-  signature: string;
+  /** Audit token - NOT a cryptographic signature */
+  auditToken: string;
   timestamp: Date;
   comment?: string;
 }
@@ -146,14 +163,16 @@ export function signApprovalRequest(
     return false;
   }
 
-  const signature: Signature = {
+  const approvalSignature: ApprovalSignature = {
     signer,
-    signature: crypto.createHash('sha256').update(`${id}:${signer}:${Date.now()}`).digest('hex'),
+    auditToken: crypto.createHash('sha256')
+      .update(`${id}:${signer}:${Date.now()}:${request.description}`)
+      .digest('hex'),
     timestamp: new Date(),
     comment,
   };
 
-  request.approvals.push(signature);
+  request.approvals.push(approvalSignature);
 
   if (request.approvals.length >= request.requiredApprovals) {
     request.status = 'approved';
@@ -185,7 +204,9 @@ export function rejectApprovalRequest(
   request.status = 'rejected';
   request.approvals.push({
     signer: rejectedBy,
-    signature: crypto.createHash('sha256').update(`${id}:rejected:${Date.now()}`).digest('hex'),
+    auditToken: crypto.createHash('sha256')
+      .update(`${id}:rejected:${Date.now()}:${reason || 'no-reason'}`)
+      .digest('hex'),
     timestamp: new Date(),
     comment: `Rejected: ${reason || 'No reason provided'}`,
   });
@@ -207,14 +228,45 @@ export function getApprovalRequest(id: string): ApprovalRequest | null {
     }
 
     const content = fs.readFileSync(filePath, 'utf8');
-    const parsed = parse(content) as ApprovalRequest;
+    interface LegacyApproval {
+      signer: string;
+      signature?: string;
+      auditToken?: string;
+      timestamp: string | Date;
+      comment?: string;
+    }
+    interface LegacyApprovalRequest {
+      id: string;
+      type: ApprovalRequest['type'];
+      agentName: string;
+      canisterId?: string;
+      description: string;
+      proposedBy: string;
+      timestamp: string | Date;
+      expiresAt?: string | Date;
+      policy: ApprovalPolicy;
+      requiredApprovals: number;
+      approvals: LegacyApproval[];
+      status: ApprovalStatus;
+      data?: Record<string, unknown>;
+    }
+
+    const parsed = parse(content) as LegacyApprovalRequest;
     parsed.timestamp = new Date(parsed.timestamp);
     parsed.expiresAt = parsed.expiresAt ? new Date(parsed.expiresAt) : undefined;
-    parsed.approvals.forEach((a) => {
-      a.timestamp = new Date(a.timestamp);
+
+    // Migrate old 'signature' field to 'auditToken' for backward compatibility
+    parsed.approvals = parsed.approvals.map((a): ApprovalSignature => {
+      const migrated: ApprovalSignature = {
+        signer: a.signer,
+        auditToken: a.auditToken || a.signature || '',
+        timestamp: new Date(a.timestamp),
+        comment: a.comment,
+      };
+      return migrated;
     });
 
-    return parsed;
+    return parsed as ApprovalRequest;
   } catch (error) {
     console.error(`Failed to get approval request ${id}:`, error);
     return null;

@@ -301,7 +301,7 @@ export class VetKeysImplementation {
   /**
    * Derive master key from seed phrase (for local use)
    *
-   * Uses PBKDF2 for key derivation, same as existing implementation.
+   * Uses PBKDF2 for key derivation with a derived salt from the seed.
    * This is NOT the threshold key, but the master secret that participants share.
    */
   private async deriveMasterKey(seedPhrase: string, _algorithm: EncryptionAlgorithm): Promise<{ key: string; method: string }> {
@@ -310,10 +310,16 @@ export class VetKeysImplementation {
 
     const seed = await bip39.mnemonicToSeed(seedPhrase);
 
-    // Derive key using PBKDF2
+    // Derive salt from seed (first 16 bytes) for unique per-wallet salting
+    const salt = crypto.createHash('sha256')
+      .update(seed.slice(0, 16))
+      .update('agentvault-v1')
+      .digest();
+
+    // Derive key using PBKDF2 with unique salt
     const key = crypto.pbkdf2Sync(
       seed,
-      'agentvault-encryption-key',
+      salt,
       100000,
       32,
       'sha256',
@@ -545,6 +551,9 @@ export class VetKeysImplementation {
   /**
    * Verify threshold signature with canister
    *
+   * IMPORTANT: Requires VetKeys canister to be deployed and connected.
+   * Returns false if canister is not available.
+   *
    * @param signature - Signature to verify
    * @param message - Original message
    * @returns True if signature is valid
@@ -554,7 +563,8 @@ export class VetKeysImplementation {
     message: string
   ): Promise<boolean> {
     if (!this.canisterId) {
-      return true;
+      console.warn('VetKeys canister not configured: cannot verify threshold signature');
+      return false;
     }
 
     try {
@@ -569,8 +579,8 @@ export class VetKeysImplementation {
 
       return false;
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      console.warn(`Failed to verify threshold signature on canister: ${message}`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.warn(`Failed to verify threshold signature on canister: ${errorMessage}`);
       return false;
     }
   }

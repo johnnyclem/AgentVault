@@ -53,6 +53,7 @@ export interface Wallet {
   balance: bigint
   type: 'local' | 'hardware'
   address?: string
+  status?: 'connected' | 'disconnected'
   createdAt: string
 }
 
@@ -100,6 +101,16 @@ export interface Task {
   createdAt: string
   completedAt?: string
   error?: string
+}
+
+export interface Transaction {
+  id: string
+  type: 'send' | 'receive'
+  amount: bigint
+  from?: string
+  to?: string
+  timestamp: string
+  status?: 'pending' | 'confirmed' | 'failed'
 }
 
 export interface Archive {

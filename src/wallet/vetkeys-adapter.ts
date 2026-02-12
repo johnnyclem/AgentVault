@@ -37,23 +37,28 @@ export interface VetKeysAdapterOptions {
   threshold?: number;
   totalParties?: number;
   encryptionAlgorithm?: 'aes-256-gcm' | 'chacha20-poly1305';
+  /** VetKeys canister ID for canister-based operations */
+  canisterId?: string;
 }
 
 /**
  * VetKeys adapter
  *
- * Mock VetKeys integration using local-only implementation.
- * Real VetKeys canister integration pending deployment.
+ * VetKeys integration with optional canister support.
+ * Real VetKeys canister integration requires canisterId to be set.
  */
 export class VetKeysAdapter {
   private options: VetKeysAdapterOptions;
+  private canisterId?: string;
 
   constructor(options: VetKeysAdapterOptions = {}) {
     this.options = {
       threshold: options.threshold ?? 2,
       totalParties: options.totalParties ?? 3,
       encryptionAlgorithm: options.encryptionAlgorithm ?? 'aes-256-gcm',
+      canisterId: options.canisterId,
     };
+    this.canisterId = options.canisterId;
   }
 
   /**
@@ -381,18 +386,35 @@ export class VetKeysAdapter {
       currentThreshold: this.options.threshold ?? 2,
       totalParties: this.options.totalParties ?? 3,
       encryptionAlgorithm: this.options.encryptionAlgorithm ?? 'aes-256-gcm',
-      mode: 'mock',
+      mode: this.canisterId ? 'production' : 'mock',
     };
   }
 
   /**
    * Check if canister is connected
    *
+   * Attempts to ping the VetKeys canister to verify connectivity.
+   * Returns false if canisterId is not configured or canister is unreachable.
+   *
    * @returns True if VetKeys canister is accessible
    */
   async isCanisterConnected(): Promise<boolean> {
-    console.log('VetKeys canister integration not deployed, using mock mode');
-    return false;
+    if (!this.canisterId) {
+      return false;
+    }
+
+    try {
+      const { createActor } = await import('../canister/actor.js');
+      const actor = createActor(this.canisterId);
+
+      const status = await actor.getVetKeysStatus();
+
+      return status && typeof status === 'object' && 'enabled' in status;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.warn(`VetKeys canister not accessible: ${message}`);
+      return false;
+    }
   }
 }
 

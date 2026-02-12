@@ -39,6 +39,11 @@ const PUBLIC_RPC_URLS = {
 };
 
 /**
+ * Environment variable names for Etherscan configuration
+ */
+const ENV_ETHERSCAN_API_KEY = 'ETHERSCAN_API_KEY';
+
+/**
  * ckETH provider configuration
  */
 interface CkEthConfig extends ProviderConfig {
@@ -46,6 +51,8 @@ interface CkEthConfig extends ProviderConfig {
   rpcUrl: string;
   /** Chain ID (1 = Mainnet, 5 = Goerli, 11155111 = Sepolia) */
   chainId?: number;
+  /** Etherscan API key (optional, for transaction history) */
+  etherscanApiKey?: string;
 }
 
 /**
@@ -54,10 +61,12 @@ interface CkEthConfig extends ProviderConfig {
 export class CkEthProvider extends BaseWalletProvider {
   private provider: ethers.JsonRpcProvider | null = null;
   private chainId: number;
+  private etherscanApiKey: string | undefined;
 
   constructor(config: CkEthConfig) {
     super(config);
     this.chainId = config.chainId ?? 1;
+    this.etherscanApiKey = config.etherscanApiKey;
   }
 
   /**
@@ -221,11 +230,64 @@ export class CkEthProvider extends BaseWalletProvider {
 
   /**
    * Get transaction history
+   *
+   * Uses Etherscan API to fetch transaction history.
+   * Requires ETHERSCAN_API_KEY environment variable or etherscanApiKey in config.
+   *
+   * @param address - Wallet address to get history for
+   * @returns Array of transactions
    */
-  async getTransactionHistory(_address: string): Promise<Transaction[]> {
-    // For MVP, return empty array
-    // In production, query blockchain or use Etherscan API
-    return [];
+  async getTransactionHistory(address: string): Promise<Transaction[]> {
+    const apiKey = this.etherscanApiKey || process.env[ENV_ETHERSCAN_API_KEY];
+
+    if (!apiKey) {
+      console.warn(
+        'Etherscan API key not configured. Set ETHERSCAN_API_KEY environment variable ' +
+        'or provide etherscanApiKey in config for transaction history.'
+      );
+      return [];
+    }
+
+    try {
+      const isTestnet = this.chainId !== 1;
+      const baseUrl = isTestnet
+        ? 'https://api-sepolia.etherscan.io/api'
+        : 'https://api.etherscan.io/api';
+
+      const url = `${baseUrl}?module=account&action=txlist&address=${address}&startblock=0&endblock=99999999&sort=desc&apikey=${apiKey}`;
+
+      const response = await fetch(url);
+      const data = await response.json() as { status: string; result: Array<{
+        hash: string;
+        from: string;
+        to: string;
+        value: string;
+        timeStamp: string;
+        gasUsed: string;
+        gasPrice: string;
+        isError: string;
+      }> };
+
+      if (data.status !== '1' || !Array.isArray(data.result)) {
+        console.warn('Etherscan API returned no results or error');
+        return [];
+      }
+
+      return data.result.slice(0, 50).map((tx) => ({
+        hash: tx.hash,
+        from: tx.from,
+        to: tx.to,
+        amount: ethers.formatEther(BigInt(tx.value)),
+        chain: this.getChain(),
+        timestamp: parseInt(tx.timeStamp, 10) * 1000,
+        status: tx.isError === '1' ? 'failed' : 'confirmed',
+        fee: ethers.formatEther(BigInt(tx.gasUsed) * BigInt(tx.gasPrice)),
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.warn(`Failed to get transaction history: ${message}`);
+      return [];
+    }
   }
 
   /**
