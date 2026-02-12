@@ -55,14 +55,6 @@ vi.mock('@dfinity/agent', async (importOriginal) => {
   };
 });
 
-// Mock crypto module
-vi.mock('node:crypto', () => ({
-  createHash: vi.fn(() => ({
-    update: vi.fn().mockReturnThis(),
-    digest: vi.fn().mockReturnValue('abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234'),
-  })),
-}));
-
 describe('deployer', () => {
   beforeEach(() => {
     vi.clearAllMocks();

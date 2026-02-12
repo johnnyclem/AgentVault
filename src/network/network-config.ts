@@ -82,6 +82,7 @@ export async function listNetworkConfigs(): Promise<NetworkConfig[]> {
       try {
         configs.push(parse(content) as NetworkConfig);
       } catch {
+        // Skip invalid config files
       }
     }
   }

@@ -96,7 +96,7 @@ export class BittensorClient {
       ) => Promise<{ default: any }>;
       const axiosModule = await dynamicImport('axios');
       return axiosModule.default;
-    } catch (error) {
+    } catch (_error) {
       throw new Error(
         'axios is required for BittensorClient. Install with: npm install axios',
       );
@@ -273,7 +273,7 @@ export class BittensorClient {
         moduleCount: modules.length,
         avgResponseTime: responseTime,
       };
-    } catch (error) {
+    } catch (_error) {
       return {
         healthy: false,
         moduleCount: 0,

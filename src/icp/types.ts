@@ -244,7 +244,10 @@ export interface IcWasmResourceOptions {
   value: string;
 }
 
+// ─── Optimization Types ─────────────────────────────────────────────────────────
+
 /** Combined optimization pipeline options */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface IcWasmOptimizeOptions {}
 
 /** Result of an optimization operation with metrics */
@@ -356,6 +359,7 @@ export interface IcpTokenTransferOptions extends IcpCommonOptions {
 // ─── Identity Types ─────────────────────────────────────────────────────────────
 
 /** Options for icp identity list */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface IcpIdentityListOptions extends IcpCommonOptions {}
 
 /** Options for icp identity new */
@@ -405,6 +409,7 @@ export interface IcpSyncOptions extends IcpCommonOptions {
 // ─── Environment Types ─────────────────────────────────────────────────────
 
 /** Options for icp environment list */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface IcpEnvironmentListOptions extends IcpCommonOptions {}
 
 // ─── Network Config ─────────────────────────────────────────────────────────────

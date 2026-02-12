@@ -76,7 +76,7 @@ export function getTimeSeries(
   to: Date,
 ): MetricTimeSeries {
   const dataPoints: MetricDataPoint[] = [];
-  let currentDate = new Date(from);
+  const currentDate = new Date(from);
   
   while (currentDate <= to) {
     const metricsFile = getMetricsFile(canisterId, currentDate);

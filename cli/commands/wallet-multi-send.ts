@@ -42,7 +42,7 @@ export async function handleMultiSend(agentId: string): Promise<void> {
       if (wallet) {
         wallets.push(wallet);
       }
-    } catch (error) {
+    } catch (_error) {
       console.log(chalk.yellow(`Failed to load wallet ${walletId}`));
     }
   }
@@ -202,11 +202,11 @@ async function checkBalances(wallets: WalletData[]): Promise<void> {
           balance: `${balance.amount} ${balance.denomination}`,
           error: undefined,
         });
-      } catch (error) {
+    } catch (_error) {
         balances.push({
           wallet,
           balance: '0',
-          error: error instanceof Error ? error.message : 'Unknown error',
+          error: _error instanceof Error ? _error.message : 'Unknown error',
         });
       }
     }

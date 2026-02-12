@@ -66,7 +66,7 @@ export class ArweaveClient {
           timeout: this.config.timeout,
           logging: this.config.logging,
         });
-      } catch (error) {
+      } catch (_error) {
         throw new Error(
           'arweave is required for ArweaveClient. Install with: npm install arweave',
         );
@@ -85,7 +85,7 @@ export class ArweaveClient {
       ) => Promise<{ default: any }>;
       const arweaveModule = await dynamicImport('arweave');
       return arweaveModule.default;
-    } catch (error) {
+    } catch (_error) {
       throw new Error(
         'arweave is required for ArweaveClient. Install with: npm install arweave',
       );

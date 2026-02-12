@@ -324,7 +324,7 @@ export class SolanaProvider extends BaseWalletProvider {
       const feeInSol = fee / LAMPORTS_PER_SOL;
 
       return feeInSol.toFixed(9);
-    } catch (error) {
+    } catch (_error) {
       return '0.000005';
     }
   }

@@ -229,7 +229,7 @@ export async function handleImport(agentId: string, filePath: string): Promise<v
     console.log(chalk.cyan('Importing wallets...'));
 
     let successCount = 0;
-    let skipCount = 0;
+    const skipCount = 0;
     let failCount = 0;
 
     for (const wallet of backup.wallets) {

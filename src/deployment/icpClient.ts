@@ -359,7 +359,7 @@ export class ICPClient {
         memorySize: statusData.memory_size ? BigInt(statusData.memory_size) : undefined,
         cycles: statusData.cycles ? BigInt(statusData.cycles) : undefined,
       };
-    } catch (error) {
+    } catch (_error) {
       return {
         exists: false,
         status: 'stopped',
@@ -572,177 +572,14 @@ export class ICPClient {
   /**
    * Call method via Actor instance
    */
-  private async callViaActor<T>(actor: any, methodName: string, args: any[]): Promise<T> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async callViaActor<T>(actor: any, methodName: string, args: unknown[]): Promise<T> {
     try {
-      switch (methodName) {
-        case 'getAgentConfig':
-          return await actor.getAgentConfig() as T;
-
-        case 'getAgentStatus':
-          return await actor.getAgentStatus() as T;
-
-        case 'setAgentConfig':
-          return await actor.setAgentConfig(args[0]) as T;
-
-        case 'loadAgentWasm':
-          return await actor.loadAgentWasm(args[0], args[1]) as T;
-
-        case 'getWasmInfo':
-          return await actor.getWasmInfo() as T;
-
-        case 'isWasmLoaded':
-          return await actor.isWasmLoaded() as T;
-
-        case 'agent_init':
-          return await actor.agent_init(args[0]) as T;
-
-        case 'agent_step':
-          return await actor.agent_step(args[0]) as T;
-
-        case 'agent_get_state':
-          return await actor.agent_get_state() as T;
-
-        case 'agent_get_state_size':
-          return await actor.agent_get_state_size() as T;
-
-        case 'agent_add_memory':
-          return await actor.agent_add_memory(args[0], args[1]) as T;
-
-        case 'agent_get_memories':
-          return await actor.agent_get_memories() as T;
-
-        case 'agent_get_memories_by_type':
-          return await actor.agent_get_memories_by_type(args[0]) as T;
-
-        case 'agent_clear_memories':
-          return await actor.agent_clear_memories() as T;
-
-        case 'agent_add_task':
-          return await actor.agent_add_task(args[0], args[1]) as T;
-
-        case 'agent_get_tasks':
-          return await actor.agent_get_tasks() as T;
-
-        case 'agent_get_pending_tasks':
-          return await actor.agent_get_pending_tasks() as T;
-
-        case 'agent_update_task_status':
-          return await actor.agent_update_task_status(args[0], args[1], args[2]) as T;
-
-        case 'agent_clear_tasks':
-          return await actor.agent_clear_tasks() as T;
-
-        case 'agent_get_info':
-          return await actor.agent_get_info() as T;
-
-        case 'execute':
-          return await actor.execute(args[0]) as T;
-
-        case 'addMemory':
-          return await actor.addMemory(args[0]) as T;
-
-        case 'getMemories':
-          return await actor.getMemories() as T;
-
-        case 'getMemoriesByType':
-          return await actor.getMemoriesByType(args[0]) as T;
-
-        case 'clearMemories':
-          return await actor.clearMemories() as T;
-
-        case 'addTask':
-          return await actor.addTask(args[0]) as T;
-
-        case 'getTasks':
-          return await actor.getTasks() as T;
-
-        case 'getPendingTasks':
-          return await actor.getPendingTasks() as T;
-
-        case 'getRunningTasks':
-          return await actor.getRunningTasks() as T;
-
-        case 'updateTaskStatus':
-          return await actor.updateTaskStatus(args[0], args[1], args[2]) as T;
-
-        case 'clearTasks':
-          return await actor.clearTasks() as T;
-
-        case 'setContext':
-          return await actor.setContext(args[0], args[1]) as T;
-
-        case 'getContext':
-          return await actor.getContext(args[0]) as T;
-
-        case 'getAllContext':
-          return await actor.getAllContext() as T;
-
-        case 'clearContext':
-          return await actor.clearContext() as T;
-
-        case 'getCanisterStatus':
-          return await actor.getCanisterStatus() as T;
-
-        case 'getMetrics':
-          return await actor.getMetrics() as T;
-
-        case 'heartbeat':
-          return await actor.heartbeat() as T;
-
-        case 'registerWallet':
-          return await actor.registerWallet(args[0]) as T;
-
-        case 'getWallet':
-          return await actor.getWallet(args[0]) as T;
-
-        case 'listWallets':
-          return await actor.listWallets(args[0]) as T;
-
-        case 'deregisterWallet':
-          return await actor.deregisterWallet(args[0]) as T;
-
-        case 'updateWalletStatus':
-          return await actor.updateWalletStatus(args[0], args[1]) as T;
-
-        case 'queueTransaction':
-          return await actor.queueTransaction(args[0]) as T;
-
-        case 'getQueuedTransactions':
-          return await actor.getQueuedTransactions() as T;
-
-        case 'getPendingTransactions':
-          return await actor.getPendingTransactions() as T;
-
-        case 'getQueuedTransactionsByWallet':
-          return await actor.getQueuedTransactionsByWallet(args[0]) as T;
-
-        case 'getQueuedTransaction':
-          return await actor.getQueuedTransaction(args[0]) as T;
-
-        case 'markTransactionSigned':
-          return await actor.markTransactionSigned(args[0], args[1]) as T;
-
-        case 'markTransactionCompleted':
-          return await actor.markTransactionCompleted(args[0], args[1]) as T;
-
-        case 'markTransactionFailed':
-          return await actor.markTransactionFailed(args[0], args[1]) as T;
-
-        case 'retryTransaction':
-          return await actor.retryTransaction(args[0]) as T;
-
-        case 'scheduleTransaction':
-          return await actor.scheduleTransaction(args[0], args[1]) as T;
-
-        case 'clearCompletedTransactions':
-          return await actor.clearCompletedTransactions() as T;
-
-        case 'getTransactionQueueStats':
-          return await actor.getTransactionQueueStats() as T;
-
-        default:
-          throw new Error(`Unknown method: ${methodName}`);
+      const method = actor[methodName];
+      if (typeof method !== 'function') {
+        throw new Error(`Unknown method: ${methodName}`);
       }
+      return (await method(...args)) as T;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       throw new Error(`Failed to call ${methodName}: ${message}`);

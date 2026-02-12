@@ -25,6 +25,16 @@ import type {
   VetKeysDerivedKey as DerivedKey,
 } from './types.js';
 
+type CanisterAlgorithm = 'aes_256_gcm' | 'chacha20_poly1305';
+
+function toCanisterAlgorithm(algorithm: EncryptionAlgorithm): CanisterAlgorithm {
+  return algorithm === 'aes-256-gcm' ? 'aes_256_gcm' : 'chacha20_poly1305';
+}
+
+function fromCanisterAlgorithm(canisterAlg: CanisterAlgorithm): EncryptionAlgorithm {
+  return canisterAlg === 'aes_256_gcm' ? 'aes-256-gcm' : 'chacha20-poly1305';
+}
+
 export class VetKeysImplementation {
   private config: VetKeysOptions;
   private canisterId?: string;
@@ -115,10 +125,6 @@ export class VetKeysImplementation {
       throw new Error(
         `Threshold must be between 1 and totalParticipants (${totalParties!}). Got: ${threshold}`
       );
-    }
-
-    if (threshold! > totalParties!) {
-      throw new Error(`Threshold cannot exceed total participants (got ${threshold}, max ${totalParties})`);
     }
 
     try {
@@ -247,27 +253,25 @@ export class VetKeysImplementation {
   ): Promise<{ encryptedShare: string; commitment: string }> {
     const crypto = await import('node:crypto');
 
-    let secretBuffer: Buffer;
-    let iv: Buffer;
-
-    if (algorithm === 'aes-256-gcm') {
-      secretBuffer = Buffer.from(secret, 'utf-8');
-      iv = crypto.randomBytes(12);
-    } else {
-      // For other algorithms, use simpler encryption
-      secretBuffer = Buffer.from(secret, 'utf-8');
-      iv = crypto.randomBytes(16);
-    }
-
+    const secretBuffer = Buffer.from(secret, 'utf-8');
+    const iv = algorithm === 'aes-256-gcm' ? crypto.randomBytes(12) : crypto.randomBytes(16);
     const algorithmName = algorithm.replace('-', '');
-    const cipher = crypto.createCipheriv(algorithmName, secretBuffer, iv);
+
+    const encryptionKey = crypto.pbkdf2Sync(
+      secretBuffer,
+      iv,
+      100000,
+      32,
+      'sha256'
+    );
+
+    const cipher = crypto.createCipheriv(algorithmName, encryptionKey, iv);
 
     const encryptedShare = Buffer.concat([
       cipher.update(secretBuffer),
       cipher.final(),
     ]);
 
-    // Generate commitment hash
     const commitmentHash = crypto.createHash('sha256')
       .update(encryptedShare)
       .digest();
@@ -380,16 +384,12 @@ export class VetKeysImplementation {
       const { createActor } = await import('../canister/actor.js');
       const actor = createActor(this.canisterId);
 
-      const algVariant = encryptedSecret.algorithm === 'aes-256-gcm'
-        ? { aes_256_gcm: null }
-        : { chacha20_poly1305: null } as any;
-
       const result = await actor.storeEncryptedSecret({
         id: secretId,
         ciphertext: new Uint8Array(encryptedSecret.ciphertext),
         iv: new Uint8Array(encryptedSecret.iv),
         tag: new Uint8Array(encryptedSecret.tag),
-        algorithm: algVariant,
+        algorithm: toCanisterAlgorithm(encryptedSecret.algorithm),
         createdAt: Date.now(),
       });
 
@@ -435,7 +435,7 @@ export class VetKeysImplementation {
         ciphertext: new Uint8Array(secret.ciphertext),
         iv: new Uint8Array(secret.iv),
         tag: new Uint8Array(secret.tag),
-        algorithm: secret.algorithm as any as EncryptionAlgorithm,
+        algorithm: fromCanisterAlgorithm(secret.algorithm),
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';

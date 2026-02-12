@@ -289,7 +289,7 @@ export class PolkadotProvider extends BaseWalletProvider {
       const feeInDot = parseFloat(partialFee) / 10_000_000_000;
 
       return feeInDot.toFixed(6);
-    } catch (error) {
+    } catch (_error) {
       return '0.01';
     }
   }
@@ -442,7 +442,7 @@ export class PolkadotProvider extends BaseWalletProvider {
       const amount = parseFloat(cleanAmount);
       const plancks = Math.floor(amount * 10_000_000_000);
       return BigInt(plancks);
-    } catch (error) {
+    } catch (_error) {
       return BigInt(0);
     }
   }
@@ -454,7 +454,7 @@ export class PolkadotProvider extends BaseWalletProvider {
     try {
       const amount = parseFloat(plancks) / 10_000_000_000;
       return amount.toFixed(6);
-    } catch (error) {
+    } catch (_error) {
       return '0';
     }
   }

@@ -476,7 +476,7 @@ export async function getWalletSyncStatus(
       localExists,
       synced,
     };
-  } catch (error) {
+  } catch (_error) {
     return {
       walletId,
       inCanister: false,

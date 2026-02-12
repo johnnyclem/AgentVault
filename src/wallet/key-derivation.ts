@@ -316,7 +316,7 @@ function derivePolkadotAddress(publicKey: Buffer): string {
   // Simple base58 encoding (not real SS58)
   try {
     return bs58.encode(addressBytes);
-  } catch (error) {
+  } catch (_error) {
     return 'placeholder-polkadot-address';
   }
 }

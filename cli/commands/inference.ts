@@ -193,11 +193,12 @@ inferenceCmd
   .argument('<action>', 'Action: clear or stats')
   .action(async (action) => {
     switch (action) {
-      case 'clear':
+      case 'clear': {
         const spinner = ora('Clearing cache...').start();
         clearCache();
         spinner.succeed(chalk.green('Cache cleared'));
         break;
+      }
 
       case 'stats':
         try {
