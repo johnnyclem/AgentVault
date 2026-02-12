@@ -219,10 +219,14 @@ export class VetKeysImplementation {
   }
 
   /**
-   * Generate share identifier
+   * Generate share identifier using cryptographically secure random bytes
    */
   private generateShareId(): string {
-    return `share_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    const crypto = require('node:crypto');
+    const randomBytes = crypto.randomBytes(4);
+    const timestamp = Date.now().toString(36);
+    const randomHex = randomBytes.toString('hex').substring(0, 8);
+    return `share_${timestamp}_${randomHex}`;
   }
 
    /**
