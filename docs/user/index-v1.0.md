@@ -52,9 +52,7 @@ This is the canonical documentation landing page for AgentVault v1.0.
 
 ## Product and Planning
 
-- [Marketing Site Plan](../marketing/agentvault-cloud-site.md) - agentvault.cloud
 - [Release Notes](../marketing/release-notes.md) - Version history
-- [Product Requirements (PRD)](../PRD.md) - Product specification
 
 ## Documentation Index
 
@@ -73,5 +71,5 @@ This is the canonical documentation landing page for AgentVault v1.0.
 
 - This index is for **AgentVault v1.0** content.
 - Website: https://agentvault.cloud
-- GitHub: https://github.com/anomalyco/agentvault
+- GitHub: https://github.com/johnnyclem/agentvault
 - npm: https://www.npmjs.com/package/agentvault

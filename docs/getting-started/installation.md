@@ -60,7 +60,7 @@ For development or latest features:
 
 ```bash
 # Clone the repository
-git clone https://github.com/anomalyco/agentvault.git
+git clone https://github.com/johnnyclem/agentvault.git
 cd agentvault
 
 # Install dependencies
@@ -141,7 +141,7 @@ For contributing to AgentVault:
 
 ```bash
 # Clone and install
-git clone https://github.com/anomalyco/agentvault.git
+git clone https://github.com/johnnyclem/agentvault.git
 cd agentvault
 npm install
 

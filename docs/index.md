@@ -53,13 +53,11 @@ Welcome to the AgentVault documentation. AgentVault is an open-source CLI and ca
 
 ### Reference
 
-- [Product Requirements (PRD)](./PRD.md)
 - [Changelog](../CHANGELOG.md)
 - [Clawdbot/Claude Skill](./user/clawdbot-claude-skill.md) - Operator runbook
 
-### Marketing & Launch
+### Release Notes
 
-- [Marketing Site Plan](./marketing/agentvault-cloud-site.md) - agentvault.cloud
 - [Release Notes](./marketing/release-notes.md)
 
 ## Recommended Learning Path
@@ -76,6 +74,6 @@ This documentation is for **AgentVault v1.0.0**.
 ## Getting Help
 
 - **Website**: https://agentvault.cloud
-- **GitHub Issues**: https://github.com/anomalyco/agentvault/issues
+- **GitHub Issues**: https://github.com/johnnyclem/agentvault/issues
 - **npm**: https://www.npmjs.com/package/agentvault
 - **ICP Documentation**: https://internetcomputer.org/docs/

@@ -12,7 +12,7 @@ agentvault --help
 If using the repository source:
 
 ```bash
-git clone https://github.com/anomalyco/agentvault.git
+git clone https://github.com/johnnyclem/agentvault.git
 cd agentvault
 npm install
 npm run build

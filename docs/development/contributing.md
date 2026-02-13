@@ -12,7 +12,7 @@ git clone https://github.com/YOUR_USERNAME/agentvault.git
 cd agentvault
 
 # Add upstream remote
-git remote add upstream https://github.com/anomalyco/agentvault.git
+git remote add upstream https://github.com/johnnyclem/agentvault.git
 ```
 
 ### 2. Install Dependencies

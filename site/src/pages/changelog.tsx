@@ -65,7 +65,7 @@ function Changelog(): JSX.Element {
           <div className="margin-top--lg">
             <Link
               className="button button--primary"
-              to="https://github.com/anomalyco/agentvault">
+              to="https://github.com/johnnyclem/agentvault">
               View on GitHub
             </Link>
             <Link

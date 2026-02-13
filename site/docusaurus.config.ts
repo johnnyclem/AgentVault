@@ -10,7 +10,7 @@ const config: Config = {
   url: 'https://agentvault.cloud',
   baseUrl: '/',
 
-  organizationName: 'anomalyco',
+  organizationName: 'johnnyclem',
   projectName: 'agentvault',
 
   onBrokenLinks: 'warn',
@@ -29,7 +29,7 @@ const config: Config = {
           path: '../docs',
           routeBasePath: 'docs',
           sidebarPath: './sidebars.ts',
-          editUrl: 'https://github.com/anomalyco/agentvault/tree/main/site/',
+          editUrl: 'https://github.com/johnnyclem/agentvault/tree/main/site/',
         },
         blog: false,
         theme: {
@@ -71,7 +71,7 @@ const config: Config = {
           position: 'left',
         },
         {
-          href: 'https://github.com/anomalyco/agentvault',
+          href: 'https://github.com/johnnyclem/agentvault',
           label: 'GitHub',
           position: 'right',
         },
@@ -102,7 +102,7 @@ const config: Config = {
           items: [
             {
               label: 'GitHub Issues',
-              href: 'https://github.com/anomalyco/agentvault/issues',
+              href: 'https://github.com/johnnyclem/agentvault/issues',
             },
             {
               label: 'ICP Forum',
@@ -115,7 +115,7 @@ const config: Config = {
           items: [
             {
               label: 'GitHub',
-              href: 'https://github.com/anomalyco/agentvault',
+              href: 'https://github.com/johnnyclem/agentvault',
             },
             {
               label: 'npm',
