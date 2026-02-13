@@ -1,52 +1,112 @@
-/**
- * Any CSS included here will be global. The classic template
- * bundles Infima by default. Infima is a CSS framework designed to
- * work well with Docusaurus.
- */
-
 :root {
-  --ifm-color-primary: #2e8555;
-  --ifm-color-primary-dark: #29784c;
-  --ifm-color-primary-darker: #277148;
-  --ifm-color-primary-darkest: #205d3b;
-  --ifm-color-primary-light: #33925d;
-  --ifm-color-primary-lighter: #359962;
-  --ifm-color-primary-lightest: #3cad6e;
+  --ifm-color-primary: #3dd9ff;
+  --ifm-color-primary-dark: #20d2ff;
+  --ifm-color-primary-darker: #12b8ea;
+  --ifm-color-primary-darkest: #0f90b8;
+  --ifm-color-primary-light: #61e0ff;
+  --ifm-color-primary-lighter: #8ae8ff;
+  --ifm-color-primary-lightest: #b9f3ff;
   --ifm-code-font-size: 95%;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+  --ifm-background-color: #060311;
+  --ifm-navbar-background-color: rgba(10, 7, 28, 0.88);
+  --ifm-footer-background-color: #08051a;
+  --ifm-font-family-base: 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --ifm-heading-font-family: 'Space Grotesk', 'Inter', sans-serif;
+  --ifm-heading-color: #eff2ff;
+  --ifm-link-color: #76d8ff;
+  --ifm-link-hover-color: #ff43b5;
+  --docusaurus-highlighted-code-line-bg: rgba(61, 217, 255, 0.14);
 }
 
 [data-theme='dark'] {
-  --ifm-color-primary: #25c2a0;
-  --ifm-color-primary-dark: #21af90;
-  --ifm-color-primary-darker: #1fa588;
-  --ifm-color-primary-darkest: #1a8870;
-  --ifm-color-primary-light: #29d5b0;
-  --ifm-color-primary-lighter: #32d8b4;
-  --ifm-color-primary-lightest: #4fddbf;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+  --ifm-background-color: #04020c;
+  --ifm-background-surface-color: #0b0620;
+  --ifm-navbar-background-color: rgba(8, 5, 24, 0.88);
+  --ifm-card-background-color: rgba(14, 9, 35, 0.9);
+  --ifm-heading-color: #f4f6ff;
+  --ifm-font-color-base: #d6daf5;
+  --ifm-link-color: #77e2ff;
+  --ifm-link-hover-color: #ff66cc;
+  --docusaurus-highlighted-code-line-bg: rgba(61, 217, 255, 0.2);
 }
 
-.hero--primary {
-  --ifm-hero-background-color: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-  --ifm-hero-text-color: #ffffff;
+html,
+body {
+  background:
+    radial-gradient(1000px 480px at 10% -10%, rgba(156, 52, 255, 0.25), transparent 60%),
+    radial-gradient(900px 500px at 90% -30%, rgba(40, 234, 255, 0.2), transparent 60%),
+    #04020c;
+}
+
+.navbar {
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(117, 217, 255, 0.28);
+  box-shadow: 0 0 24px rgba(104, 44, 255, 0.2);
+}
+
+.navbar__brand,
+.navbar__link {
+  text-shadow: 0 0 14px rgba(72, 211, 255, 0.35);
 }
 
 .navbar__title {
   font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.hero--primary {
+  --ifm-hero-background-color: linear-gradient(140deg, rgba(7, 3, 24, 0.98) 0%, rgba(18, 8, 54, 0.95) 50%, rgba(5, 10, 35, 0.98) 100%);
+  --ifm-hero-text-color: #fff;
 }
 
 .footer {
-  background-color: #1a1a2e;
+  border-top: 1px solid rgba(118, 216, 255, 0.2);
+}
+
+.button {
+  border-radius: 999px;
+  transition: transform 0.2s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.button:hover {
+  transform: translateY(-1px);
 }
 
 .button--secondary {
-  background-color: #25c2a0;
-  border-color: #25c2a0;
-  color: white;
+  background: linear-gradient(90deg, #3dd9ff, #7a7bff 45%, #ff43b5);
+  border: 1px solid rgba(164, 238, 255, 0.9);
+  color: #09051e;
+  box-shadow: 0 0 18px rgba(61, 217, 255, 0.42);
 }
 
 .button--secondary:hover {
-  background-color: #21af90;
-  border-color: #21af90;
+  box-shadow: 0 0 26px rgba(255, 67, 181, 0.5);
+}
+
+.button--outline {
+  border-color: rgba(132, 228, 255, 0.72);
+  color: #dce9ff;
+}
+
+.button--outline:hover {
+  border-color: #ff66cc;
+  box-shadow: 0 0 16px rgba(255, 102, 204, 0.34);
+}
+
+.theme-doc-markdown,
+article {
+  --ifm-h1-font-size: clamp(2rem, 4vw, 2.8rem);
+}
+
+.theme-doc-markdown h1,
+.theme-doc-markdown h2,
+.theme-doc-markdown h3 {
+  letter-spacing: 0.02em;
+  text-shadow: 0 0 18px rgba(84, 229, 255, 0.15);
+}
+
+.theme-code-block,
+pre {
+  border: 1px solid rgba(118, 216, 255, 0.3);
+  box-shadow: inset 0 0 0 1px rgba(255, 70, 181, 0.1);
 }

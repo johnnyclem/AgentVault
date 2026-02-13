@@ -29,12 +29,12 @@ export function Sidebar() {
   const pathname = usePathname()
 
   return (
-    <aside className="flex h-full w-64 flex-col border-r bg-card">
+    <aside className="retro-surface flex h-full w-64 flex-col border-r">
       <div className="flex items-center gap-2 border-b px-6 py-4">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
+        <div className="retro-active flex h-8 w-8 items-center justify-center rounded-lg">
           <LayoutDashboard className="h-5 w-5 text-primary-foreground" />
         </div>
-        <span className="text-lg font-bold">AgentVault</span>
+        <span className="text-lg font-bold tracking-wide">AgentVault</span>
       </div>
 
       <nav className="flex-1 space-y-1 p-4">
@@ -47,10 +47,10 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               className={clsx(
-                'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all',
                 isActive
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  ? 'retro-active'
+                  : 'text-muted-foreground hover:bg-secondary/70 hover:text-foreground hover:shadow-[0_0_12px_rgba(107,225,255,0.22)]'
               )}
             >
               <Icon className="h-4 w-4" />
@@ -70,10 +70,10 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               className={clsx(
-                'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all',
                 isActive
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  ? 'retro-active'
+                  : 'text-muted-foreground hover:bg-secondary/70 hover:text-foreground hover:shadow-[0_0_12px_rgba(107,225,255,0.22)]'
               )}
             >
               <Icon className="h-4 w-4" />

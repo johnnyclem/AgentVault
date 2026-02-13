@@ -1,5 +1,6 @@
 import React from 'react';
 import Heading from '@theme/Heading';
+import styles from './styles.module.css';
 
 type FeatureItem = {
   title: string;
@@ -38,9 +39,9 @@ const FeatureList: FeatureItem[] = [
 
 function Feature({title, description}: FeatureItem) {
   return (
-    <div className="col col--4">
-      <div className="text--center padding-horiz--md">
-        <Heading as="h3">{title}</Heading>
+    <div className="col col--4 margin-bottom--lg">
+      <div className={styles.featureCard}>
+        <Heading as="h3" className={styles.featureTitle}>{title}</Heading>
         <p>{description}</p>
       </div>
     </div>
@@ -69,7 +70,7 @@ const ValueList = [
 function ValueProp({title, description}: {title: string; description: string}) {
   return (
     <div className="col col--6 margin-bottom--lg">
-      <div className="card">
+      <div className={styles.valueCard}>
         <div className="card__header">
           <h3>{title}</h3>
         </div>
@@ -83,7 +84,7 @@ function ValueProp({title, description}: {title: string; description: string}) {
 
 export default function HomepageFeatures(): JSX.Element {
   return (
-    <section className="padding-vert--xl">
+    <section className={styles.featuresSection}>
       <div className="container">
         <div className="text--center margin-bottom--xl">
           <Heading as="h2">How It Works</Heading>

@@ -5,36 +5,62 @@
 }
 
 .heroBanner {
-  padding: 4rem 0;
+  padding: 5.5rem 0 5rem;
   text-align: center;
   position: relative;
   overflow: hidden;
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  border-bottom: 1px solid rgba(129, 220, 255, 0.28);
 }
 
-@media screen and (min-width: 996px) {
-  .heroBanner {
-    padding: 6rem 0;
-  }
+.heroBanner::before,
+.heroBanner::after {
+  content: '';
+  position: absolute;
+  inset: auto;
+  pointer-events: none;
+}
+
+.heroBanner::before {
+  width: 560px;
+  height: 560px;
+  border-radius: 20%;
+  border: 1px solid rgba(113, 224, 255, 0.25);
+  transform: rotate(45deg);
+  top: -220px;
+  right: -160px;
+  box-shadow:
+    0 0 30px rgba(95, 218, 255, 0.3),
+    0 0 80px rgba(145, 76, 255, 0.25);
+}
+
+.heroBanner::after {
+  width: 720px;
+  height: 420px;
+  left: -220px;
+  top: -120px;
+  background: radial-gradient(circle, rgba(255, 68, 182, 0.2), transparent 62%);
 }
 
 .heroBanner h1 {
-  font-size: 3rem;
-  font-weight: 700;
+  font-size: clamp(2.4rem, 6vw, 4.1rem);
+  font-weight: 800;
+  letter-spacing: 0.04em;
   margin-bottom: 1rem;
+  text-transform: uppercase;
+  text-shadow: 0 0 18px rgba(59, 214, 255, 0.4);
 }
 
 .heroBanner p {
-  font-size: 1.25rem;
-  margin-bottom: 1.5rem;
-  max-width: 800px;
+  font-size: 1.2rem;
+  margin-bottom: 1.4rem;
+  max-width: 840px;
   margin-left: auto;
   margin-right: auto;
 }
 
 .heroDescription {
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 1.1rem;
+  color: rgba(224, 235, 255, 0.92);
+  font-size: 1.06rem;
   max-width: 700px;
   margin: 0 auto 2rem;
 }
@@ -48,71 +74,63 @@
 }
 
 .trustBar {
-  background: var(--ifm-color-emphasis-100);
-  padding: 1.5rem 0;
-  border-bottom: 1px solid var(--ifm-color-emphasis-300);
-}
-
-[data-theme='dark'] .trustBar {
-  background: var(--ifm-color-emphasis-200);
+  background: linear-gradient(90deg, rgba(12, 8, 31, 0.95), rgba(14, 9, 34, 0.9));
+  padding: 1rem 0;
+  border-bottom: 1px solid rgba(122, 210, 255, 0.26);
 }
 
 .trustItems {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 2rem;
+  gap: 1.25rem;
   flex-wrap: wrap;
 }
 
 .trustItem {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 0.95rem;
-  font-weight: 500;
-  color: var(--ifm-color-emphasis-700);
+  gap: 0.55rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #dce8ff;
+  background: rgba(34, 22, 78, 0.55);
+  border: 1px solid rgba(128, 223, 255, 0.28);
 }
 
 .trustIcon {
-  font-size: 1.25rem;
+  font-size: 1.05rem;
 }
 
 .quickInstall {
   padding: 4rem 0;
   text-align: center;
-  background: var(--ifm-color-emphasis-50);
-}
-
-[data-theme='dark'] .quickInstall {
-  background: var(--ifm-background-color);
-}
-
-.quickInstall h2 {
-  margin-bottom: 1.5rem;
+  background: linear-gradient(180deg, rgba(6, 3, 18, 0.7), rgba(12, 8, 34, 0.8));
 }
 
 .codeBlock {
-  background: var(--ifm-code-background);
-  border-radius: 8px;
+  background: rgba(11, 8, 31, 0.88);
+  border-radius: 12px;
   padding: 1rem 2rem;
   display: inline-block;
   margin-bottom: 1rem;
-  border: 1px solid var(--ifm-color-emphasis-300);
+  border: 1px solid rgba(121, 217, 255, 0.35);
+  box-shadow: 0 0 20px rgba(122, 85, 255, 0.22);
 }
 
 .codeBlock code {
   font-size: 1.1rem;
-  color: var(--ifm-color-primary);
+  color: #6be2ff;
 }
 
 .quickStart {
-  color: var(--ifm-color-emphasis-600);
+  color: rgba(216, 223, 249, 0.94);
 }
 
 .quickStart code {
-  background: var(--ifm-code-background);
-  padding: 0.2rem 0.4rem;
+  background: rgba(74, 24, 115, 0.35);
+  padding: 0.2rem 0.45rem;
   border-radius: 4px;
-  font-size: 0.9rem;
 }

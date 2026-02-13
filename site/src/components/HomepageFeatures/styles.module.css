@@ -1,3 +1,35 @@
-/**
- * CSS will remain if you delete this file
- */
+.featuresSection {
+  padding: 4.5rem 0;
+  background:
+    radial-gradient(900px 360px at 18% 0%, rgba(63, 224, 255, 0.09), transparent 65%),
+    radial-gradient(700px 300px at 92% 30%, rgba(255, 67, 181, 0.09), transparent 70%),
+    transparent;
+}
+
+.featureCard {
+  height: 100%;
+  text-align: center;
+  padding: 1.5rem 1.25rem;
+  border-radius: 16px;
+  border: 1px solid rgba(118, 216, 255, 0.28);
+  background: rgba(9, 7, 25, 0.72);
+  box-shadow: 0 0 24px rgba(126, 81, 255, 0.16);
+}
+
+.featureTitle {
+  font-size: 1.22rem;
+  margin-bottom: 0.9rem;
+  color: #f1f5ff;
+}
+
+.valueCard {
+  height: 100%;
+  border: 1px solid rgba(118, 216, 255, 0.28);
+  border-radius: 16px;
+  background: linear-gradient(160deg, rgba(9, 6, 26, 0.85), rgba(20, 10, 45, 0.72));
+  box-shadow: 0 0 24px rgba(57, 199, 255, 0.15);
+}
+
+.valueCard h3 {
+  margin-bottom: 0.2rem;
+}
