@@ -8,19 +8,48 @@ import { useCanisterStatus } from '@/hooks/useCanisterStatus'
 import { useDeployments } from '@/hooks/useDeployments'
 import { useAgent } from '@/hooks/useAgent'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
+import { apiClient } from '@/lib/api-client'
 import { formatBytes, formatCycles, formatTimestamp } from '@/lib/utils'
 
 export default function AgentDetailPage({ params }: { params: { id: string } }) {
-  const { agent, isLoading: agentLoading, error: agentError } = useAgent(params.id)
+  const { agent, isLoading: agentLoading, error: agentError, refetch: refetchAgent } = useAgent(params.id)
   const { data: canister, isLoading: canisterLoading, error: canisterError } = useCanisterStatus(agent?.canisterId || '')
-  const { deployments, isLoading: deploymentsLoading } = useDeployments({ agentId: params.id })
+  const { deployments, isLoading: deploymentsLoading, refetch: refetchDeployments } = useDeployments({ agentId: params.id })
   const [isDeploying, setIsDeploying] = useState(false)
+  const [deployError, setDeployError] = useState<string | null>(null)
+  const [deploySuccess, setDeploySuccess] = useState<string | null>(null)
 
   const handleDeploy = async () => {
     if (!agent) return
+
+    setDeployError(null)
+    setDeploySuccess(null)
     setIsDeploying(true)
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-    setIsDeploying(false)
+    try {
+      const response = await apiClient.post<{
+        deployment: { canisterId?: string }
+      }>('/deployments', {
+        agentId: agent.id,
+        canisterId: agent.canisterId,
+        mode: agent.canisterId ? 'upgrade' : 'auto',
+      })
+
+      if (!response.success) {
+        throw new Error(response.error?.message || 'Failed to deploy agent')
+      }
+
+      setDeploySuccess(
+        response.data?.deployment?.canisterId
+          ? `Deployment completed: ${response.data.deployment.canisterId}`
+          : 'Deployment completed successfully'
+      )
+
+      await Promise.all([refetchAgent(), refetchDeployments()])
+    } catch (error) {
+      setDeployError(error instanceof Error ? error.message : 'Failed to deploy agent')
+    } finally {
+      setIsDeploying(false)
+    }
   }
 
   const handleStop = async () => {
@@ -77,7 +106,7 @@ export default function AgentDetailPage({ params }: { params: { id: string } }) 
             className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 transition"
           >
             {isDeploying ? <LoadingSpinner size="sm" /> : <Play className="w-4 h-4" />}
-            {agent.status === 'active' ? 'Restart' : 'Deploy'}
+            {agent.status === 'active' ? '1-Click Redeploy' : '1-Click Deploy'}
           </button>
           {agent.status === 'active' && (
             <button
@@ -98,6 +127,18 @@ export default function AgentDetailPage({ params }: { params: { id: string } }) 
           </Link>
         </div>
       </div>
+
+      {deploySuccess && (
+        <div className="rounded border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+          {deploySuccess}
+        </div>
+      )}
+
+      {deployError && (
+        <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {deployError}
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-4">
@@ -202,6 +243,9 @@ export default function AgentDetailPage({ params }: { params: { id: string } }) 
                 <div>
                   <StatusBadge status={deployment.status} />
                   <span className="ml-2 text-sm text-gray-600">{formatTimestamp(deployment.createdAt)}</span>
+                  {deployment.error && (
+                    <p className="mt-1 text-xs text-red-500">{deployment.error}</p>
+                  )}
                 </div>
                 {deployment.canisterId && (
                   <span className="font-mono text-sm">{deployment.canisterId.slice(0, 8)}...</span>

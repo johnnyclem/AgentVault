@@ -20,9 +20,10 @@ The AgentVault web dashboard provides a graphical interface for:
 Install and start the web dashboard:
 
 ```bash
-cd webapp
-npm install
-npm run dev
+# from repo root
+npm run dev:dashboard   # core + dashboard
+# or dashboard only
+npm run dev:webapp
 ```
 
 The dashboard will be available at: `http://localhost:3000`
@@ -80,9 +81,11 @@ Manage your AI agents:
 1. Navigate to Agents page
 2. Click "New Agent" button
 3. Fill in agent configuration form
-4. Click "Deploy" to create canister
+4. Click "1-Click Deploy" to package + deploy automatically
 5. Monitor deployment progress in Tasks page
 ```
+
+**Note:** One-click deploy resolves the agent source from `sourcePath` (or `workingDirectory`) in the saved agent config.
 
 ### Tasks
 

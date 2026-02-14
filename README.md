@@ -194,10 +194,13 @@ agentvault/
 
 ```bash
 npm run dev          # Development mode with watch
+npm run dev:dashboard # Run core + web dashboard together
+npm run dev:webapp   # Run only Next.js dashboard
 npm run build        # Build TypeScript
 npm run test         # Run test suite
 npm run test:watch   # Run tests in watch mode
 npm run typecheck    # TypeScript type checking
+npm run typecheck:webapp # Dashboard type checking
 npm run lint         # ESLint
 npm run lint:fix     # ESLint with auto-fix
 ```

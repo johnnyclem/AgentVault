@@ -1,8 +1,12 @@
-import { NextResponse } from 'next/server';
-import { readAgentConfig } from '@/packaging/config-persistence.js';
+import { NextResponse } from 'next/server'
+import { writeAgentConfig } from '@/packaging/config-persistence.js'
+import {
+  buildAgentModel,
+  readAgentConfigRecord,
+} from '@/lib/server/agent-models'
 
 interface RouteContext {
-  params: Promise<{ id: string }>;
+  params: Promise<{ id: string }>
 }
 
 export async function GET(
@@ -10,25 +14,25 @@ export async function GET(
   context: RouteContext,
 ) {
   try {
-    const { id } = await context.params;
-    const agentConfig = await readAgentConfig(id);
+    const { id } = await context.params
+    const agent = buildAgentModel(id)
     
-    if (!agentConfig) {
+    if (!agent) {
       return NextResponse.json({
         success: false,
         error: `Agent '${id}' not found`,
-      }, { status: 404 });
+      }, { status: 404 })
     }
 
     return NextResponse.json({
       success: true,
-      data: agentConfig,
-    });
+      data: agent,
+    })
   } catch (error) {
     return NextResponse.json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
-    }, { status: 500 });
+    }, { status: 500 })
   }
 }
 
@@ -37,38 +41,37 @@ export async function PUT(
   context: RouteContext,
 ) {
   try {
-    const { id } = await context.params;
-    const body = await request.json();
-    const { config } = body;
+    const { id } = await context.params
+    const body = await request.json()
+    const { config } = body
     
     if (!config) {
       return NextResponse.json({
         success: false,
         error: 'Config is required',
-      }, { status: 400 });
+      }, { status: 400 })
     }
 
-    const existingConfig = await readAgentConfig(id);
+    const existingConfig = readAgentConfigRecord(id)
     if (!existingConfig) {
       return NextResponse.json({
         success: false,
         error: `Agent '${id}' not found`,
-      }, { status: 404 });
+      }, { status: 404 })
     }
 
-    const mergedConfig = { ...existingConfig, ...config };
-    await import('@/packaging/config-persistence.js').then(
-      (m) => m.writeAgentConfig(id, mergedConfig)
-    );
+    const mergedConfig = { ...existingConfig, ...config }
+    writeAgentConfig(id, mergedConfig)
+    const updatedAgent = buildAgentModel(id)
 
     return NextResponse.json({
       success: true,
-      data: mergedConfig,
-    });
+      data: updatedAgent ?? mergedConfig,
+    })
   } catch (error) {
     return NextResponse.json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
-    }, { status: 500 });
+    }, { status: 500 })
   }
 }

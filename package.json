@@ -8,14 +8,19 @@
   },
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "npm run dev:core",
+    "dev:core": "tsx watch src/index.ts",
+    "dev:webapp": "npm --prefix webapp run dev",
+    "dev:dashboard": "node scripts/dev-dashboard.mjs",
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
+    "typecheck:webapp": "npm --prefix webapp run typecheck",
     "lint": "eslint .",
-    "lint:fix": "eslint . --fix"
+    "lint:fix": "eslint . --fix",
+    "lint:webapp": "npm --prefix webapp run lint"
   },
   "keywords": [
     "agent",

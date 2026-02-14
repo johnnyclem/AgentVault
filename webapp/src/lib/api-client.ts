@@ -1,4 +1,4 @@
-import type { ApiResponse, PageParams } from './types'
+import type { ApiError, ApiResponse, PageParams } from './types'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api'
 
@@ -17,22 +17,32 @@ async function request<T>(
 
   try {
     const response = await fetch(url, config)
-    const data = await response.json()
+    const payload = await response.json().catch(() => null)
+
+    if (isEnvelope(payload)) {
+      if (!payload.success) {
+        return {
+          success: false,
+          error: toApiError(payload.error, 'Request failed'),
+        }
+      }
+
+      return {
+        success: true,
+        data: payload.data as T,
+      }
+    }
 
     if (!response.ok) {
       return {
         success: false,
-        error: {
-          message: data.message || 'Request failed',
-          code: data.code,
-          details: data.details,
-        },
+        error: toApiError(payload, 'Request failed'),
       }
     }
 
     return {
       success: true,
-      data,
+      data: payload as T,
     }
   } catch (error) {
     return {
@@ -42,6 +52,47 @@ async function request<T>(
         code: 'NETWORK_ERROR',
       },
     }
+  }
+}
+
+interface ApiEnvelope {
+  success: boolean
+  data?: unknown
+  error?: unknown
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isEnvelope(value: unknown): value is ApiEnvelope {
+  return isRecord(value) && typeof value.success === 'boolean'
+}
+
+function toApiError(raw: unknown, fallbackMessage: string): ApiError {
+  if (typeof raw === 'string') {
+    return { message: raw }
+  }
+
+  if (isRecord(raw) && 'error' in raw) {
+    return toApiError(raw.error, fallbackMessage)
+  }
+
+  if (isRecord(raw)) {
+    const message =
+      (typeof raw.message === 'string' ? raw.message : undefined) ??
+      fallbackMessage
+    const code = typeof raw.code === 'string' ? raw.code : undefined
+    const details = raw.details
+    return {
+      message,
+      code,
+      details,
+    }
+  }
+
+  return {
+    message: fallbackMessage,
   }
 }
 
