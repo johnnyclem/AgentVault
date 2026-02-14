@@ -5,11 +5,11 @@ const sidebars: SidebarsConfig = {
     {
       type: 'doc',
       id: 'index',
-      label: 'Overview',
+      label: 'Introduction',
     },
     {
       type: 'category',
-      label: 'Getting Started',
+      label: 'Core Hierarchy',
       items: [
         'getting-started/installation',
         'getting-started/quick-start',
@@ -18,7 +18,7 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: 'User Guides',
+      label: 'Sovereign Operations',
       items: [
         'user/tutorial-v1.0',
         'user/deployment',
@@ -31,7 +31,7 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: 'CLI Reference',
+      label: 'Command Protocols',
       items: [
         'cli/reference',
         'cli/options',
@@ -39,7 +39,7 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: 'Security',
+      label: 'Guardian Layer',
       items: [
         'security/overview',
         'security/best-practices',
@@ -47,7 +47,7 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: 'Architecture',
+      label: 'System Cartography',
       items: [
         'architecture/overview',
         'architecture/modules',
@@ -56,7 +56,7 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: 'Development',
+      label: 'Builder Notes',
       items: [
         'development/contributing',
         'development/testing',
@@ -64,7 +64,7 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: 'Advanced Guides',
+      label: 'Advanced Rituals',
       items: [
         'guides/monitoring',
         'guides/advanced/promotion',
@@ -73,7 +73,7 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: 'Reference',
+      label: 'Archive',
       items: [
         'dev/SECURITY_AUDIT',
         'marketing/release-notes',

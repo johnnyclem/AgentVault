@@ -4,7 +4,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
   title: 'AgentVault',
-  tagline: 'Persistent On-Chain AI Agent Platform',
+  tagline: 'Protecting the ghost within the machine through cryptographic decentralization.',
   favicon: 'img/favicon.ico',
 
   url: 'https://agentvault.cloud',
@@ -44,16 +44,16 @@ const config: Config = {
     metadata: [
       {name: 'keywords', content: 'ICP, Internet Computer, AI agents, blockchain, canister, deployment, Web3'},
       {name: 'twitter:card', content: 'summary_large_image'},
-      {name: 'twitter:title', content: 'AgentVault - Persistent On-Chain AI Agent Platform'},
-      {name: 'twitter:description', content: 'Deploy autonomous AI agents to ICP canisters for persistent, 24/7 execution.'},
+      {name: 'twitter:title', content: 'AgentVault // Neural Codex for Sovereign Agent Operations'},
+      {name: 'twitter:description', content: 'Deploy autonomous AI entities to ICP canisters with sovereign execution, encrypted state, and resilient operations.'},
     ],
     colorMode: {
       defaultMode: 'dark',
-      disableSwitch: false,
+      disableSwitch: true,
       respectPrefersColorScheme: false,
     },
     navbar: {
-      title: 'AgentVault',
+      title: 'NEURAL_CODEX_V1',
       logo: {
         alt: 'AgentVault Logo',
         src: 'img/logo.svg',
@@ -63,21 +63,22 @@ const config: Config = {
           type: 'docSidebar',
           sidebarId: 'docsSidebar',
           position: 'left',
-          label: 'Documentation',
+          label: 'Docs',
         },
         {
-          to: '/docs/user/tutorial-v1.0',
-          label: 'Tutorial',
+          to: '/docs/security/overview',
+          label: 'Protocols',
           position: 'left',
         },
         {
-          to: '/changelog',
-          label: 'Changelog',
+          to: '/docs/architecture/overview',
+          label: 'Ecosystem',
           position: 'left',
         },
         {
           href: 'https://github.com/johnnyclem/agentvault',
-          label: 'GitHub',
+          label: 'Connect Soul',
+          className: 'navbar-connect-soul',
           position: 'right',
         },
       ],
@@ -129,7 +130,7 @@ const config: Config = {
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} AgentVault. Built with Docusaurus.`,
+      copyright: `Copyright © ${new Date().getFullYear()} AgentVault // Documentation Engine`,
     },
     prism: {
       theme: prismThemes.github,

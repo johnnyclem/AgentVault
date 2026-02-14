@@ -3,77 +3,90 @@ import Layout from '@theme/Layout';
 import Heading from '@theme/Heading';
 import Link from '@docusaurus/Link';
 
+import styles from './changelog.module.css';
+
+const releaseFeatures = [
+  'Production-grade agent packaging, deployment, and lifecycle operations.',
+  '37-command CLI surface for automation, diagnostics, and maintenance.',
+  'Multi-chain wallet operations for ICP, Ethereum, Solana, and Polkadot.',
+  'Security controls with multi-signature approvals and encrypted backups.',
+  'Monitoring, promotion, rollback, and archival workflows for reliability.',
+];
+
+const knownLimitations = [
+  'Wallet cryptography currently emphasizes transport security over full hardware-backed key custody.',
+  'VetKeys threshold signatures are represented in simulation mode for v1.0 workflows.',
+  'Bittensor inference integrations require external API credentials.',
+  'Arweave archival requires operator wallet setup and funding.',
+];
+
 function Changelog(): React.ReactElement {
   return (
-    <Layout title="Changelog" description="AgentVault release notes and version history.">
-      <main className="container margin-vert--xl">
-        <Heading as="h1">Changelog</Heading>
-        
-        <div className="margin-top--lg">
-          <Heading as="h2">v1.0.0 - February 2026</Heading>
-          <p className="margin-bottom--md">
-            Production-ready AI agent platform for the Internet Computer.
-          </p>
-          
-          <Heading as="h3">Key Features</Heading>
-          <ul>
-            <li><strong>Production-Ready Platform</strong> - Complete web application for agent management</li>
-            <li><strong>CLI with 37 commands</strong> - Full automation support</li>
-            <li><strong>Agent Management</strong> - Package, deploy, monitor agents with WASM</li>
-            <li><strong>Wallet System</strong> - Multi-chain support: ICP, Ethereum, Solana, Polkadot</li>
-            <li><strong>Canister Operations</strong> - Deploy to local or production ICP with zero-downtime upgrades</li>
-            <li><strong>Security</strong> - Multi-signature approvals, VetKeys integration, encrypted backups</li>
-            <li><strong>Monitoring</strong> - Real-time metrics, health monitoring, alerting system</li>
-            <li><strong>Archival</strong> - Arweave blockchain integration for permanent storage</li>
-          </ul>
-          
-          <Heading as="h3">Installation</Heading>
-          <div className="code-block">
-            <pre>
-              <code>npm install -g agentvault</code>
-            </pre>
-          </div>
-          
-          <Heading as="h3">Documentation</Heading>
-          <ul>
-            <li><Link to="/docs/getting-started/quick-start">Quick Start Guide</Link></li>
-            <li><Link to="/docs/user/tutorial-v1.0">Comprehensive Tutorial</Link></li>
-            <li><Link to="/docs/cli/reference">CLI Reference</Link></li>
-            <li><Link to="/docs/dev/SECURITY_AUDIT">Security Audit</Link></li>
-          </ul>
-          
-          <Heading as="h3">Breaking Changes</Heading>
-          <p>None - This is the first stable release.</p>
-          
-          <Heading as="h3">Known Limitations</Heading>
-          <ul>
-            <li>Wallet crypto uses basic SHA-256 (not full elliptic curve support)</li>
-            <li>VetKeys threshold signatures are simulated</li>
-            <li>Bittensor inference requires API access</li>
-            <li>Arweave archival requires wallet setup</li>
-          </ul>
-        </div>
-        
-        <div className="margin-top--xl">
-          <Heading as="h3">Install v1.0.0</Heading>
-          <div className="code-block">
-            <pre>
-              <code>npm install -g agentvault@1.0.0</code>
-            </pre>
-          </div>
-          
-          <div className="margin-top--lg">
-            <Link
-              className="button button--primary"
-              to="https://github.com/johnnyclem/agentvault">
-              View on GitHub
+    <Layout title="Changelog" description="AgentVault release history and protocol updates.">
+      <main className={styles.main}>
+        <div className="container">
+          <section className={styles.headerCard}>
+            <p className={styles.protocolTag}>Archive // Protocol Release</p>
+            <Heading as="h1" className={styles.pageTitle}>
+              Changelog
+            </Heading>
+            <p className={styles.pageLead}>
+              Release stream for the AgentVault runtime. Current stable milestone: <strong>v1.0.0</strong> (February 2026).
+            </p>
+          </section>
+
+          <section className={styles.releaseCard}>
+            <Heading as="h2" className={styles.releaseTitle}>
+              v1.0.0 // Neural Sovereignty Baseline
+            </Heading>
+            <p className={styles.releaseSubtitle}>First stable release for continuous on-chain agent operations.</p>
+
+            <Heading as="h3" className={styles.subTitle}>
+              Manifested Capabilities
+            </Heading>
+            <ul className={styles.itemList}>
+              {releaseFeatures.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+
+            <Heading as="h3" className={styles.subTitle}>
+              Install
+            </Heading>
+            <div className={styles.codeVessel}>
+              <pre>
+                <code>npm install -g agentvault@1.0.0</code>
+              </pre>
+            </div>
+
+            <Heading as="h3" className={styles.subTitle}>
+              Operational Reading
+            </Heading>
+            <div className={styles.linkGrid}>
+              <Link to="/docs/getting-started/quick-start">Quick Start</Link>
+              <Link to="/docs/user/tutorial-v1.0">Tutorial</Link>
+              <Link to="/docs/cli/reference">CLI Reference</Link>
+              <Link to="/docs/dev/SECURITY_AUDIT">Security Audit</Link>
+            </div>
+
+            <Heading as="h3" className={styles.subTitle}>
+              Known Limitations
+            </Heading>
+            <ul className={styles.itemList}>
+              {knownLimitations.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </section>
+
+          <section className={styles.actions}>
+            <Link className="button button--secondary" to="https://github.com/johnnyclem/agentvault">
+              View Source
             </Link>
-            <Link
-              className="button button--secondary margin-left--sm"
-              to="https://www.npmjs.com/package/agentvault">
-              View on npm
+            <Link className="button button--outline" to="https://www.npmjs.com/package/agentvault">
+              View Package
             </Link>
-          </div>
+          </section>
         </div>
       </main>
     </Layout>

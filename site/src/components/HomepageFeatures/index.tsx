@@ -1,88 +1,90 @@
 import React from 'react';
+import Link from '@docusaurus/Link';
 import Heading from '@theme/Heading';
 import styles from './styles.module.css';
 
 type FeatureItem = {
+  id: string;
   title: string;
-  description: React.ReactNode;
+  description: string;
+  destination: string;
+  action: string;
 };
 
-const FeatureList: FeatureItem[] = [
+const CoreHierarchy: FeatureItem[] = [
   {
-    title: '1. Package Your Agent',
-    description: (
-      <>
-        Compile TypeScript agents to WASM with a single command.
-        AgentVault handles dependencies, optimization, and artifact generation.
-      </>
-    ),
+    id: '01',
+    title: 'Package the Entity',
+    description:
+      'Compile local agent logic into deterministic WASM artifacts with reproducible packaging and integrity checks.',
+    destination: '/docs/getting-started/quick-start',
+    action: 'View Sequence',
   },
   {
-    title: '2. Deploy to ICP',
-    description: (
-      <>
-        Deploy to local replica for testing or mainnet for production.
-        Canisters run 24/7 with persistent state and automatic scaling.
-      </>
-    ),
+    id: '02',
+    title: 'Deploy the Vessel',
+    description:
+      'Ship to local replica or ICP mainnet with controlled upgrades, environment targeting, and deployment traceability.',
+    destination: '/docs/user/deployment',
+    action: 'Open Deployment',
   },
   {
-    title: '3. Monitor & Backup',
-    description: (
-      <>
-        Health checks, metrics, and alerting keep your agents running.
-        Fetch state for local rebuild or archive to Arweave for permanent storage.
-      </>
-    ),
+    id: '03',
+    title: 'Guard the Memory',
+    description:
+      'Run health telemetry, rollback gates, and archival workflows so agent state remains recoverable under pressure.',
+    destination: '/docs/user/backups',
+    action: 'Open Backup Guide',
   },
 ];
 
-function Feature({title, description, index}: FeatureItem & {index: number}) {
-  const animatedStyle = {'--av-anim-index': index} as React.CSSProperties;
-
-  return (
-    <div className="col col--4 margin-bottom--lg">
-      <div className={styles.featureCard} style={animatedStyle}>
-        <Heading as="h3" className={styles.featureTitle}>{title}</Heading>
-        <p>{description}</p>
-      </div>
-    </div>
-  );
-}
-
-const ValueList = [
+const ProtocolGrid: FeatureItem[] = [
   {
-    title: 'Autonomy',
-    description: '24/7 canister runtime with no browser dependencies. Your agents run continuously on the Internet Computer.',
+    id: 'A1',
+    title: 'Neural Wallet Mesh',
+    description:
+      'Operate ICP, Ethereum, Solana, and Polkadot assets from one command surface with encrypted local custody.',
+    destination: '/docs/user/wallets',
+    action: 'Explore Wallets',
   },
   {
-    title: 'Reconstructibility',
-    description: 'Fetch canister state anytime for local reconstruction. Archive to Arweave for permanent, immutable backups.',
+    id: 'A2',
+    title: 'Guardian Security Layer',
+    description:
+      'Apply multi-signature approvals, key hygiene, and canister-level hardening for operational safety.',
+    destination: '/docs/security/overview',
+    action: 'Review Security',
   },
   {
-    title: 'Operational Tooling',
-    description: 'Health checks, monitoring, rollback primitives, and multi-signature approvals for production-grade operations.',
+    id: 'A3',
+    title: 'Operator Control Plane',
+    description:
+      'Use monitoring, promotion, rollback, and task visibility to manage long-lived autonomous workflows.',
+    destination: '/docs/guides/monitoring',
+    action: 'Open Monitoring',
   },
   {
-    title: 'Multi-Chain Wallets',
-    description: 'Native support for ICP, Ethereum, Solana, and Polkadot. Manage assets across chains from a single CLI.',
+    id: 'A4',
+    title: 'System Cartography',
+    description:
+      'Understand canister internals, module boundaries, and ICP integration primitives before scaling out.',
+    destination: '/docs/architecture/overview',
+    action: 'Read Architecture',
   },
 ];
 
-function ValueProp({title, description, index}: {title: string; description: string; index: number}) {
-  const animatedStyle = {'--av-anim-index': index} as React.CSSProperties;
-
+function FeatureCard({id, title, description, destination, action}: FeatureItem) {
   return (
-    <div className="col col--6 margin-bottom--lg">
-      <div className={styles.valueCard} style={animatedStyle}>
-        <div className="card__header">
-          <h3>{title}</h3>
-        </div>
-        <div className="card__body">
-          <p>{description}</p>
-        </div>
-      </div>
-    </div>
+    <article className={styles.featureCard}>
+      <p className={styles.cardId}>{id}</p>
+      <Heading as="h3" className={styles.cardTitle}>
+        {title}
+      </Heading>
+      <p className={styles.cardBody}>{description}</p>
+      <Link className={styles.cardAction} to={destination}>
+        {action}
+      </Link>
+    </article>
   );
 }
 
@@ -90,21 +92,29 @@ export default function HomepageFeatures(): React.ReactElement {
   return (
     <section className={styles.featuresSection}>
       <div className="container">
-        <div className="text--center margin-bottom--xl">
-          <Heading as="h2" className={styles.sectionTitle}>How It Works</Heading>
+        <div className={styles.blockHeader}>
+          <p className={styles.blockLabel}>Core Hierarchy</p>
+          <Heading as="h2" className={styles.blockTitle}>
+            Operate Sovereign Agent Infrastructure
+          </Heading>
         </div>
-        <div className={`row ${styles.featureGrid}`}>
-          {FeatureList.map((props, idx) => (
-            <Feature key={idx} {...props} index={idx} />
+
+        <div className={styles.featureGrid}>
+          {CoreHierarchy.map((item) => (
+            <FeatureCard key={item.id} {...item} />
           ))}
         </div>
 
-        <div className="text--center margin-vert--xl">
-          <Heading as="h2" className={styles.sectionTitle}>Why AgentVault?</Heading>
+        <div className={styles.blockHeader}>
+          <p className={styles.blockLabel}>Protocols</p>
+          <Heading as="h2" className={styles.blockTitle}>
+            Build For Resilience, Not Demo Cycles
+          </Heading>
         </div>
-        <div className={`row ${styles.valueGrid}`}>
-          {ValueList.map((props, idx) => (
-            <ValueProp key={idx} {...props} index={idx} />
+
+        <div className={styles.protocolGrid}>
+          {ProtocolGrid.map((item) => (
+            <FeatureCard key={item.id} {...item} />
           ))}
         </div>
       </div>
