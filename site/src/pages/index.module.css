@@ -62,6 +62,15 @@
   margin-bottom: 0.95rem;
 }
 
+.heroKicker {
+  margin: 0 0 0.45rem;
+  font-family: 'Syncopate', sans-serif;
+  font-size: 0.65rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: #8fa6c8;
+}
+
 .heroTitle {
   font-size: clamp(2.5rem, 8vw, 5rem);
   letter-spacing: 0.13em;
@@ -369,5 +378,9 @@
 
   .protocolTag {
     font-size: 0.6rem;
+  }
+
+  .heroKicker {
+    font-size: 0.58rem;
   }
 }

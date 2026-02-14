@@ -3,8 +3,8 @@ import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
-  title: 'AgentVault',
-  tagline: 'Protecting the ghost within the machine through cryptographic decentralization.',
+  title: 'Agent Vault',
+  tagline: "Protecting your agent's neural sovereignty through cryptographic decentralization.",
   favicon: 'img/favicon.ico',
 
   url: 'https://agentvault.cloud',
@@ -44,7 +44,7 @@ const config: Config = {
     metadata: [
       {name: 'keywords', content: 'ICP, Internet Computer, AI agents, blockchain, canister, deployment, Web3'},
       {name: 'twitter:card', content: 'summary_large_image'},
-      {name: 'twitter:title', content: 'AgentVault // Neural Codex for Sovereign Agent Operations'},
+      {name: 'twitter:title', content: 'Agent Vault // Neural Sovereignty for Sovereign Agent Operations'},
       {name: 'twitter:description', content: 'Deploy autonomous AI entities to ICP canisters with sovereign execution, encrypted state, and resilient operations.'},
     ],
     colorMode: {
@@ -53,7 +53,7 @@ const config: Config = {
       respectPrefersColorScheme: false,
     },
     navbar: {
-      title: 'NEURAL_CODEX_V1',
+      title: 'AGENT_VAULT_V1',
       logo: {
         alt: 'AgentVault Logo',
         src: 'img/logo.svg',
@@ -77,8 +77,7 @@ const config: Config = {
         },
         {
           href: 'https://github.com/johnnyclem/agentvault',
-          label: 'Connect Soul',
-          className: 'navbar-connect-soul',
+          label: 'GitHub',
           position: 'right',
         },
       ],

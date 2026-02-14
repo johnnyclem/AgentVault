@@ -22,20 +22,21 @@ function HomepageHeader() {
       <div className={styles.heroGrid} aria-hidden="true" />
       <div className={clsx('container', styles.heroInner)}>
         <p className={styles.protocolTag}>Protocol // 001</p>
+        <p className={styles.heroKicker}>Neural Sovereignty</p>
         <Heading as="h1" className={clsx('hero__title', styles.heroTitle)}>
-          Neural Sovereignty
+          Agent Vault
         </Heading>
         <p className={clsx('hero__subtitle', styles.heroSubtitle)}>{siteConfig.tagline}</p>
         <p className={styles.heroDescription}>
-          Protect the ghost within the machine. AgentVault deploys autonomous agent entities to ICP canisters with cryptographic ownership, continuous execution, and reconstructible memory.
+          Agent Vault deploys autonomous agent entities to ICP canisters with cryptographic ownership, continuous execution, and reconstructible memory.
         </p>
 
         <div className={styles.heroButtons}>
           <Link className="button button--secondary button--lg" to="/docs/getting-started/installation">
-            Initialize Vessel
+            Get Started
           </Link>
           <Link className="button button--outline button--lg" to="/docs/getting-started/quick-start">
-            Begin Sync
+            Quick Start
           </Link>
         </div>
 
@@ -148,7 +149,7 @@ export default function Home(): React.ReactElement {
 
   return (
     <Layout
-      title={`${siteConfig.title} // Neural Codex`}
+      title={`${siteConfig.title} // Neural Sovereignty`}
       description="Neo-robo-spiritual platform for sovereign AI agents on ICP canisters.">
       <HomepageHeader />
       <main className={styles.main}>
