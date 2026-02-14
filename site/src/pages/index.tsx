@@ -12,11 +12,12 @@ function HomepageHeader() {
   const {siteConfig} = useDocusaurusContext();
   return (
     <header className={clsx('hero hero--primary', styles.heroBanner)}>
-      <div className="container">
-        <Heading as="h1" className="hero__title">
+      <div className={styles.heroGrid} aria-hidden="true" />
+      <div className={clsx('container', styles.heroInner)}>
+        <Heading as="h1" className={clsx('hero__title', styles.heroTitle)}>
           {siteConfig.title}
         </Heading>
-        <p className="hero__subtitle">{siteConfig.tagline}</p>
+        <p className={clsx('hero__subtitle', styles.heroSubtitle)}>{siteConfig.tagline}</p>
         <p className={styles.heroDescription}>
           AgentVault packages local agents, deploys to ICP canisters, and preserves
           reconstructible state for resilient automation.
@@ -39,30 +40,27 @@ function HomepageHeader() {
 }
 
 function TrustBar() {
+  const trustItems = [
+    {icon: '📦', label: 'Open Source'},
+    {icon: '🌐', label: 'Built on ICP'},
+    {icon: '⛓️', label: 'Multi-Chain'},
+    {icon: '💾', label: 'Backup & Rebuild'},
+    {icon: '✅', label: '508 Tests'},
+  ];
+
   return (
     <div className={styles.trustBar}>
       <div className="container">
         <div className={styles.trustItems}>
-          <div className={styles.trustItem}>
-            <span className={styles.trustIcon}>📦</span>
-            <span>Open Source</span>
-          </div>
-          <div className={styles.trustItem}>
-            <span className={styles.trustIcon}>🌐</span>
-            <span>Built on ICP</span>
-          </div>
-          <div className={styles.trustItem}>
-            <span className={styles.trustIcon}>⛓️</span>
-            <span>Multi-Chain</span>
-          </div>
-          <div className={styles.trustItem}>
-            <span className={styles.trustIcon}>💾</span>
-            <span>Backup & Rebuild</span>
-          </div>
-          <div className={styles.trustItem}>
-            <span className={styles.trustIcon}>✅</span>
-            <span>508 Tests</span>
-          </div>
+          {trustItems.map((item, idx) => (
+            <div
+              key={item.label}
+              className={styles.trustItem}
+              style={{'--av-item-index': idx} as React.CSSProperties}>
+              <span className={styles.trustIcon}>{item.icon}</span>
+              <span>{item.label}</span>
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -85,7 +83,7 @@ function QuickInstall() {
   );
 }
 
-export default function Home(): JSX.Element {
+export default function Home(): React.ReactElement {
   const {siteConfig} = useDocusaurusContext();
   return (
     <Layout
@@ -93,7 +91,7 @@ export default function Home(): JSX.Element {
       description="Deploy autonomous AI agents to ICP canisters for persistent, 24/7 execution without browser dependencies.">
       <HomepageHeader />
       <TrustBar />
-      <main>
+      <main className={styles.main}>
         <HomepageFeatures />
         <QuickInstall />
       </main>

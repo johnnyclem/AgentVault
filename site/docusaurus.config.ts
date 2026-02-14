@@ -47,6 +47,11 @@ const config: Config = {
       {name: 'twitter:title', content: 'AgentVault - Persistent On-Chain AI Agent Platform'},
       {name: 'twitter:description', content: 'Deploy autonomous AI agents to ICP canisters for persistent, 24/7 execution.'},
     ],
+    colorMode: {
+      defaultMode: 'dark',
+      disableSwitch: false,
+      respectPrefersColorScheme: false,
+    },
     navbar: {
       title: 'AgentVault',
       logo: {

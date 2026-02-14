@@ -1,35 +1,144 @@
 .featuresSection {
-  padding: 4.5rem 0;
+  position: relative;
+  padding: 4.8rem 0;
   background:
-    radial-gradient(900px 360px at 18% 0%, rgba(63, 224, 255, 0.09), transparent 65%),
-    radial-gradient(700px 300px at 92% 30%, rgba(255, 67, 181, 0.09), transparent 70%),
+    radial-gradient(
+      1000px 420px at 14% 2%,
+      color-mix(in srgb, var(--av-accent-cyan) 12%, transparent),
+      transparent 66%
+    ),
+    radial-gradient(
+      760px 330px at 94% 28%,
+      color-mix(in srgb, var(--av-accent-rose) 12%, transparent),
+      transparent 72%
+    ),
     transparent;
+  overflow: hidden;
+}
+
+.featuresSection::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(
+      -33deg,
+      transparent 0,
+      transparent 52px,
+      color-mix(in srgb, var(--av-accent-cyan) 10%, transparent) 53px,
+      transparent 55px
+    );
+  opacity: 0.28;
+  pointer-events: none;
+  animation: avGridDrift 13s ease-in-out infinite;
+}
+
+.sectionTitle {
+  color: var(--av-text-strong);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-shadow: 0 0 14px color-mix(in srgb, var(--av-accent-cyan) 28%, transparent);
+}
+
+.featureGrid,
+.valueGrid {
+  position: relative;
+  z-index: 1;
 }
 
 .featureCard {
+  --av-anim-index: 0;
   height: 100%;
-  text-align: center;
-  padding: 1.5rem 1.25rem;
-  border-radius: 16px;
-  border: 1px solid rgba(118, 216, 255, 0.28);
-  background: rgba(9, 7, 25, 0.72);
-  box-shadow: 0 0 24px rgba(126, 81, 255, 0.16);
+  text-align: left;
+  padding: 1.7rem 1.35rem;
+  border: 1px solid color-mix(in srgb, var(--av-accent-cyan) 30%, transparent);
+  background:
+    linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--av-surface-1) 89%, transparent) 0%,
+      color-mix(in srgb, var(--av-surface-0) 86%, transparent) 100%
+    );
+  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+  box-shadow:
+    0 0 24px color-mix(in srgb, var(--av-accent-cyan) 16%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--av-accent-rose) 12%, transparent);
+  transition:
+    transform var(--ifm-transition-fast),
+    border-color var(--ifm-transition-fast),
+    box-shadow var(--ifm-transition-fast);
+  animation: avEnterUp 0.6s ease-out both;
+  animation-delay: calc(220ms + var(--av-anim-index) * 110ms);
+}
+
+.featureCard:hover {
+  transform: translate3d(0, -4px, 0);
+  border-color: color-mix(in srgb, var(--av-accent-rose) 46%, transparent);
+  box-shadow:
+    0 0 30px color-mix(in srgb, var(--av-accent-cyan) 24%, transparent),
+    0 0 24px color-mix(in srgb, var(--av-accent-rose) 18%, transparent);
 }
 
 .featureTitle {
-  font-size: 1.22rem;
-  margin-bottom: 0.9rem;
-  color: #f1f5ff;
+  font-size: 1.2rem;
+  margin-bottom: 0.8rem;
+  color: var(--av-text-strong);
+  letter-spacing: 0.018em;
+}
+
+.featureCard p {
+  margin: 0;
+  color: var(--av-text-base);
+  line-height: 1.66;
 }
 
 .valueCard {
+  --av-anim-index: 0;
   height: 100%;
-  border: 1px solid rgba(118, 216, 255, 0.28);
-  border-radius: 16px;
-  background: linear-gradient(160deg, rgba(9, 6, 26, 0.85), rgba(20, 10, 45, 0.72));
-  box-shadow: 0 0 24px rgba(57, 199, 255, 0.15);
+  border: 1px solid color-mix(in srgb, var(--av-accent-cyan) 30%, transparent);
+  background:
+    linear-gradient(
+      158deg,
+      color-mix(in srgb, var(--av-surface-1) 89%, transparent) 0%,
+      color-mix(in srgb, var(--av-bg-1) 74%, transparent) 100%
+    );
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+  box-shadow:
+    0 0 24px color-mix(in srgb, var(--av-accent-cyan) 14%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--av-accent-lime) 10%, transparent);
+  transition:
+    transform var(--ifm-transition-fast),
+    border-color var(--ifm-transition-fast),
+    box-shadow var(--ifm-transition-fast);
+  animation: avEnterUp 0.64s ease-out both;
+  animation-delay: calc(320ms + var(--av-anim-index) * 90ms);
+}
+
+.valueCard:hover {
+  transform: translate3d(0, -4px, 0);
+  border-color: color-mix(in srgb, var(--av-accent-lime) 55%, transparent);
+  box-shadow:
+    0 0 32px color-mix(in srgb, var(--av-accent-lime) 20%, transparent),
+    0 0 24px color-mix(in srgb, var(--av-accent-cyan) 16%, transparent);
 }
 
 .valueCard h3 {
-  margin-bottom: 0.2rem;
+  margin-bottom: 0.3rem;
+  color: var(--av-text-strong);
+  letter-spacing: 0.015em;
+}
+
+.valueCard p {
+  color: var(--av-text-base);
+}
+
+@media (max-width: 996px) {
+  .featuresSection {
+    padding: 4rem 0;
+  }
+
+  .featureCard,
+  .valueCard {
+    clip-path: none;
+    border-radius: 12px;
+  }
 }

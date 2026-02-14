@@ -3,7 +3,7 @@ import Layout from '@theme/Layout';
 import Heading from '@theme/Heading';
 import Link from '@docusaurus/Link';
 
-function Changelog(): JSX.Element {
+function Changelog(): React.ReactElement {
   return (
     <Layout title="Changelog" description="AgentVault release notes and version history.">
       <main className="container margin-vert--xl">

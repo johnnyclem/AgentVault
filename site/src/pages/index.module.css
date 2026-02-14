@@ -1,67 +1,127 @@
 .main {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
 }
 
 .heroBanner {
-  padding: 5.5rem 0 5rem;
+  padding: 6.5rem 0 5.75rem;
   text-align: center;
   position: relative;
   overflow: hidden;
-  border-bottom: 1px solid rgba(129, 220, 255, 0.28);
+  border-bottom: 1px solid var(--av-line-soft);
+  background:
+    linear-gradient(
+      140deg,
+      color-mix(in srgb, var(--av-surface-1) 70%, transparent) 0%,
+      color-mix(in srgb, var(--av-bg-1) 72%, transparent) 100%
+    );
+  clip-path: polygon(0 0, 100% 0, 100% 92%, 93% 100%, 0 100%);
 }
 
 .heroBanner::before,
 .heroBanner::after {
   content: '';
   position: absolute;
-  inset: auto;
   pointer-events: none;
 }
 
 .heroBanner::before {
-  width: 560px;
-  height: 560px;
-  border-radius: 20%;
-  border: 1px solid rgba(113, 224, 255, 0.25);
+  width: 620px;
+  height: 620px;
+  border: 1px solid color-mix(in srgb, var(--av-accent-cyan) 36%, transparent);
   transform: rotate(45deg);
-  top: -220px;
-  right: -160px;
+  top: -280px;
+  right: -220px;
   box-shadow:
-    0 0 30px rgba(95, 218, 255, 0.3),
-    0 0 80px rgba(145, 76, 255, 0.25);
+    0 0 46px color-mix(in srgb, var(--av-accent-cyan) 26%, transparent),
+    0 0 90px color-mix(in srgb, var(--av-accent-rose) 20%, transparent);
+  animation: avFloat 8s ease-in-out infinite;
 }
 
 .heroBanner::after {
-  width: 720px;
+  width: 760px;
   height: 420px;
-  left: -220px;
-  top: -120px;
-  background: radial-gradient(circle, rgba(255, 68, 182, 0.2), transparent 62%);
+  bottom: -200px;
+  left: -170px;
+  border: 1px solid color-mix(in srgb, var(--av-accent-rose) 28%, transparent);
+  transform: rotate(-18deg);
+  opacity: 0.58;
+  animation: avFloat 9.2s ease-in-out infinite reverse;
 }
 
-.heroBanner h1 {
-  font-size: clamp(2.4rem, 6vw, 4.1rem);
+.heroGrid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.heroGrid::before,
+.heroGrid::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+.heroGrid::before {
+  background:
+    repeating-linear-gradient(
+      132deg,
+      transparent 0,
+      transparent 48px,
+      color-mix(in srgb, var(--av-accent-cyan) 18%, transparent) 49px,
+      transparent 50px
+    );
+  opacity: 0.4;
+  animation: avGridDrift 14s ease-in-out infinite;
+}
+
+.heroGrid::after {
+  background:
+    linear-gradient(
+      96deg,
+      transparent 10%,
+      color-mix(in srgb, var(--av-accent-lime) 26%, transparent) 45%,
+      color-mix(in srgb, var(--av-accent-cyan) 32%, transparent) 55%,
+      transparent 90%
+    );
+  filter: blur(4px);
+  opacity: 0.35;
+  animation: avSweep 10s ease-in-out infinite alternate;
+}
+
+.heroInner {
+  position: relative;
+  z-index: 1;
+  animation: avEnterUp 0.65s ease-out both;
+}
+
+.heroTitle {
+  font-size: clamp(2.6rem, 7vw, 4.35rem);
   font-weight: 800;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   margin-bottom: 1rem;
   text-transform: uppercase;
-  text-shadow: 0 0 18px rgba(59, 214, 255, 0.4);
+  color: var(--av-text-strong);
+  text-shadow:
+    0 0 20px color-mix(in srgb, var(--av-accent-cyan) 32%, transparent),
+    0 0 40px color-mix(in srgb, var(--av-accent-cyan) 14%, transparent);
 }
 
-.heroBanner p {
-  font-size: 1.2rem;
-  margin-bottom: 1.4rem;
-  max-width: 840px;
-  margin-left: auto;
-  margin-right: auto;
+.heroSubtitle {
+  color: var(--av-text-base);
+  font-size: 1.18rem;
+  max-width: 760px;
+  margin: 0 auto 1.15rem;
+  text-shadow: 0 0 10px color-mix(in srgb, var(--av-accent-cyan) 12%, transparent);
 }
 
 .heroDescription {
-  color: rgba(224, 235, 255, 0.92);
-  font-size: 1.06rem;
-  max-width: 700px;
+  color: var(--av-text-base);
+  font-size: 1.08rem;
+  max-width: 740px;
   margin: 0 auto 2rem;
 }
 
@@ -74,63 +134,171 @@
 }
 
 .trustBar {
-  background: linear-gradient(90deg, rgba(12, 8, 31, 0.95), rgba(14, 9, 34, 0.9));
-  padding: 1rem 0;
-  border-bottom: 1px solid rgba(122, 210, 255, 0.26);
+  position: relative;
+  background:
+    linear-gradient(
+      92deg,
+      color-mix(in srgb, var(--av-surface-1) 92%, transparent) 0%,
+      color-mix(in srgb, var(--av-bg-1) 88%, transparent) 100%
+    );
+  padding: 1.15rem 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--av-accent-cyan) 34%, transparent);
+  overflow: hidden;
+}
+
+.trustBar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      120deg,
+      transparent 22%,
+      color-mix(in srgb, var(--av-accent-cyan) 15%, transparent) 45%,
+      transparent 68%
+    );
+  animation: avSweep 8.5s ease-in-out infinite alternate;
+  pointer-events: none;
 }
 
 .trustItems {
+  position: relative;
+  z-index: 1;
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 1.25rem;
+  gap: 1rem;
   flex-wrap: wrap;
 }
 
 .trustItem {
+  --av-item-index: 0;
   display: flex;
   align-items: center;
   gap: 0.55rem;
-  padding: 0.5rem 0.9rem;
-  border-radius: 999px;
+  padding: 0.55rem 1rem;
   font-size: 0.9rem;
-  font-weight: 600;
-  color: #dce8ff;
-  background: rgba(34, 22, 78, 0.55);
-  border: 1px solid rgba(128, 223, 255, 0.28);
+  font-weight: 650;
+  color: var(--av-text-strong);
+  background: color-mix(in srgb, var(--av-surface-0) 86%, transparent);
+  border: 1px solid color-mix(in srgb, var(--av-accent-cyan) 34%, transparent);
+  clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--av-accent-cyan) 18%, transparent);
+  animation: avEnterUp 0.55s ease-out both;
+  animation-delay: calc(180ms + var(--av-item-index) * 90ms);
 }
 
 .trustIcon {
-  font-size: 1.05rem;
+  font-size: 1.02rem;
 }
 
 .quickInstall {
-  padding: 4rem 0;
+  position: relative;
+  padding: 4.8rem 0 4.4rem;
   text-align: center;
-  background: linear-gradient(180deg, rgba(6, 3, 18, 0.7), rgba(12, 8, 34, 0.8));
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--av-bg-0) 84%, transparent) 0%,
+      color-mix(in srgb, var(--av-bg-1) 86%, transparent) 100%
+    );
+  border-top: 1px solid color-mix(in srgb, var(--av-accent-cyan) 28%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--av-accent-rose) 20%, transparent);
+}
+
+.quickInstall::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: min(72vw, 920px);
+  height: 2px;
+  transform: translateX(-50%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--av-accent-lime) 55%, transparent) 50%,
+    transparent 100%
+  );
+  animation: avSweep 9s ease-in-out infinite alternate;
+}
+
+.quickInstall h2 {
+  color: var(--av-text-strong);
+  letter-spacing: 0.02em;
+  margin-bottom: 1.25rem;
 }
 
 .codeBlock {
-  background: rgba(11, 8, 31, 0.88);
-  border-radius: 12px;
+  background: color-mix(in srgb, var(--av-surface-1) 90%, transparent);
+  border-radius: 10px;
   padding: 1rem 2rem;
   display: inline-block;
-  margin-bottom: 1rem;
-  border: 1px solid rgba(121, 217, 255, 0.35);
-  box-shadow: 0 0 20px rgba(122, 85, 255, 0.22);
+  margin-bottom: 1.05rem;
+  border: 1px solid color-mix(in srgb, var(--av-accent-cyan) 38%, transparent);
+  box-shadow:
+    0 0 24px color-mix(in srgb, var(--av-accent-cyan) 14%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--av-accent-rose) 18%, transparent);
+  animation: avPulseFrame 4.2s ease-in-out infinite;
 }
 
 .codeBlock code {
-  font-size: 1.1rem;
-  color: #6be2ff;
+  font-size: 1.06rem;
+  color: var(--av-accent-cyan);
 }
 
 .quickStart {
-  color: rgba(216, 223, 249, 0.94);
+  color: var(--av-text-base);
+  font-size: 1rem;
 }
 
 .quickStart code {
-  background: rgba(74, 24, 115, 0.35);
+  background: color-mix(in srgb, var(--av-accent-cyan) 18%, transparent);
+  color: var(--av-text-strong);
   padding: 0.2rem 0.45rem;
   border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--av-accent-cyan) 30%, transparent);
+}
+
+@media (max-width: 996px) {
+  .heroBanner {
+    clip-path: polygon(0 0, 100% 0, 100% 96%, 96% 100%, 0 100%);
+    padding: 5.5rem 0 5rem;
+  }
+
+  .heroTitle {
+    letter-spacing: 0.04em;
+  }
+}
+
+@media (max-width: 768px) {
+  .heroBanner {
+    padding: 5rem 0 4.4rem;
+  }
+
+  .heroTitle {
+    font-size: clamp(2.2rem, 11vw, 3.2rem);
+  }
+
+  .heroSubtitle,
+  .heroDescription {
+    font-size: 0.98rem;
+    max-width: 96%;
+  }
+
+  .trustItems {
+    gap: 0.68rem;
+  }
+
+  .trustItem {
+    padding: 0.46rem 0.8rem;
+    font-size: 0.82rem;
+  }
+
+  .codeBlock {
+    width: 100%;
+    max-width: 100%;
+    padding: 0.95rem 0.8rem;
+    overflow-x: auto;
+  }
 }

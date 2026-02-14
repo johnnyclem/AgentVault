@@ -4,7 +4,7 @@ import styles from './styles.module.css';
 
 type FeatureItem = {
   title: string;
-  description: JSX.Element;
+  description: React.ReactNode;
 };
 
 const FeatureList: FeatureItem[] = [
@@ -37,10 +37,12 @@ const FeatureList: FeatureItem[] = [
   },
 ];
 
-function Feature({title, description}: FeatureItem) {
+function Feature({title, description, index}: FeatureItem & {index: number}) {
+  const animatedStyle = {'--av-anim-index': index} as React.CSSProperties;
+
   return (
     <div className="col col--4 margin-bottom--lg">
-      <div className={styles.featureCard}>
+      <div className={styles.featureCard} style={animatedStyle}>
         <Heading as="h3" className={styles.featureTitle}>{title}</Heading>
         <p>{description}</p>
       </div>
@@ -67,10 +69,12 @@ const ValueList = [
   },
 ];
 
-function ValueProp({title, description}: {title: string; description: string}) {
+function ValueProp({title, description, index}: {title: string; description: string; index: number}) {
+  const animatedStyle = {'--av-anim-index': index} as React.CSSProperties;
+
   return (
     <div className="col col--6 margin-bottom--lg">
-      <div className={styles.valueCard}>
+      <div className={styles.valueCard} style={animatedStyle}>
         <div className="card__header">
           <h3>{title}</h3>
         </div>
@@ -82,25 +86,25 @@ function ValueProp({title, description}: {title: string; description: string}) {
   );
 }
 
-export default function HomepageFeatures(): JSX.Element {
+export default function HomepageFeatures(): React.ReactElement {
   return (
     <section className={styles.featuresSection}>
       <div className="container">
         <div className="text--center margin-bottom--xl">
-          <Heading as="h2">How It Works</Heading>
+          <Heading as="h2" className={styles.sectionTitle}>How It Works</Heading>
         </div>
-        <div className="row">
+        <div className={`row ${styles.featureGrid}`}>
           {FeatureList.map((props, idx) => (
-            <Feature key={idx} {...props} />
+            <Feature key={idx} {...props} index={idx} />
           ))}
         </div>
 
         <div className="text--center margin-vert--xl">
-          <Heading as="h2">Why AgentVault?</Heading>
+          <Heading as="h2" className={styles.sectionTitle}>Why AgentVault?</Heading>
         </div>
-        <div className="row">
+        <div className={`row ${styles.valueGrid}`}>
           {ValueList.map((props, idx) => (
-            <ValueProp key={idx} {...props} />
+            <ValueProp key={idx} {...props} index={idx} />
           ))}
         </div>
       </div>
