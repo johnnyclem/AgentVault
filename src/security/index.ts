@@ -15,3 +15,15 @@ export { decryptJSON } from './vetkeys.js';
 
 // Multi-sig approval workflows
 export * from './multisig.js';
+
+// HashiCorp Vault integration
+export { VaultClient } from '../vault/client.js';
+export type {
+  VaultConfig,
+  VaultSecret,
+  VaultSecretMetadata,
+  VaultOperationResult,
+  VaultHealthStatus,
+  AgentVaultPolicy,
+  AgentVaultInitOptions,
+} from '../vault/types.js';
