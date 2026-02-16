@@ -317,6 +317,246 @@
   transform: translate3d(6px, 0, 0);
 }
 
+.instantControlSection {
+  padding: 0.6rem 0 2.9rem;
+}
+
+.instantControlHeader {
+  text-align: center;
+  margin-bottom: 1.3rem;
+}
+
+.instantControlLabel {
+  margin: 0;
+  font-family: 'Syncopate', sans-serif;
+  text-transform: uppercase;
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  color: #22d3ee;
+}
+
+.instantControlTitle {
+  margin-top: 0.72rem;
+  margin-bottom: 0.9rem;
+  font-size: clamp(1.3rem, 3vw, 2rem);
+}
+
+.instantControlLead {
+  max-width: 760px;
+  margin: 0 auto;
+  color: #a8bbd9;
+  line-height: 1.75;
+}
+
+.instantControlGrid {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 1rem;
+}
+
+.instantPanel {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: rgba(11, 11, 17, 0.76);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.32);
+  padding: 1.2rem;
+}
+
+.panelHeader {
+  margin-bottom: 0.95rem;
+}
+
+.panelKicker {
+  margin: 0 0 0.4rem;
+  font-family: 'Syncopate', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.58rem;
+  color: #7e93b8;
+}
+
+.panelTitle {
+  margin: 0;
+  font-size: clamp(0.95rem, 2vw, 1.2rem);
+}
+
+.walletList {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.walletButton {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(20, 22, 32, 0.72);
+  text-align: left;
+  color: #d6e4fb;
+  padding: 0.8rem;
+  cursor: pointer;
+  display: grid;
+  gap: 0.25rem;
+  transition:
+    border-color var(--ifm-transition-fast),
+    transform var(--ifm-transition-fast),
+    box-shadow var(--ifm-transition-fast);
+}
+
+.walletButton:hover {
+  transform: translate3d(0, -2px, 0);
+  border-color: rgba(34, 211, 238, 0.38);
+  box-shadow: 0 0 18px rgba(34, 211, 238, 0.14);
+}
+
+.walletButton:disabled {
+  cursor: wait;
+  opacity: 0.85;
+}
+
+.walletButtonActive {
+  border-color: rgba(34, 211, 238, 0.56);
+  box-shadow: 0 0 18px rgba(34, 211, 238, 0.18);
+}
+
+.walletName {
+  font-weight: 700;
+}
+
+.walletMeta {
+  color: #90a7cd;
+  font-size: 0.84rem;
+}
+
+.walletState {
+  color: #22d3ee;
+  font-family: 'Syncopate', sans-serif;
+  font-size: 0.56rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.walletStatus {
+  margin-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 0.7rem;
+}
+
+.walletHint,
+.walletError,
+.walletSuccess {
+  margin: 0;
+  font-size: 0.88rem;
+}
+
+.walletHint {
+  color: #94a8ca;
+}
+
+.walletSuccess {
+  color: #b8d7ff;
+}
+
+.walletSuccess code {
+  color: #22d3ee;
+}
+
+.walletError {
+  color: #ff8fa2;
+  margin-top: 0.35rem;
+}
+
+.configGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.68rem;
+}
+
+.field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.fieldLabel {
+  color: #8ba2c8;
+  font-size: 0.68rem;
+  font-family: 'Syncopate', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.fieldInput {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(7, 9, 14, 0.78);
+  color: #dde8ff;
+  min-height: 2.2rem;
+  padding: 0.45rem 0.6rem;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.82rem;
+}
+
+.fieldInput:focus {
+  outline: none;
+  border-color: rgba(34, 211, 238, 0.55);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.14);
+}
+
+.commandBlock {
+  margin-top: 0.9rem;
+}
+
+.commandLabel {
+  margin: 0 0 0.38rem;
+  color: #93a7ca;
+  font-family: 'Syncopate', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-size: 0.58rem;
+}
+
+.commandShell {
+  margin: 0;
+  border-radius: 12px;
+  border: 1px solid rgba(34, 211, 238, 0.18);
+  background: rgba(6, 10, 17, 0.88);
+  padding: 0.82rem;
+  overflow-x: auto;
+}
+
+.commandShell code {
+  color: #9ee6ff;
+  font-size: 0.8rem;
+  line-height: 1.58;
+}
+
+.commandButton {
+  margin-top: 0.58rem;
+  width: 100%;
+}
+
+.deployLinks {
+  margin-top: 0.92rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+}
+
+.inlineLink {
+  display: inline-flex;
+  align-items: center;
+  color: #22d3ee;
+  font-family: 'Syncopate', sans-serif;
+  text-transform: uppercase;
+  font-size: 0.56rem;
+  letter-spacing: 0.1em;
+  text-decoration: none;
+}
+
+.inlineLink:hover {
+  color: #ffffff;
+}
+
 @keyframes hero-grid-drift {
   0% {
     transform: translate3d(0, 0, 0);
@@ -365,6 +605,10 @@
   .pathGrid {
     grid-template-columns: 1fr;
   }
+
+  .instantControlGrid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 640px) {
@@ -382,5 +626,9 @@
 
   .heroKicker {
     font-size: 0.58rem;
+  }
+
+  .configGrid {
+    grid-template-columns: 1fr;
   }
 }

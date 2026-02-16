@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useMemo, useState} from 'react';
 import clsx from 'clsx';
 import Link from '@docusaurus/Link';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
@@ -7,6 +7,135 @@ import Heading from '@theme/Heading';
 import HomepageFeatures from '@site/src/components/HomepageFeatures';
 
 import styles from './index.module.css';
+
+type WalletId = 'ethereum' | 'icp' | 'arweave';
+type InstallChannel = 'npx' | 'global';
+type ProjectTemplate = 'default' | 'minimal';
+type DeployNetwork = 'local' | 'ic';
+
+type WalletConnection = {
+  address: string;
+  chainName: string;
+  type: WalletId;
+};
+
+type WalletOption = {
+  id: WalletId;
+  name: string;
+  chainName: string;
+  installUrl: string;
+  installLabel: string;
+  isAvailable: () => boolean;
+  connect: () => Promise<WalletConnection>;
+};
+
+declare global {
+  interface Window {
+    ethereum?: {
+      request: (args: {method: string; params?: unknown[]}) => Promise<unknown>;
+    };
+    ic?: {
+      plug?: {
+        requestConnect: (args?: {whitelist?: string[]; host?: string}) => Promise<boolean>;
+        agent?: {
+          getPrincipal?: () => Promise<{toText: () => string}>;
+        };
+      };
+    };
+    arweaveWallet?: {
+      connect: (permissions: string[]) => Promise<void>;
+      getActiveAddress: () => Promise<string>;
+    };
+  }
+}
+
+const walletOptions: WalletOption[] = [
+  {
+    id: 'ethereum',
+    name: 'MetaMask',
+    chainName: 'Ethereum',
+    installUrl: 'https://metamask.io/download/',
+    installLabel: 'Install MetaMask',
+    isAvailable: () => typeof window !== 'undefined' && Boolean(window.ethereum),
+    connect: async () => {
+      if (typeof window === 'undefined' || !window.ethereum) {
+        throw new Error('MetaMask was not detected in this browser.');
+      }
+
+      const accounts = (await window.ethereum.request({method: 'eth_requestAccounts'})) as string[];
+      if (!accounts || accounts.length === 0) {
+        throw new Error('No Ethereum accounts were returned by your wallet.');
+      }
+
+      return {
+        address: accounts[0],
+        chainName: 'Ethereum',
+        type: 'ethereum',
+      };
+    },
+  },
+  {
+    id: 'icp',
+    name: 'Plug Wallet',
+    chainName: 'ICP',
+    installUrl: 'https://plugwallet.ooo/',
+    installLabel: 'Install Plug Wallet',
+    isAvailable: () => typeof window !== 'undefined' && Boolean(window.ic?.plug),
+    connect: async () => {
+      if (typeof window === 'undefined' || !window.ic?.plug) {
+        throw new Error('Plug wallet was not detected in this browser.');
+      }
+
+      const connected = await window.ic.plug.requestConnect({
+        whitelist: [],
+        host: 'https://icp0.io',
+      });
+
+      if (!connected) {
+        throw new Error('Wallet connection request was rejected.');
+      }
+
+      const principal = await window.ic.plug.agent?.getPrincipal?.();
+      const address = principal?.toText?.() ?? 'connected-with-plug';
+
+      return {
+        address,
+        chainName: 'ICP',
+        type: 'icp',
+      };
+    },
+  },
+  {
+    id: 'arweave',
+    name: 'ArConnect',
+    chainName: 'Arweave',
+    installUrl: 'https://www.arconnect.io/download',
+    installLabel: 'Install ArConnect',
+    isAvailable: () => typeof window !== 'undefined' && Boolean(window.arweaveWallet),
+    connect: async () => {
+      if (typeof window === 'undefined' || !window.arweaveWallet) {
+        throw new Error('ArConnect was not detected in this browser.');
+      }
+
+      await window.arweaveWallet.connect(['ACCESS_ADDRESS', 'SIGN_TRANSACTION']);
+      const address = await window.arweaveWallet.getActiveAddress();
+
+      return {
+        address,
+        chainName: 'Arweave',
+        type: 'arweave',
+      };
+    },
+  },
+];
+
+function shortAddress(address: string): string {
+  if (address.length <= 14) {
+    return address;
+  }
+
+  return `${address.slice(0, 7)}...${address.slice(-5)}`;
+}
 
 function HomepageHeader() {
   const {siteConfig} = useDocusaurusContext();
@@ -35,6 +164,9 @@ function HomepageHeader() {
           <Link className="button button--secondary button--lg" to="/docs/getting-started/installation">
             Get Started
           </Link>
+          <a className="button button--primary button--lg" href="#instant-control">
+            1-Click Control
+          </a>
           <Link className="button button--outline button--lg" to="/docs/getting-started/quick-start">
             Quick Start
           </Link>
@@ -108,6 +240,263 @@ agentvault health`}</code>
   );
 }
 
+function InstantControlSection() {
+  const [selectedWallet, setSelectedWallet] = useState<WalletId | null>(null);
+  const [walletConnection, setWalletConnection] = useState<WalletConnection | null>(null);
+  const [walletError, setWalletError] = useState<string | null>(null);
+  const [walletInstall, setWalletInstall] = useState<{label: string; url: string} | null>(null);
+  const [walletConnecting, setWalletConnecting] = useState(false);
+
+  const [projectName, setProjectName] = useState('my-agent');
+  const [template, setTemplate] = useState<ProjectTemplate>('default');
+  const [installChannel, setInstallChannel] = useState<InstallChannel>('npx');
+  const [packagePath, setPackagePath] = useState('./');
+  const [network, setNetwork] = useState<DeployNetwork>('local');
+  const [canisterId, setCanisterId] = useState('');
+  const [copiedAction, setCopiedAction] = useState<'install' | 'deploy' | null>(null);
+
+  const safeProjectName = projectName.trim() || 'my-agent';
+  const safePackagePath = packagePath.trim() || './';
+  const cliPrefix = installChannel === 'global' ? 'agentvault' : 'npx agentvault@latest';
+
+  const installCommand = useMemo(() => {
+    if (installChannel === 'global') {
+      return `npm install -g agentvault && agentvault init ${safeProjectName} --template ${template}`;
+    }
+
+    return `npx agentvault@latest init ${safeProjectName} --template ${template}`;
+  }, [installChannel, safeProjectName, template]);
+
+  const deployCommand = useMemo(() => {
+    const deployFlags = canisterId.trim()
+      ? `--network ${network} --canister-id ${canisterId.trim()} --upgrade`
+      : `--network ${network}`;
+
+    return `cd ${safeProjectName} && ${cliPrefix} package ${safePackagePath} && ${cliPrefix} deploy ${deployFlags}`;
+  }, [canisterId, cliPrefix, network, safePackagePath, safeProjectName]);
+
+  const handleConnectWallet = async (wallet: WalletOption) => {
+    setSelectedWallet(wallet.id);
+    setWalletError(null);
+    setWalletInstall(null);
+
+    if (!wallet.isAvailable()) {
+      setWalletInstall({label: wallet.installLabel, url: wallet.installUrl});
+      return;
+    }
+
+    setWalletConnecting(true);
+    try {
+      const connection = await wallet.connect();
+      setWalletConnection(connection);
+      setNetwork(connection.type === 'icp' ? 'ic' : 'local');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Wallet connection failed.';
+      setWalletError(message);
+    } finally {
+      setWalletConnecting(false);
+    }
+  };
+
+  const handleCopy = async (mode: 'install' | 'deploy', value: string) => {
+    setWalletError(null);
+
+    if (typeof navigator === 'undefined' || !navigator.clipboard) {
+      setWalletError('Clipboard access is unavailable in this browser.');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedAction(mode);
+      setTimeout(() => setCopiedAction(null), 2000);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to copy command.';
+      setWalletError(message);
+    }
+  };
+
+  return (
+    <section id="instant-control" className={styles.instantControlSection}>
+      <div className="container">
+        <div className={styles.instantControlHeader}>
+          <p className={styles.instantControlLabel}>Instant Control</p>
+          <Heading as="h2" className={styles.instantControlTitle}>
+            Wallet Connect + 1-Click Install/Deploy
+          </Heading>
+          <p className={styles.instantControlLead}>
+            Connect your wallet, tune deployment settings, and copy ready-to-run commands for the exact environment you are shipping to.
+          </p>
+        </div>
+
+        <div className={styles.instantControlGrid}>
+          <article className={styles.instantPanel}>
+            <div className={styles.panelHeader}>
+              <p className={styles.panelKicker}>Step 1</p>
+              <Heading as="h3" className={styles.panelTitle}>
+                Connect Wallet
+              </Heading>
+            </div>
+
+            <div className={styles.walletList}>
+              {walletOptions.map((wallet) => {
+                const isSelected = selectedWallet === wallet.id;
+                const isConnected = walletConnection?.type === wallet.id;
+                const isAvailable = wallet.isAvailable();
+
+                return (
+                  <button
+                    key={wallet.id}
+                    type="button"
+                    className={clsx(styles.walletButton, isSelected && styles.walletButtonActive)}
+                    onClick={() => void handleConnectWallet(wallet)}
+                    disabled={walletConnecting}>
+                    <span className={styles.walletName}>{wallet.name}</span>
+                    <span className={styles.walletMeta}>
+                      {wallet.chainName} · {isAvailable ? 'detected' : 'not detected'}
+                    </span>
+                    <span className={styles.walletState}>
+                      {walletConnecting && isSelected ? 'connecting...' : isConnected ? 'connected' : 'connect'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className={styles.walletStatus}>
+              {walletConnection ? (
+                <p className={styles.walletSuccess}>
+                  Connected {walletConnection.chainName}: <code>{shortAddress(walletConnection.address)}</code>
+                </p>
+              ) : (
+                <p className={styles.walletHint}>No wallet connected yet.</p>
+              )}
+
+              {walletInstall ? (
+                <p className={styles.walletHint}>
+                  Wallet extension missing.{' '}
+                  <a href={walletInstall.url} target="_blank" rel="noreferrer">
+                    {walletInstall.label}
+                  </a>
+                </p>
+              ) : null}
+
+              {walletError ? <p className={styles.walletError}>{walletError}</p> : null}
+            </div>
+          </article>
+
+          <article className={styles.instantPanel}>
+            <div className={styles.panelHeader}>
+              <p className={styles.panelKicker}>Step 2</p>
+              <Heading as="h3" className={styles.panelTitle}>
+                Customize 1-Click Flow
+              </Heading>
+            </div>
+
+            <div className={styles.configGrid}>
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Project Name</span>
+                <input
+                  className={styles.fieldInput}
+                  value={projectName}
+                  onChange={(event) => setProjectName(event.target.value)}
+                />
+              </label>
+
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Template</span>
+                <select
+                  className={styles.fieldInput}
+                  value={template}
+                  onChange={(event) => setTemplate(event.target.value as ProjectTemplate)}>
+                  <option value="default">default</option>
+                  <option value="minimal">minimal</option>
+                </select>
+              </label>
+
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Install Channel</span>
+                <select
+                  className={styles.fieldInput}
+                  value={installChannel}
+                  onChange={(event) => setInstallChannel(event.target.value as InstallChannel)}>
+                  <option value="npx">npx</option>
+                  <option value="global">global npm</option>
+                </select>
+              </label>
+
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Package Path</span>
+                <input
+                  className={styles.fieldInput}
+                  value={packagePath}
+                  onChange={(event) => setPackagePath(event.target.value)}
+                />
+              </label>
+
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Deploy Network</span>
+                <select
+                  className={styles.fieldInput}
+                  value={network}
+                  onChange={(event) => setNetwork(event.target.value as DeployNetwork)}>
+                  <option value="local">local</option>
+                  <option value="ic">ic</option>
+                </select>
+              </label>
+
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Existing Canister ID (optional)</span>
+                <input
+                  className={styles.fieldInput}
+                  placeholder="abcde-aaaab"
+                  value={canisterId}
+                  onChange={(event) => setCanisterId(event.target.value)}
+                />
+              </label>
+            </div>
+
+            <div className={styles.commandBlock}>
+              <p className={styles.commandLabel}>1-Click Install</p>
+              <pre className={styles.commandShell}>
+                <code>{installCommand}</code>
+              </pre>
+              <button
+                type="button"
+                className={clsx('button button--secondary button--lg', styles.commandButton)}
+                onClick={() => void handleCopy('install', installCommand)}>
+                {copiedAction === 'install' ? 'Copied Install Command' : 'Copy Install Command'}
+              </button>
+            </div>
+
+            <div className={styles.commandBlock}>
+              <p className={styles.commandLabel}>1-Click Deploy</p>
+              <pre className={styles.commandShell}>
+                <code>{deployCommand}</code>
+              </pre>
+              <button
+                type="button"
+                className={clsx('button button--secondary button--lg', styles.commandButton)}
+                onClick={() => void handleCopy('deploy', deployCommand)}>
+                {copiedAction === 'deploy' ? 'Copied Deploy Command' : 'Copy Deploy Command'}
+              </button>
+            </div>
+
+            <div className={styles.deployLinks}>
+              <Link className={styles.inlineLink} to="/docs/getting-started/installation">
+                Installation Guide
+              </Link>
+              <Link className={styles.inlineLink} to="/docs/user/deployment">
+                Deployment Guide
+              </Link>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function Pathways() {
   return (
     <section className={styles.pathwaysSection}>
@@ -154,6 +543,7 @@ export default function Home(): React.ReactElement {
       <HomepageHeader />
       <main className={styles.main}>
         <ManifestSection />
+        <InstantControlSection />
         <HomepageFeatures />
         <Pathways />
       </main>
