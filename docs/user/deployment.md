@@ -321,4 +321,4 @@ agentvault deploy --network ic --config production.yaml
 - [ ] Read [Wallet Guide](./wallets.md) for cycles management
 - [ ] Read [Backup Guide](./backups.md) for backup strategies
 - [ ] Explore [Web Dashboard](./webapp.md) for UI-based management
-- [ ] Review [Security Best Practices](../dev/security.md)
+- [ ] Review [Security Best Practices](../security/best-practices.md)

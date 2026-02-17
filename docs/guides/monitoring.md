@@ -196,6 +196,6 @@ Access at: `http://localhost:3000`
 
 ## Related Guides
 
-- [Troubleshooting](../../user/troubleshooting.md)
-- [Deployment](../../user/deployment.md)
-- [Backups](../../user/backups.md)
+- [Troubleshooting](../user/troubleshooting.md)
+- [Deployment](../user/deployment.md)
+- [Backups](../user/backups.md)

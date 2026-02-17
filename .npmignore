@@ -15,10 +15,15 @@ src/
 cli/
 canister/
 webapp/
+site/
+scripts/
 examples/
 docs/
 AI_DOCS/
 .github/
+.agentvault/
+backups/
+output/
 
 # Config files
 tsconfig.json

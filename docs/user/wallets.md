@@ -360,4 +360,4 @@ agentvault wallet dapp-sign <url>
 
 - [ ] Read [Deployment Guide](./deployment.md) for canister funding
 - [ ] Read [Troubleshooting](./troubleshooting.md) for common issues
-- [ ] Explore [Security Documentation](../dev/security.md)
+- [ ] Explore [Security Documentation](../security/overview.md)

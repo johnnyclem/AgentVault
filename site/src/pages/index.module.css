@@ -542,6 +542,139 @@
   gap: 0.8rem;
 }
 
+.backupStudioSection {
+  padding: 0.2rem 0 2.8rem;
+}
+
+.backupStudioHeader {
+  text-align: center;
+  margin-bottom: 1.25rem;
+}
+
+.backupStudioGrid {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.profileList {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.profileButton {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(20, 22, 32, 0.72);
+  text-align: left;
+  color: #d6e4fb;
+  padding: 0.8rem;
+  cursor: pointer;
+  display: grid;
+  gap: 0.25rem;
+  transition:
+    border-color var(--ifm-transition-fast),
+    transform var(--ifm-transition-fast),
+    box-shadow var(--ifm-transition-fast);
+}
+
+.profileButton:hover {
+  transform: translate3d(0, -2px, 0);
+  border-color: rgba(34, 211, 238, 0.38);
+  box-shadow: 0 0 18px rgba(34, 211, 238, 0.14);
+}
+
+.profileButtonActive {
+  border-color: rgba(34, 211, 238, 0.56);
+  box-shadow: 0 0 18px rgba(34, 211, 238, 0.18);
+}
+
+.profilePath {
+  color: #22d3ee;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.74rem;
+}
+
+.storagePillRow {
+  margin-top: 0.9rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.storagePill {
+  border-radius: 999px;
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  background: rgba(8, 15, 24, 0.72);
+  color: #9ee6ff;
+  padding: 0.22rem 0.58rem;
+  font-family: 'Syncopate', sans-serif;
+  font-size: 0.52rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.protocolTimelineCard {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: rgba(11, 11, 17, 0.76);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.32);
+  padding: 1.2rem;
+}
+
+.protocolTimeline {
+  display: grid;
+  gap: 0.68rem;
+}
+
+.protocolTimelineItem {
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  background: rgba(7, 10, 16, 0.74);
+  padding: 0.7rem;
+  display: grid;
+  grid-template-columns: 2.2rem 1fr;
+  gap: 0.7rem;
+  align-items: flex-start;
+}
+
+.protocolTimelineId {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 999px;
+  border: 1px solid rgba(34, 211, 238, 0.42);
+  color: #22d3ee;
+  font-family: 'Syncopate', sans-serif;
+  font-size: 0.56rem;
+  letter-spacing: 0.08em;
+}
+
+.protocolTimelineLabel {
+  margin: 0;
+  color: #dbe8ff;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.protocolTimelineText {
+  margin: 0.3rem 0 0;
+  color: #a8bbd9;
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.protocolTimelineOutput {
+  margin: 0.38rem 0 0;
+  color: #9ee6ff;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.74rem;
+}
+
 .inlineLink {
   display: inline-flex;
   align-items: center;
@@ -607,6 +740,10 @@
   }
 
   .instantControlGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .backupStudioGrid {
     grid-template-columns: 1fr;
   }
 }

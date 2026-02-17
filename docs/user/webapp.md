@@ -375,4 +375,4 @@ GET /api/logs?canisterId=:id&level=:level
 
 - [ ] Read [Getting Started](./getting-started.md) for CLI usage
 - [ ] Read [Deployment Guide](./deployment.md) for deployment details
-- [ ] Review [Security Best Practices](../dev/security.md)
+- [ ] Review [Security Best Practices](../security/best-practices.md)

@@ -51,13 +51,13 @@ AgentVault is a complete solution for creating, deploying, and managing AI agent
 ## Documentation
 
 Complete documentation is available at:
-- [User Guide](docs/user/getting-started.md)
-- [Deployment Guide](docs/user/deployment.md)
-- [Wallet Guide](docs/user/wallets.md)
-- [Backup Guide](docs/user/backups.md)
-- [Web Dashboard Guide](docs/user/webapp.md)
-- [Troubleshooting Guide](docs/user/troubleshooting.md)
-- [Release Process](docs/dev/release-process.md)
+- [User Guide](/docs/user/getting-started)
+- [Deployment Guide](/docs/user/deployment)
+- [Wallet Guide](/docs/user/wallets)
+- [Backup Guide](/docs/user/backups)
+- [Web Dashboard Guide](/docs/user/webapp)
+- [Troubleshooting Guide](/docs/user/troubleshooting)
+- [Release Process](/docs/dev/release-process)
 
 ## Installation
 

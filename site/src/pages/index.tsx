@@ -12,6 +12,7 @@ type WalletId = 'ethereum' | 'icp' | 'arweave';
 type InstallChannel = 'npx' | 'global';
 type ProjectTemplate = 'default' | 'minimal';
 type DeployNetwork = 'local' | 'ic';
+type SnapshotProfileId = 'clawdbot' | 'coding-cli' | 'goose' | 'ide-agent' | 'custom';
 
 type WalletConnection = {
   address: string;
@@ -27,6 +28,15 @@ type WalletOption = {
   installLabel: string;
   isAvailable: () => boolean;
   connect: () => Promise<WalletConnection>;
+};
+
+type SnapshotProfile = {
+  id: SnapshotProfileId;
+  name: string;
+  description: string;
+  defaultPath: string;
+  snapshotTarget: string;
+  restoreTarget: string;
 };
 
 declare global {
@@ -129,6 +139,76 @@ const walletOptions: WalletOption[] = [
   },
 ];
 
+const snapshotProfiles: SnapshotProfile[] = [
+  {
+    id: 'clawdbot',
+    name: 'Clawdbot / OpenClaw',
+    description: 'Capture memory graphs, prompts, and agent runtime configuration.',
+    defaultPath: '~/.openclaw',
+    snapshotTarget: 'openclaw',
+    restoreTarget: 'openclaw',
+  },
+  {
+    id: 'coding-cli',
+    name: 'Claude Code / Codex / Gemini CLI',
+    description: 'Preserve conversation state, tool context, and coding workspace metadata.',
+    defaultPath: '~/.claude',
+    snapshotTarget: 'coding-cli',
+    restoreTarget: 'coding-cli',
+  },
+  {
+    id: 'goose',
+    name: 'Goose',
+    description: 'Back up Goose sessions, plugin data, and long-term behaviors.',
+    defaultPath: '~/.goose',
+    snapshotTarget: 'goose',
+    restoreTarget: 'goose',
+  },
+  {
+    id: 'ide-agent',
+    name: 'Cursor / Windsurf',
+    description: 'Archive IDE assistant context, preferences, and workspace state.',
+    defaultPath: '~/.cursor',
+    snapshotTarget: 'ide-agent',
+    restoreTarget: 'ide-agent',
+  },
+  {
+    id: 'custom',
+    name: 'DIY (Custom Path)',
+    description: 'Point AgentVault to any local folder and snapshot it deterministically.',
+    defaultPath: '~/path/to/agent-folder',
+    snapshotTarget: 'custom',
+    restoreTarget: 'custom',
+  },
+];
+
+const backupProtocolPhases = [
+  {
+    id: '01',
+    label: 'Create Snapshot',
+    description: 'Package local agent state into an encrypted, content-addressed archive.',
+    output: 'snapshot.zip + manifest.json',
+  },
+  {
+    id: '02',
+    label: 'Sign Intent',
+    description: 'Sign backup intent with wallet keys before any chain operation begins.',
+    output: 'wallet signature + hash proof',
+  },
+  {
+    id: '03',
+    label: 'Commit Storage',
+    description: 'Write backup records to ICP and optional Arweave archival targets.',
+    output: 'canister ID + archival transaction',
+  },
+  {
+    id: '04',
+    label: 'Verify Recovery',
+    description: 'Generate deterministic restore command and audit receipt for operators.',
+    output: 'restore command + replay proof',
+  },
+];
+
 function shortAddress(address: string): string {
   if (address.length <= 14) {
     return address;
@@ -153,11 +233,11 @@ function HomepageHeader() {
         <p className={styles.protocolTag}>Protocol // 001</p>
         <p className={styles.heroKicker}>Neural Sovereignty</p>
         <Heading as="h1" className={clsx('hero__title', styles.heroTitle)}>
-          Agent Vault
+          AgentVault
         </Heading>
         <p className={clsx('hero__subtitle', styles.heroSubtitle)}>{siteConfig.tagline}</p>
         <p className={styles.heroDescription}>
-          Agent Vault deploys autonomous agent entities to ICP canisters with cryptographic ownership, continuous execution, and reconstructible memory.
+          AgentVault deploys and protects autonomous agents with cryptographic ownership, persistent execution, and deterministic recovery from chain-backed state.
         </p>
 
         <div className={styles.heroButtons}>
@@ -182,6 +262,159 @@ function HomepageHeader() {
         </div>
       </div>
     </header>
+  );
+}
+
+function BackupProtocolStudioSection() {
+  const [selectedProfileId, setSelectedProfileId] = useState<SnapshotProfileId>('clawdbot');
+  const [copiedField, setCopiedField] = useState<'snapshot' | 'restore' | null>(null);
+
+  const selectedProfile = useMemo(
+    () => snapshotProfiles.find((profile) => profile.id === selectedProfileId) ?? snapshotProfiles[0],
+    [selectedProfileId],
+  );
+
+  const snapshotCommand = useMemo(() => {
+    if (selectedProfile.id === 'custom') {
+      return `agentvault snapshot --path ${selectedProfile.defaultPath}`;
+    }
+
+    return `agentvault snapshot --agent ${selectedProfile.snapshotTarget}`;
+  }, [selectedProfile]);
+
+  const restoreCommand = useMemo(
+    () => `npx agentvault@latest restore --wallet <your-wallet> --agent ${selectedProfile.restoreTarget}`,
+    [selectedProfile],
+  );
+
+  const handleCopy = async (field: 'snapshot' | 'restore', value: string) => {
+    if (typeof navigator === 'undefined' || !navigator.clipboard) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedField(field);
+      setTimeout(() => setCopiedField(null), 1800);
+    } catch {
+      // Ignore clipboard failures in environments where clipboard is restricted.
+    }
+  };
+
+  return (
+    <section className={styles.backupStudioSection}>
+      <div className="container">
+        <div className={styles.backupStudioHeader}>
+          <p className={styles.instantControlLabel}>Backup Protocol Studio</p>
+          <Heading as="h2" className={styles.instantControlTitle}>
+            Snapshot, Sign, and Restore With One Operator Flow
+          </Heading>
+          <p className={styles.instantControlLead}>
+            This mirrors the strongest parts of the backup-focused experience: pick an agent stack, generate the exact snapshot command, and keep restore instructions tied to on-chain records.
+          </p>
+        </div>
+
+        <div className={styles.backupStudioGrid}>
+          <article className={styles.instantPanel}>
+            <div className={styles.panelHeader}>
+              <p className={styles.panelKicker}>Step A</p>
+              <Heading as="h3" className={styles.panelTitle}>
+                Select Agent Profile
+              </Heading>
+            </div>
+            <div className={styles.profileList}>
+              {snapshotProfiles.map((profile) => (
+                <button
+                  key={profile.id}
+                  type="button"
+                  className={clsx(styles.profileButton, selectedProfile.id === profile.id && styles.profileButtonActive)}
+                  onClick={() => setSelectedProfileId(profile.id)}>
+                  <span className={styles.walletName}>{profile.name}</span>
+                  <span className={styles.walletMeta}>{profile.description}</span>
+                  <span className={styles.profilePath}>{profile.defaultPath}</span>
+                </button>
+              ))}
+            </div>
+          </article>
+
+          <article className={styles.instantPanel}>
+            <div className={styles.panelHeader}>
+              <p className={styles.panelKicker}>Step B</p>
+              <Heading as="h3" className={styles.panelTitle}>
+                Snapshot + Restore Commands
+              </Heading>
+            </div>
+
+            <div className={styles.commandBlock}>
+              <p className={styles.commandLabel}>Snapshot Command</p>
+              <pre className={styles.commandShell}>
+                <code>{snapshotCommand}</code>
+              </pre>
+              <button
+                type="button"
+                className={clsx('button button--secondary button--lg', styles.commandButton)}
+                onClick={() => void handleCopy('snapshot', snapshotCommand)}>
+                {copiedField === 'snapshot' ? 'Copied Snapshot Command' : 'Copy Snapshot Command'}
+              </button>
+            </div>
+
+            <div className={styles.commandBlock}>
+              <p className={styles.commandLabel}>Restore Command</p>
+              <pre className={styles.commandShell}>
+                <code>{restoreCommand}</code>
+              </pre>
+              <button
+                type="button"
+                className={clsx('button button--secondary button--lg', styles.commandButton)}
+                onClick={() => void handleCopy('restore', restoreCommand)}>
+                {copiedField === 'restore' ? 'Copied Restore Command' : 'Copy Restore Command'}
+              </button>
+            </div>
+
+            <div className={styles.storagePillRow}>
+              <span className={styles.storagePill}>Wallet-Signed</span>
+              <span className={styles.storagePill}>ICP Canister</span>
+              <span className={styles.storagePill}>Arweave Archive</span>
+              <span className={styles.storagePill}>Replay Verified</span>
+            </div>
+          </article>
+        </div>
+
+        <article className={styles.protocolTimelineCard}>
+          <div className={styles.panelHeader}>
+            <p className={styles.panelKicker}>Step C</p>
+            <Heading as="h3" className={styles.panelTitle}>
+              Execution Timeline
+            </Heading>
+          </div>
+
+          <div className={styles.protocolTimeline}>
+            {backupProtocolPhases.map((phase) => (
+              <div key={phase.id} className={styles.protocolTimelineItem}>
+                <span className={styles.protocolTimelineId}>{phase.id}</span>
+                <div>
+                  <p className={styles.protocolTimelineLabel}>{phase.label}</p>
+                  <p className={styles.protocolTimelineText}>{phase.description}</p>
+                  <p className={styles.protocolTimelineOutput}>Output: {phase.output}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className={styles.deployLinks}>
+            <Link className={styles.inlineLink} to="/docs/user/backups">
+              Backup Operations
+            </Link>
+            <Link className={styles.inlineLink} to="/docs/user/troubleshooting">
+              Recovery Troubleshooting
+            </Link>
+            <Link className={styles.inlineLink} to="/docs/security/overview">
+              Security Overview
+            </Link>
+          </div>
+        </article>
+      </div>
+    </section>
   );
 }
 
@@ -505,26 +738,26 @@ function Pathways() {
           <article className={clsx(styles.pathCard, styles.pathCardCyan)}>
             <p className={styles.pathLabel}>Next Step</p>
             <Heading as="h3" className={styles.pathTitle}>
-              Soul ID Generation
+              Backup + Recovery Ops
             </Heading>
             <p className={styles.pathBody}>
-              Configure identities, project metadata, and environment variables before production deployment.
+              Configure retention, validate restore drills, and automate operational backup checks.
             </p>
-            <Link className={styles.pathAction} to="/docs/getting-started/configuration">
-              Go To Protocol
+            <Link className={styles.pathAction} to="/docs/user/backups">
+              Open Runbook
             </Link>
           </article>
 
           <article className={clsx(styles.pathCard, styles.pathCardPink)}>
             <p className={styles.pathLabel}>Deep Dive</p>
             <Heading as="h3" className={styles.pathTitle}>
-              Cryptographic Ghosts
+              Threat Model + Hardening
             </Heading>
             <p className={styles.pathBody}>
-              Study security posture, key custody, and defense layers for long-lived autonomous operations.
+              Review production hardening, key custody controls, and failure-response strategy.
             </p>
             <Link className={styles.pathAction} to="/docs/security/overview">
-              Read Manifesto
+              Read Security Guide
             </Link>
           </article>
         </div>
@@ -544,6 +777,7 @@ export default function Home(): React.ReactElement {
       <main className={styles.main}>
         <ManifestSection />
         <InstantControlSection />
+        <BackupProtocolStudioSection />
         <HomepageFeatures />
         <Pathways />
       </main>
