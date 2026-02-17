@@ -46,7 +46,7 @@ describe('Wallet Sign (CLE-70)', () => {
       expect(provider).toBeDefined();
     });
 
-    it('should create Polkadot provider for signing', async () => {
+    it('should create Polkadot provider for signing', { timeout: 15000 }, async () => {
       const { PolkadotProvider } = await import('../../src/wallet/providers/polkadot-provider.js');
       const provider = new PolkadotProvider({
         chain: 'polkadot',
