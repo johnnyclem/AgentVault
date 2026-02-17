@@ -43,6 +43,9 @@ import { inferenceCmd } from './commands/inference.js';
 import { approveCmd } from './commands/approve.js';
 import { cloudBackupCmd } from './commands/cloud-backup.js';
 
+// Phase 5 commands
+import { vaultCmd } from './commands/vault.js';
+
 export function createProgram(): Command {
   const program = new Command();
 
@@ -89,6 +92,9 @@ export function createProgram(): Command {
   program.addCommand(inferenceCmd);
   program.addCommand(approveCmd);
   program.addCommand(cloudBackupCmd);
+
+  // Phase 5 commands
+  program.addCommand(vaultCmd);
 
   return program;
 }
