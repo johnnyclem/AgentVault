@@ -1,6 +1,6 @@
 {
   "name": "agentvault",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Persistent On-Chain AI Agent Platform - Sovereign, Reconstructible, Autonomous",
   "main": "src/index.ts",
   "bin": {
