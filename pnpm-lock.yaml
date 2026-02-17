@@ -23,6 +23,9 @@ importers:
       '@polkadot/api':
         specifier: ^16.5.4
         version: 16.5.4(bufferutil@4.1.0)(utf-8-validate@5.0.10)
+      '@polkadot/keyring':
+        specifier: ^14.0.1
+        version: 14.0.1(@polkadot/util-crypto@14.0.1(@polkadot/util@14.0.1))(@polkadot/util@14.0.1)
       '@polkadot/util':
         specifier: ^14.0.1
         version: 14.0.1

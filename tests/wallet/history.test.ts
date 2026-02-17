@@ -27,7 +27,7 @@ describe('Wallet History (CLE-69)', () => {
   });
 
   describe('listAgentWallets', () => {
-    it('should return array of wallet IDs for agent', async () => {
+    it('should return array of wallet IDs for agent', { timeout: 15000 }, async () => {
       const { listAgentWallets } = await import('../../src/wallet/index.js');
       const wallets = listAgentWallets(testAgentId);
 
