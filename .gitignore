@@ -1,3 +1,6 @@
+# Xcode
+**/xcuserdata
+
 # Dependencies
 node_modules/
 .pnp/
