@@ -4,6 +4,7 @@ import SwiftUI
 struct SidebarView: View {
     @EnvironmentObject var walletStore: WalletStore
     @EnvironmentObject var appState: AppState
+    @EnvironmentObject var agentStore: AgentStore
 
     var body: some View {
         List(selection: $appState.selectedDestination) {
@@ -27,6 +28,41 @@ struct SidebarView: View {
                         }
                     } icon: {
                         Image(systemName: "wallet.pass.fill")
+                    }
+                }
+            }
+
+            // Agents
+            Section("Agents") {
+                NavigationLink(value: NavigationDestination.agentHub) {
+                    Label {
+                        HStack {
+                            Text("Agent Hub")
+                            Spacer()
+                            if !agentStore.agents.isEmpty {
+                                Text("\(agentStore.agents.count)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(.quaternary, in: Capsule())
+                            }
+                        }
+                    } icon: {
+                        Image(systemName: "cpu")
+                    }
+                }
+
+                NavigationLink(value: NavigationDestination.chat) {
+                    Label("Chat", systemImage: "bubble.left.and.bubble.right")
+                }
+
+                // Quick links to individual agents
+                if !agentStore.primaryAgents.isEmpty {
+                    ForEach(agentStore.primaryAgents.prefix(5)) { agent in
+                        NavigationLink(value: NavigationDestination.agentHub) {
+                            AgentSidebarRow(agent: agent)
+                        }
                     }
                 }
             }
@@ -110,6 +146,37 @@ struct SidebarView: View {
             .padding(.bottom, 12)
         }
         .background(.bar)
+    }
+}
+
+/// Compact agent row for the sidebar
+struct AgentSidebarRow: View {
+    let agent: Agent
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: agent.agentType.iconName)
+                .font(.caption)
+                .foregroundStyle(agent.agentType.color)
+                .frame(width: 14)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(agent.name)
+                    .font(.body)
+                    .lineLimit(1)
+                Text(agent.model)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            Circle()
+                .fill(agent.status.color)
+                .frame(width: 6, height: 6)
+        }
+        .padding(.vertical, 2)
     }
 }
 

@@ -4,6 +4,7 @@ import SwiftUI
 struct MainView: View {
     @EnvironmentObject var walletStore: WalletStore
     @EnvironmentObject var appState: AppState
+    @EnvironmentObject var agentStore: AgentStore
 
     var body: some View {
         Group {
@@ -48,6 +49,12 @@ struct MainView: View {
             BackupRestoreView()
         case .settings:
             SettingsView()
+        case .agentHub:
+            AgentHubView()
+                .environmentObject(agentStore)
+        case .chat:
+            ChatView()
+                .environmentObject(agentStore)
         }
     }
 

@@ -4,12 +4,14 @@ import SwiftUI
 struct AgentVaultWalletApp: App {
     @StateObject private var walletStore = WalletStore()
     @StateObject private var appState = AppState()
+    @StateObject private var agentStore = AgentStore()
 
     var body: some Scene {
         WindowGroup {
             MainView()
                 .environmentObject(walletStore)
                 .environmentObject(appState)
+                .environmentObject(agentStore)
                 .frame(minWidth: 900, minHeight: 600)
                 .onAppear {
                     walletStore.loadWallets()
@@ -18,7 +20,7 @@ struct AgentVaultWalletApp: App {
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified(showsTitle: true))
-        .defaultSize(width: 1100, height: 720)
+        .defaultSize(width: 1200, height: 740)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("New Wallet...") {
@@ -30,6 +32,18 @@ struct AgentVaultWalletApp: App {
                     appState.activeSheet = .importWallet
                 }
                 .keyboardShortcut("i", modifiers: .command)
+
+                Divider()
+
+                Button("New Agent...") {
+                    appState.selectedDestination = .agentHub
+                }
+                .keyboardShortcut("a", modifiers: [.command, .shift])
+
+                Button("Chat...") {
+                    appState.selectedDestination = .chat
+                }
+                .keyboardShortcut("t", modifiers: [.command, .shift])
 
                 Divider()
 
