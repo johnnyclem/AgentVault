@@ -347,7 +347,8 @@ actor CLIBridge {
     private func run(_ command: String, args: [String] = [], cwd: String? = nil) async throws -> String {
         try await withCheckedThrowingContinuation { continuation in
             let process = Process()
-            let pipe = Pipe()
+            let stdoutPipe = Pipe()
+            let stderrPipe = Pipe()
 
             // Resolve command path
             if command.hasPrefix("/") || command.hasPrefix(".") {
@@ -378,17 +379,26 @@ actor CLIBridge {
             env["PATH"] = (additionalPaths + [currentPath]).joined(separator: ":")
             process.environment = env
 
-            process.standardOutput = pipe
-            process.standardError = pipe
+            process.standardOutput = stdoutPipe
+            process.standardError = stderrPipe
 
             process.terminationHandler = { proc in
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                let output = String(data: data, encoding: .utf8) ?? ""
+                let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+                let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+                let stdout = String(data: stdoutData, encoding: .utf8) ?? ""
+                let stderr = String(data: stderrData, encoding: .utf8) ?? ""
 
                 if proc.terminationStatus == 0 {
-                    continuation.resume(returning: output)
+                    continuation.resume(returning: stdout)
                 } else {
-                    continuation.resume(throwing: CLIError.commandFailed(output))
+                    let combined = [stderr, stdout]
+                        .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                        .joined(separator: "\n")
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    let message = combined.isEmpty
+                        ? "Process exited with status \(proc.terminationStatus)"
+                        : combined
+                    continuation.resume(throwing: CLIError.commandFailed(message))
                 }
             }
 
@@ -402,12 +412,49 @@ actor CLIBridge {
 
     // MARK: - Parsing
 
+    private func parseJSONObject(from output: String) -> [String: Any]? {
+        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let data = trimmed.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            return json
+        }
+
+        for line in output.components(separatedBy: .newlines) {
+            let candidate = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if candidate.first == "{", candidate.last == "}",
+               let data = candidate.data(using: .utf8),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                return json
+            }
+        }
+
+        if let start = output.firstIndex(of: "{"),
+           let end = output.lastIndex(of: "}"),
+           start <= end {
+            let snippet = String(output[start...end])
+            if let data = snippet.data(using: .utf8),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                return json
+            }
+        }
+
+        return nil
+    }
+
     private func parseCLIWalletResult(_ output: String, chain: Chain) throws -> CLIWalletResult {
         // Try JSON parse first
-        if let data = output.data(using: .utf8),
-           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+        if let json = parseJSONObject(from: output) {
+            var address = json["address"] as? String
+            if address == nil {
+                address = json["principal"] as? String
+            }
+            if address == nil, let wallet = json["wallet"] as? [String: Any] {
+                address = wallet["address"] as? String ?? wallet["principal"] as? String
+            }
+
             return CLIWalletResult(
-                address: json["address"] as? String ?? "",
+                address: address ?? "",
                 mnemonic: json["mnemonic"] as? String,
                 privateKey: json["privateKey"] as? String,
                 publicKey: json["publicKey"] as? String,
@@ -429,6 +476,17 @@ actor CLIBridge {
             } else if trimmed.lowercased().contains("private") && trimmed.contains(":") {
                 privateKey = trimmed.components(separatedBy: ":").dropFirst().joined(separator: ":").trimmingCharacters(in: .whitespaces)
             }
+        }
+
+        // Final fallback: extract an Ethereum-style address from mixed output.
+        if address.isEmpty,
+           let regex = try? NSRegularExpression(pattern: "0x[a-fA-F0-9]{40}"),
+           let match = regex.firstMatch(
+                in: output,
+                range: NSRange(output.startIndex..<output.endIndex, in: output)
+           ),
+           let range = Range(match.range, in: output) {
+            address = String(output[range])
         }
 
         guard !address.isEmpty else {
