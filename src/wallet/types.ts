@@ -5,7 +5,7 @@
 /**
  * Supported blockchain types
  */
-export type ChainType = 'cketh' | 'polkadot' | 'solana';
+export type ChainType = 'cketh' | 'polkadot' | 'solana' | 'icp' | 'arweave';
 
 /**
  * Wallet creation methods

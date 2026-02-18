@@ -193,23 +193,8 @@ export class VetKeysAdapter {
     } else {
       console.log('Threshold is 1, using direct signing');
 
-      const { CkEthProvider, PolkadotProvider, SolanaProvider } = await import('./index.js');
-
-      let provider: any;
-
-      switch (wallet.chain) {
-        case 'cketh':
-          provider = new CkEthProvider({ chain: 'cketh', rpcUrl: '', isTestnet: false });
-          break;
-        case 'polkadot':
-          provider = new PolkadotProvider({ chain: 'polkadot', rpcUrl: '', isTestnet: false });
-          break;
-        case 'solana':
-          provider = new SolanaProvider({ chain: 'solana', rpcUrl: '', isTestnet: false });
-          break;
-        default:
-          throw new Error(`Unsupported chain: ${wallet.chain}`);
-      }
+      const { createWalletProvider } = await import('./index.js');
+      const provider = createWalletProvider(wallet.chain, { isTestnet: false });
 
       await provider.connect();
 

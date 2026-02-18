@@ -1,7 +1,7 @@
 /**
  * Wallet Module
  *
- * Complete wallet management system for ckETH, Polkadot, and Solana.
+ * Complete wallet management system for ckETH, Polkadot, Solana, ICP, and Arweave.
  * Provides per-agent wallet isolation, encryption, and CBOR serialization.
  */
 
@@ -74,3 +74,6 @@ export { BaseWalletProvider } from './providers/base-provider.js';
 export { CkEthProvider } from './providers/cketh-provider.js';
 export { PolkadotProvider } from './providers/polkadot-provider.js';
 export { SolanaProvider } from './providers/solana-provider.js';
+export { IcpProvider } from './providers/icp-provider.js';
+export { ArweaveProvider } from './providers/arweave-provider.js';
+export { createWalletProvider, normalizeWalletChain } from './providers/provider-factory.js';

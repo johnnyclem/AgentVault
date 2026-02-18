@@ -10,7 +10,7 @@ import inquirer from 'inquirer';
 import ora from 'ora';
 import chalk from 'chalk';
 import type { SignedTransaction, TransactionRequest } from '../../src/wallet/types.js';
-import { CkEthProvider, PolkadotProvider, SolanaProvider } from '../../src/wallet/index.js';
+import { createWalletProvider } from '../../src/wallet/index.js';
 import type { QueuedTransaction } from '../../src/wallet/transaction-queue.js';
 
 /**
@@ -233,28 +233,7 @@ async function signTransaction(
  * Create blockchain provider
  */
 function createProvider(chain: string): any {
-  switch (chain) {
-    case 'cketh':
-      return new CkEthProvider({
-        chain: 'cketh' as any,
-        rpcUrl: '',
-        isTestnet: false,
-      });
-    case 'polkadot':
-      return new PolkadotProvider({
-        chain: 'polkadot' as any,
-        rpcUrl: '',
-        isTestnet: false,
-      });
-    case 'solana':
-      return new SolanaProvider({
-        chain: 'solana' as any,
-        rpcUrl: '',
-        isTestnet: false,
-      });
-    default:
-      throw new Error(`Unsupported chain: ${chain}`);
-  }
+  return createWalletProvider(chain, { isTestnet: false });
 }
 
 /**

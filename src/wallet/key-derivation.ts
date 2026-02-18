@@ -10,6 +10,7 @@ import * as crypto from 'node:crypto';
 import { encodeAddress } from '@polkadot/util-crypto';
 import type { WalletCreationMethod } from './types.js';
 import { Keypair } from '@solana/web3.js';
+import { Principal } from '@dfinity/principal';
 import { HDNodeWallet, SigningKey, computeAddress } from 'ethers';
 
 /**
@@ -52,6 +53,10 @@ const DEFAULT_DERIVATION_PATHS: Record<string, string> = {
   polkadot: "//hard//stash",
   // Solana (BIP44)
   solana: "m/44'/501'/0'/0'/0'",
+  // ICP (BIP44 coin type 223)
+  icp: "m/44'/223'/0'/0/0",
+  // Arweave (BIP44 coin type 472)
+  arweave: "m/44'/472'/0'/0/0",
   // Bitcoin
   btc: "m/44'/0'/0'/0/0",
 };
@@ -285,6 +290,54 @@ export function deriveSolanaKey(
 }
 
 /**
+ * Derive ICP-compatible key
+ *
+ * @param seed - Seed bytes
+ * @param derivationPath - Derivation path (default: "m/44'/223'/0'/0/0")
+ * @returns Derived key with ICP principal address
+ */
+export function deriveIcpKey(
+  seed: Buffer,
+  derivationPath: string = DEFAULT_DERIVATION_PATHS.icp!
+): DerivedKey {
+  const derived = deriveKeyFromSeed(seed, derivationPath);
+  const keypair = Keypair.fromSeed(derived.privateKey.subarray(0, 32));
+  const publicKeyBytes = keypair.publicKey.toBytes();
+
+  return {
+    privateKey: Buffer.from(keypair.secretKey).toString('hex'),
+    publicKey: Buffer.from(publicKeyBytes).toString('hex'),
+    address: deriveIcpPrincipalAddress(publicKeyBytes),
+    derivationPath,
+  };
+}
+
+/**
+ * Derive Arweave-compatible key
+ *
+ * Arweave uses base64url-encoded address identifiers.
+ *
+ * @param seed - Seed bytes
+ * @param derivationPath - Derivation path (default: "m/44'/472'/0'/0/0")
+ * @returns Derived key with Arweave address
+ */
+export function deriveArweaveKey(
+  seed: Buffer,
+  derivationPath: string = DEFAULT_DERIVATION_PATHS.arweave!
+): DerivedKey {
+  const derived = deriveKeyFromSeed(seed, derivationPath);
+  const keypair = Keypair.fromSeed(derived.privateKey.subarray(0, 32));
+  const publicKeyBytes = keypair.publicKey.toBytes();
+
+  return {
+    privateKey: Buffer.from(keypair.secretKey).toString('hex'),
+    publicKey: Buffer.from(publicKeyBytes).toString('hex'),
+    address: deriveArweaveAddress(publicKeyBytes),
+    derivationPath,
+  };
+}
+
+/**
  * Derive public key from private key (simplified)
  *
  * @param privateKey - Private key bytes
@@ -338,6 +391,11 @@ export function getDefaultDerivationPath(chain: string): string {
     case 'solana':
     case 'sol':
       return DEFAULT_DERIVATION_PATHS.solana!;
+    case 'icp':
+      return DEFAULT_DERIVATION_PATHS.icp!;
+    case 'ar':
+    case 'arweave':
+      return DEFAULT_DERIVATION_PATHS.arweave!;
     default:
       return DEFAULT_DERIVATION_PATHS.eth!;
   }
@@ -360,8 +418,9 @@ export function deriveWalletKey(
   derivationPath?: string,
   chain: string = 'cketh'
 ): DerivedKey {
+  const normalizedChain = chain.toLowerCase();
   const effectiveDerivationPath =
-    derivationPath || getDefaultDerivationPath(chain);
+    derivationPath || getDefaultDerivationPath(normalizedChain);
 
   if (method === 'private-key' && privateKey) {
     const normalizedPrivateKey = normalizePrivateKey(privateKey);
@@ -370,20 +429,36 @@ export function deriveWalletKey(
     let address: string;
     let publicKeyHex: string;
 
-    if (chain === 'cketh' || chain === 'ethereum') {
+    if (normalizedChain === 'cketh' || normalizedChain === 'ethereum' || normalizedChain === 'eth') {
       publicKeyHex = stripHexPrefix(SigningKey.computePublicKey(normalizedPrivateKey, false));
       address = computeAddress(normalizedPrivateKey);
-    } else if (chain === 'polkadot') {
+    } else if (normalizedChain === 'polkadot' || normalizedChain === 'dot') {
       const publicKey = derivePublicKey(privateKeyBuffer);
       publicKeyHex = publicKey.toString('hex');
       address = derivePolkadotAddress(publicKey);
-    } else {
+    } else if (normalizedChain === 'solana' || normalizedChain === 'sol') {
       // Solana accepts either 32-byte seed or 64-byte secret key material.
       const keypair = privateKeyBuffer.length >= 64
         ? Keypair.fromSecretKey(privateKeyBuffer.subarray(0, 64))
         : Keypair.fromSeed(privateKeyBuffer.subarray(0, 32));
       publicKeyHex = Buffer.from(keypair.publicKey.toBytes()).toString('hex');
       address = keypair.publicKey.toBase58();
+    } else if (normalizedChain === 'icp') {
+      const keypair = privateKeyBuffer.length >= 64
+        ? Keypair.fromSecretKey(privateKeyBuffer.subarray(0, 64))
+        : Keypair.fromSeed(privateKeyBuffer.subarray(0, 32));
+      const publicKeyBytes = keypair.publicKey.toBytes();
+      publicKeyHex = Buffer.from(publicKeyBytes).toString('hex');
+      address = deriveIcpPrincipalAddress(publicKeyBytes);
+    } else if (normalizedChain === 'arweave' || normalizedChain === 'ar') {
+      const keypair = privateKeyBuffer.length >= 64
+        ? Keypair.fromSecretKey(privateKeyBuffer.subarray(0, 64))
+        : Keypair.fromSeed(privateKeyBuffer.subarray(0, 32));
+      const publicKeyBytes = keypair.publicKey.toBytes();
+      publicKeyHex = Buffer.from(publicKeyBytes).toString('hex');
+      address = deriveArweaveAddress(publicKeyBytes);
+    } else {
+      throw new Error(`Unsupported chain for private key derivation: ${chain}`);
     }
 
     return {
@@ -402,14 +477,18 @@ export function deriveWalletKey(
 
     const seed = generateSeedFromMnemonic(seedPhrase);
 
-    if (chain === 'cketh' || chain === 'ethereum') {
+    if (normalizedChain === 'cketh' || normalizedChain === 'ethereum' || normalizedChain === 'eth') {
       return deriveEthKey(seed, effectiveDerivationPath);
-    } else if (chain === 'polkadot') {
+    } else if (normalizedChain === 'polkadot' || normalizedChain === 'dot') {
       return derivePolkadotKey(seed, effectiveDerivationPath);
-    } else if (chain === 'solana') {
+    } else if (normalizedChain === 'solana' || normalizedChain === 'sol') {
       return deriveSolanaKey(seed, effectiveDerivationPath);
+    } else if (normalizedChain === 'icp') {
+      return deriveIcpKey(seed, effectiveDerivationPath);
+    } else if (normalizedChain === 'arweave' || normalizedChain === 'ar') {
+      return deriveArweaveKey(seed, effectiveDerivationPath);
     } else {
-      return deriveEthKey(seed, effectiveDerivationPath);
+      throw new Error(`Unsupported chain for seed derivation: ${chain}`);
     }
   }
 
@@ -422,4 +501,13 @@ function stripHexPrefix(value: string): string {
 
 function normalizePrivateKey(value: string): string {
   return value.startsWith('0x') ? value : `0x${value}`;
+}
+
+function deriveIcpPrincipalAddress(publicKeyBytes: Uint8Array): string {
+  return Principal.selfAuthenticating(publicKeyBytes).toText();
+}
+
+function deriveArweaveAddress(publicKeyBytes: Uint8Array): string {
+  const digest = crypto.createHash('sha256').update(publicKeyBytes).digest();
+  return digest.toString('base64url');
 }

@@ -5,10 +5,7 @@
  */
 
 import type { BaseWalletProvider } from '../../src/wallet/providers/base-provider.js';
-import { CkEthProvider } from '../../src/wallet/providers/cketh-provider.js';
-import { PolkadotProvider } from '../../src/wallet/providers/polkadot-provider.js';
-import { SolanaProvider } from '../../src/wallet/providers/solana-provider.js';
-import { getWallet, listAgentWallets } from '../../src/wallet/index.js';
+import { createWalletProvider, getWallet, listAgentWallets } from '../../src/wallet/index.js';
 import inquirer from 'inquirer';
 import ora from 'ora';
 import chalk from 'chalk';
@@ -27,28 +24,7 @@ function formatAddress(address: string, length = 10): string {
  * Create provider for chain
  */
 function createProvider(chain: string): BaseWalletProvider {
-  switch (chain) {
-    case 'cketh':
-      return new CkEthProvider({
-        chain: 'cketh',
-        rpcUrl: CkEthProvider.getDefaultRpcUrl(),
-        isTestnet: false,
-      });
-    case 'polkadot':
-      return new PolkadotProvider({
-        chain: 'polkadot',
-        rpcUrl: 'wss://rpc.polkadot.io',
-        isTestnet: false,
-      });
-    case 'solana':
-      return new SolanaProvider({
-        chain: 'solana',
-        rpcUrl: 'https://api.mainnet-beta.solana.com',
-        isTestnet: false,
-      });
-    default:
-      throw new Error(`Unsupported chain: ${chain}`);
-  }
+  return createWalletProvider(chain, { isTestnet: false });
 }
 
 /**

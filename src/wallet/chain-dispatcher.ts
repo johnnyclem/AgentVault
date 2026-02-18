@@ -2,13 +2,11 @@
  * Chain Dispatcher (Phase 5C)
  *
  * Routes transactions to appropriate blockchain providers.
- * Supports ckETH, Polkadot, and Solana chains.
+ * Supports ckETH, Polkadot, Solana, ICP, and Arweave chains.
  */
 
 import type { WalletData, TransactionRequest, Transaction, ChainType } from './types.js';
-import { CkEthProvider } from './providers/cketh-provider.js';
-import { PolkadotProvider } from './providers/polkadot-provider.js';
-import { SolanaProvider } from './providers/solana-provider.js';
+import { createWalletProvider } from './providers/provider-factory.js';
 
 /**
  * Chain dispatcher configuration
@@ -34,24 +32,12 @@ export class ChainDispatcher {
     };
 
     this.providers = new Map();
-
-    this.providers.set('cketh', new CkEthProvider({
-      chain: 'cketh',
-      rpcUrl: '',
-      isTestnet: this.config.isTestnet,
-    }));
-
-    this.providers.set('polkadot', new PolkadotProvider({
-      chain: 'polkadot',
-      rpcUrl: '',
-      isTestnet: this.config.isTestnet,
-    }));
-
-    this.providers.set('solana', new SolanaProvider({
-      chain: 'solana',
-      rpcUrl: '',
-      isTestnet: this.config.isTestnet,
-    }));
+    const supportedChains: ChainType[] = ['cketh', 'polkadot', 'solana', 'icp', 'arweave'];
+    for (const chain of supportedChains) {
+      this.providers.set(chain, createWalletProvider(chain, {
+        isTestnet: this.config.isTestnet,
+      }));
+    }
   }
 
   /**
