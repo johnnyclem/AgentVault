@@ -29,6 +29,9 @@ enum NavigationDestination: Hashable {
     case walletDetail(UUID)
     case backup
     case settings
+    // Agent management & chat
+    case agentHub
+    case chat
 }
 
 /// Alert types
