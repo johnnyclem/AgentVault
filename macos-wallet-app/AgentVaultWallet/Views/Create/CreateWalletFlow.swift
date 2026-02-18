@@ -209,7 +209,7 @@ struct ChainCard: View {
             if isSelected {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.title2)
-                    .foregroundStyle(.accentColor)
+                    .foregroundStyle(.foreground)
             }
         }
         .padding(16)

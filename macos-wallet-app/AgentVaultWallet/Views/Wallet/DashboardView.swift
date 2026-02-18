@@ -159,7 +159,7 @@ struct DashboardView: View {
                     appState.selectedDestination = .walletList
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.accentColor)
+                .foregroundStyle(.foreground)
                 .font(.callout)
             }
 
@@ -187,7 +187,7 @@ struct StatCard: View {
         VStack(spacing: 6) {
             Image(systemName: icon)
                 .font(.title3)
-                .foregroundStyle(.accentColor)
+                .foregroundStyle(.foreground)
             Text(value)
                 .font(.title.bold().monospacedDigit())
             Text(label)

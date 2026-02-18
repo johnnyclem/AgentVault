@@ -13,7 +13,7 @@ struct BackupView: View {
             VStack(spacing: 8) {
                 Image(systemName: "arrow.down.doc.fill")
                     .font(.system(size: 32))
-                    .foregroundStyle(.accentColor)
+                    .foregroundStyle(.foreground)
                 Text("Backup Wallets")
                     .font(.title2.bold())
                 Text("Create an encrypted backup of your wallet keys")
@@ -80,14 +80,14 @@ struct BackupView: View {
                 Spacer()
                 Button("Select All") { vm.selectAllWallets(from: walletStore.wallets) }
                     .buttonStyle(.plain)
-                    .foregroundStyle(.accentColor)
+                    .foregroundStyle(.foreground)
                     .font(.caption)
                 Text("/")
                     .foregroundStyle(.tertiary)
                     .font(.caption)
                 Button("None") { vm.deselectAllWallets() }
                     .buttonStyle(.plain)
-                    .foregroundStyle(.accentColor)
+                    .foregroundStyle(.foreground)
                     .font(.caption)
             }
 

@@ -15,7 +15,7 @@ struct RestoreView: View {
             VStack(spacing: 8) {
                 Image(systemName: "arrow.uturn.backward.circle.fill")
                     .font(.system(size: 32))
-                    .foregroundStyle(.accentColor)
+                    .foregroundStyle(.foreground)
                 Text("Restore from Backup")
                     .font(.title2.bold())
                 Text("Recover your wallets from an encrypted backup file")
@@ -113,7 +113,7 @@ struct RestoreView: View {
                 HStack {
                     Image(systemName: "doc.zipper")
                         .font(.title3)
-                        .foregroundStyle(.accentColor)
+                        .foregroundStyle(.foreground)
 
                     VStack(alignment: .leading) {
                         Text(url.lastPathComponent)

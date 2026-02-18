@@ -176,7 +176,7 @@ struct ImportMethodCard: View {
         HStack(spacing: 14) {
             Image(systemName: method.iconName)
                 .font(.title3)
-                .foregroundStyle(isSelected ? .accentColor : .secondary)
+            .foregroundStyle(.foreground)
                 .frame(width: 32)
 
             VStack(alignment: .leading, spacing: 3) {
@@ -191,7 +191,7 @@ struct ImportMethodCard: View {
 
             if isSelected {
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.accentColor)
+                    .foregroundStyle(.foreground)
             }
         }
         .padding(14)
@@ -310,7 +310,7 @@ struct ImportInputView: View {
             if let url = vm.selectedFileURL {
                 HStack {
                     Image(systemName: "doc.fill")
-                        .foregroundStyle(.accentColor)
+                        .foregroundStyle(.foreground)
                     Text(url.lastPathComponent)
                         .lineLimit(1)
                         .truncationMode(.middle)
