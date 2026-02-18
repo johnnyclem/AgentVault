@@ -13,7 +13,7 @@ final class WalletStore: ObservableObject {
 
     private let fileService = FileService.shared
     private let keychain = KeychainService.shared
-    private let cliBridge = CLIBridge()
+    private let cliBridge = CLIBridge.shared
     private let backupService = BackupService.shared
 
     // MARK: - Computed Properties

@@ -80,6 +80,12 @@ struct SettingsView: View {
                                 TextField("Auto-detect", text: $customCLIPath)
                                     .textFieldStyle(.roundedBorder)
                                     .frame(width: 200)
+                                Button("Apply") {
+                                    appState.setCLIPath(customCLIPath)
+                                    appState.checkEnvironment()
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
                                 Button("Browse") {
                                     let panel = NSOpenPanel()
                                     panel.canChooseFiles = false
@@ -88,7 +94,8 @@ struct SettingsView: View {
                                     panel.prompt = "Select AgentVault Directory"
                                     if panel.runModal() == .OK, let url = panel.url {
                                         customCLIPath = url.path
-                                        appState.cliPath = url.path
+                                        appState.setCLIPath(url.path)
+                                        appState.checkEnvironment()
                                     }
                                 }
                                 .buttonStyle(.bordered)
@@ -222,6 +229,9 @@ struct SettingsView: View {
             .padding(24)
         }
         .navigationTitle("Settings")
+        .onAppear {
+            customCLIPath = appState.cliPath
+        }
         .confirmationDialog("Purge Keychain", isPresented: $showPurgeConfirmation) {
             Button("Purge All Secrets", role: .destructive) {
                 KeychainService.shared.purgeAll()

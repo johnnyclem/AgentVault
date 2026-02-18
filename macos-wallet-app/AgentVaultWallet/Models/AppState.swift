@@ -68,7 +68,7 @@ final class AppState: ObservableObject {
     @AppStorage("autoRefreshBalances") var autoRefreshBalances: Bool = true
     @AppStorage("defaultChain") var defaultChain: String = Chain.ethereum.rawValue
 
-    private let cliBridge = CLIBridge()
+    private let cliBridge = CLIBridge.shared
 
     init() {
         isFirstLaunch = !hasCompletedOnboarding
@@ -81,10 +81,20 @@ final class AppState: ObservableObject {
 
     func checkEnvironment() {
         isCheckingEnvironment = true
+        let path = cliPath.trimmingCharacters(in: .whitespacesAndNewlines)
         Task {
+            await cliBridge.setProjectRoot(path)
             let env = await cliBridge.checkEnvironment()
             self.environment = env
             self.isCheckingEnvironment = false
+        }
+    }
+
+    func setCLIPath(_ path: String) {
+        cliPath = path
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        Task {
+            await cliBridge.setProjectRoot(trimmed)
         }
     }
 

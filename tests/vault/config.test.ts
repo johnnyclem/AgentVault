@@ -3,17 +3,9 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import * as os from 'node:os';
 import {
   validateVaultConfig,
-  getOrCreateAgentPolicy,
-  loadAgentPolicies,
-  saveAgentPolicies,
-  saveVaultConfig,
   loadVaultConfig,
-  ensureVaultConfigDir,
 } from '../../src/vault/config.js';
 import type { VaultConfig, AgentVaultPolicy } from '../../src/vault/types.js';
 
@@ -181,9 +173,6 @@ describe('Vault Configuration', () => {
   });
 
   describe('getOrCreateAgentPolicy', () => {
-    const testDir = path.join(os.tmpdir(), `agentvault-test-${Date.now()}`);
-    const originalHome = process.env.HOME;
-
     beforeEach(() => {
       // We can't easily override the config dir, so we test the policy structure
     });

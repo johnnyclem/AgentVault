@@ -3,6 +3,7 @@ import Foundation
 /// Bridges the macOS GUI to the AgentVault Node.js CLI.
 /// Runs CLI commands as child processes and parses their output.
 actor CLIBridge {
+    static let shared = CLIBridge()
 
     enum CLIError: LocalizedError {
         case nodeNotFound
@@ -16,7 +17,7 @@ actor CLIBridge {
             case .nodeNotFound:
                 return "Node.js is not installed. Please install Node.js 18+ from nodejs.org or via Homebrew."
             case .cliNotFound:
-                return "AgentVault CLI not found. Run 'npm install' in the AgentVault directory."
+                return "AgentVault CLI not found. Set the project path in Settings or run 'npm install' in the AgentVault directory."
             case .commandFailed(let msg):
                 return "CLI command failed: \(msg)"
             case .parseError(let msg):
@@ -30,43 +31,120 @@ actor CLIBridge {
     /// Cached path to the AgentVault project root
     private var projectRoot: String?
 
+    private func parentDirectories(of path: String, maxDepth: Int = 8) -> [String] {
+        var directories: [String] = []
+        var current = URL(fileURLWithPath: (path as NSString).standardizingPath)
+
+        for _ in 0..<maxDepth {
+            let normalized = (current.path as NSString).standardizingPath
+            directories.append(normalized)
+
+            let parent = current.deletingLastPathComponent()
+            if parent.path == current.path {
+                break
+            }
+            current = parent
+        }
+
+        return directories
+    }
+
+    private func isAgentVaultProjectRoot(_ path: String) -> Bool {
+        let resolved = (path as NSString).standardizingPath
+        let packageJSON = (resolved as NSString).appendingPathComponent("package.json")
+        let sourceCLI = (resolved as NSString).appendingPathComponent("cli/index.ts")
+        let builtCLI = (resolved as NSString).appendingPathComponent("dist-cli/index.js")
+
+        let hasCLI = FileManager.default.fileExists(atPath: sourceCLI) ||
+            FileManager.default.fileExists(atPath: builtCLI)
+
+        guard hasCLI,
+              FileManager.default.fileExists(atPath: packageJSON),
+              let data = FileManager.default.contents(atPath: packageJSON),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let name = json["name"] as? String else {
+            return false
+        }
+
+        return name.lowercased().contains("agentvault")
+    }
+
     /// Discover the AgentVault project root directory
     func findProjectRoot() -> String? {
-        if let cached = projectRoot { return cached }
+        if let cached = projectRoot {
+            let resolved = (cached as NSString).standardizingPath
+            if isAgentVaultProjectRoot(resolved) {
+                projectRoot = resolved
+                return resolved
+            }
+            projectRoot = nil
+        }
 
-        // Check common locations
-        let candidates = [
-            // Relative to the app bundle
-            Bundle.main.bundlePath + "/../../../../",
-            // Home directory
-            NSHomeDirectory() + "/AgentVault",
-            // Common dev paths
-            "/usr/local/src/AgentVault",
-            NSHomeDirectory() + "/Developer/AgentVault",
-            NSHomeDirectory() + "/Projects/AgentVault",
-            NSHomeDirectory() + "/Code/AgentVault",
-        ]
+        var candidates: [String] = []
+        var seen = Set<String>()
 
-        for path in candidates {
-            let packageJSON = (path as NSString).appendingPathComponent("package.json")
-            if FileManager.default.fileExists(atPath: packageJSON) {
-                // Verify it's actually AgentVault
-                if let data = FileManager.default.contents(atPath: packageJSON),
-                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let name = json["name"] as? String,
-                   name.contains("agentvault") {
-                    let resolved = (path as NSString).standardizingPath
-                    projectRoot = resolved
-                    return resolved
+        func addCandidate(_ rawPath: String?, includeParents: Bool = true) {
+            guard let rawPath, !rawPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                return
+            }
+
+            let expanded = (rawPath as NSString).expandingTildeInPath
+            let paths = includeParents ? parentDirectories(of: expanded) : [expanded]
+
+            for path in paths {
+                let resolved = (path as NSString).standardizingPath
+                if seen.insert(resolved).inserted {
+                    candidates.append(resolved)
                 }
             }
         }
+
+        // Explicit environment overrides.
+        addCandidate(ProcessInfo.processInfo.environment["AGENTVAULT_ROOT"])
+        addCandidate(ProcessInfo.processInfo.environment["AGENTVAULT_DIR"])
+
+        // Current process working directory and parents (important in local dev).
+        addCandidate(FileManager.default.currentDirectoryPath)
+
+        // Relative to app bundle.
+        addCandidate(Bundle.main.bundlePath)
+        addCandidate(Bundle.main.bundleURL.deletingLastPathComponent().path)
+
+        // Common local development locations.
+        let home = NSHomeDirectory()
+        let commonBases = [
+            home,
+            home + "/Desktop",
+            home + "/Desktop/Repos",
+            home + "/Developer",
+            home + "/Developer/Repos",
+            home + "/Projects",
+            home + "/Code",
+            "/usr/local/src",
+        ]
+
+        for base in commonBases {
+            addCandidate((base as NSString).appendingPathComponent("AgentVault"), includeParents: false)
+        }
+
+        for candidate in candidates {
+            if isAgentVaultProjectRoot(candidate) {
+                projectRoot = candidate
+                return candidate
+            }
+        }
+
         return nil
     }
 
     /// Set the project root manually (from Settings)
     func setProjectRoot(_ path: String) {
-        projectRoot = path
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            projectRoot = nil
+            return
+        }
+        projectRoot = (trimmed as NSString).expandingTildeInPath
     }
 
     // MARK: - Environment Checks
@@ -87,8 +165,10 @@ actor CLIBridge {
 
         // Check AgentVault CLI
         if let root = findProjectRoot() {
-            let cliEntry = (root as NSString).appendingPathComponent("cli/index.ts")
-            status.agentVaultInstalled = FileManager.default.fileExists(atPath: cliEntry)
+            let sourceCLI = (root as NSString).appendingPathComponent("cli/index.ts")
+            let builtCLI = (root as NSString).appendingPathComponent("dist-cli/index.js")
+            status.agentVaultInstalled = FileManager.default.fileExists(atPath: sourceCLI) ||
+                FileManager.default.fileExists(atPath: builtCLI)
             if status.agentVaultInstalled {
                 status.agentVaultVersion = "local"
             }
@@ -236,19 +316,27 @@ actor CLIBridge {
 
     /// Run the AgentVault CLI via tsx
     private func runCLI(root: String, args: [String]) async throws -> String {
+        let sourceCLI = (root as NSString).appendingPathComponent("cli/index.ts")
+        let builtCLI = (root as NSString).appendingPathComponent("dist-cli/index.js")
         let tsxPath = (root as NSString).appendingPathComponent("node_modules/.bin/tsx")
-        let cliEntry = (root as NSString).appendingPathComponent("cli/index.ts")
 
         let command: String
         let fullArgs: [String]
 
-        if FileManager.default.fileExists(atPath: tsxPath) {
-            command = tsxPath
-            fullArgs = [cliEntry] + args
+        if FileManager.default.fileExists(atPath: sourceCLI) {
+            if FileManager.default.fileExists(atPath: tsxPath) {
+                command = tsxPath
+                fullArgs = [sourceCLI] + args
+            } else {
+                // Fallback: use npx tsx
+                command = "npx"
+                fullArgs = ["tsx", sourceCLI] + args
+            }
+        } else if FileManager.default.fileExists(atPath: builtCLI) {
+            command = "node"
+            fullArgs = [builtCLI] + args
         } else {
-            // Fallback: use npx tsx
-            command = "npx"
-            fullArgs = ["tsx", cliEntry] + args
+            throw CLIError.cliNotFound
         }
 
         return try await run(command, args: fullArgs, cwd: root)
