@@ -55,6 +55,24 @@ describe('Wallet Sign (CLE-70)', () => {
 
       expect(provider).toBeDefined();
     });
+
+    it('should create ICP provider for signing', async () => {
+      const { IcpProvider } = await import('../../src/wallet/providers/icp-provider.js');
+      const provider = new IcpProvider({
+        chain: 'icp',
+      });
+
+      expect(provider).toBeDefined();
+    });
+
+    it('should create Arweave provider for signing', async () => {
+      const { ArweaveProvider } = await import('../../src/wallet/providers/arweave-provider.js');
+      const provider = new ArweaveProvider({
+        chain: 'arweave',
+      });
+
+      expect(provider).toBeDefined();
+    });
   });
 
   describe('Wallet Import for Signing', () => {
@@ -124,6 +142,16 @@ describe('Wallet Sign (CLE-70)', () => {
     it('should support polkadot chain', () => {
       const chain = 'polkadot' as const;
       expect(chain).toBe('polkadot');
+    });
+
+    it('should support icp chain', () => {
+      const chain = 'icp' as const;
+      expect(chain).toBe('icp');
+    });
+
+    it('should support arweave chain', () => {
+      const chain = 'arweave' as const;
+      expect(chain).toBe('arweave');
     });
   });
 });

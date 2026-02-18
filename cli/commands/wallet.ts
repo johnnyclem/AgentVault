@@ -10,17 +10,16 @@ import chalk from 'chalk';
 import inquirer from 'inquirer';
 import ora from 'ora';
 import {
+  createWalletProvider,
   generateWallet,
   importWalletFromPrivateKey,
   importWalletFromMnemonic,
   importWalletFromSeed,
   getWallet,
   listAgentWallets,
+  normalizeWalletChain,
   removeWallet,
 } from '../../src/wallet/index.js';
-import {
-  CkEthProvider,
-} from '../../src/wallet/providers/cketh-provider.js';
 
 /**
  * Create wallet command
@@ -29,11 +28,11 @@ export function walletCommand(): Command {
   const command = new Command('wallet');
 
   command
-    .description('Manage agent wallets (ckETH, Polkadot, Solana)')
+    .description('Manage agent wallets (ckETH, Polkadot, Solana, ICP, Arweave)')
     .argument('<subcommand>', 'wallet subcommand to execute')
     .option('-a, --agent-id <id>', 'agent ID')
     .option('-f, --file <path>', 'file path (for import)')
-    .option('--chain <chain>', 'chain (eth, cketh, polkadot, solana)')
+    .option('--chain <chain>', 'chain (eth, cketh, polkadot, solana, icp, arweave)')
     .option('--name <name>', 'wallet label (used by GUI clients)')
     .option('--json', 'output as JSON')
     .option('--mnemonic <phrase>', 'mnemonic phrase for non-interactive import')
@@ -76,31 +75,11 @@ function isNonInteractiveImport(options: WalletCommandOptions): boolean {
   );
 }
 
-function normalizeChain(rawChain?: string): string {
+export function normalizeChain(rawChain?: string): string {
   if (!rawChain) {
     throw new Error('--chain is required');
   }
-
-  const chain = rawChain.toLowerCase();
-  switch (chain) {
-    case 'cketh':
-    case 'eth':
-    case 'ethereum':
-      return 'ethereum';
-    case 'polkadot':
-    case 'dot':
-      return 'polkadot';
-    case 'solana':
-    case 'sol':
-      return 'solana';
-    case 'icp':
-      throw new Error('Chain "icp" is not supported by the CLI wallet command');
-    case 'ar':
-    case 'arweave':
-      throw new Error('Chain "arweave" is not supported by the CLI wallet command');
-    default:
-      throw new Error(`Unsupported chain: ${rawChain}`);
-  }
+  return normalizeWalletChain(rawChain);
 }
 
 function getAgentId(options: WalletCommandOptions): string {
@@ -223,7 +202,7 @@ async function executeWalletCommand(
 /**
  * Non-interactive wallet generation for GUI clients
  */
-async function handleGenerateNonInteractive(options: WalletCommandOptions): Promise<void> {
+export async function handleGenerateNonInteractive(options: WalletCommandOptions): Promise<void> {
   const chain = normalizeChain(options.chain);
   const wallet = generateWallet(getAgentId(options), chain);
   printWalletResult(wallet, options.json);
@@ -232,7 +211,7 @@ async function handleGenerateNonInteractive(options: WalletCommandOptions): Prom
 /**
  * Non-interactive wallet import for GUI clients
  */
-async function handleImportNonInteractive(options: WalletCommandOptions): Promise<void> {
+export async function handleImportNonInteractive(options: WalletCommandOptions): Promise<void> {
   const chain = normalizeChain(options.chain);
   const agentId = getAgentId(options);
 
@@ -275,7 +254,7 @@ async function handleImportNonInteractive(options: WalletCommandOptions): Promis
 /**
  * Non-interactive balance lookup by chain + address for GUI clients
  */
-async function handleBalanceNonInteractive(options: WalletCommandOptions): Promise<void> {
+export async function handleBalanceNonInteractive(options: WalletCommandOptions): Promise<void> {
   const chain = normalizeChain(options.chain);
   const address = options.address;
 
@@ -283,16 +262,7 @@ async function handleBalanceNonInteractive(options: WalletCommandOptions): Promi
     throw new Error('--address is required for non-interactive wallet balance');
   }
 
-  if (chain !== 'ethereum') {
-    throw new Error(`Balance lookup is not supported for chain: ${chain}`);
-  }
-
-  const rpcUrl = process.env.ETHEREUM_RPC_URL || 'https://eth.llamarpc.com';
-  const provider = new CkEthProvider({
-    chain: chain as any,
-    rpcUrl,
-    isTestnet: false,
-  });
+  const provider = createWalletProvider(chain, { isTestnet: false });
 
   await provider.connect();
   const balance = await provider.getBalance(address);
@@ -339,6 +309,8 @@ async function handleConnect(agentId: string): Promise<void> {
         { name: 'cketh', value: 'ckETH (Ethereum on ICP)' },
         { name: 'polkadot', value: 'Polkadot' },
         { name: 'solana', value: 'Solana' },
+        { name: 'icp', value: 'ICP' },
+        { name: 'arweave', value: 'Arweave' },
       ],
     },
   ]);
@@ -406,11 +378,7 @@ async function handleConnect(agentId: string): Promise<void> {
   const spinner = ora('Testing provider connection...').start();
 
   try {
-    const provider = new CkEthProvider({
-      chain: chain as any,
-      rpcUrl: CkEthProvider.getDefaultRpcUrl(),
-      isTestnet: false,
-    });
+    const provider = createWalletProvider(chain, { isTestnet: false });
 
     await provider.connect();
     const balance = await provider.getBalance(wallet.address);
@@ -480,11 +448,7 @@ async function handleBalance(agentId: string): Promise<void> {
   const spinner = ora('Fetching balance...').start();
 
   try {
-    const provider = new CkEthProvider({
-      chain: wallet.chain as any,
-      rpcUrl: CkEthProvider.getDefaultRpcUrl(),
-      isTestnet: false,
-    });
+    const provider = createWalletProvider(wallet.chain, { isTestnet: false });
 
     await provider.connect();
     const balance = await provider.getBalance(wallet.address);
@@ -564,11 +528,7 @@ async function handleSend(agentId: string): Promise<void> {
   const spinner = ora('Sending transaction...').start();
 
   try {
-    const provider = new CkEthProvider({
-      chain: wallet.chain as any,
-      rpcUrl: CkEthProvider.getDefaultRpcUrl(),
-      isTestnet: false,
-    });
+    const provider = createWalletProvider(wallet.chain, { isTestnet: false });
 
     await provider.connect();
     const tx = await provider.sendTransaction(wallet.address, {

@@ -198,6 +198,10 @@ export class VetKeysAdapter {
 
       await provider.connect();
 
+      if (!wallet.privateKey) {
+        throw new Error('Wallet private key not available for signing');
+      }
+
       const signed = await provider.signTransaction(request, wallet.privateKey);
 
       return {
