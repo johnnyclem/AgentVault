@@ -12,6 +12,7 @@ import ora from 'ora';
 import {
   generateWallet,
   importWalletFromPrivateKey,
+  importWalletFromMnemonic,
   importWalletFromSeed,
   getWallet,
   listAgentWallets,
@@ -30,8 +31,18 @@ export function walletCommand(): Command {
   command
     .description('Manage agent wallets (ckETH, Polkadot, Solana)')
     .argument('<subcommand>', 'wallet subcommand to execute')
-    .option('-a, --agent-id <id>', 'agent ID (required)')
+    .option('-a, --agent-id <id>', 'agent ID')
     .option('-f, --file <path>', 'file path (for import)')
+    .option('--chain <chain>', 'chain (eth, cketh, polkadot, solana)')
+    .option('--name <name>', 'wallet label (used by GUI clients)')
+    .option('--json', 'output as JSON')
+    .option('--mnemonic <phrase>', 'mnemonic phrase for non-interactive import')
+    .option('--private-key <key>', 'private key for non-interactive import')
+    .option('--address <address>', 'wallet address for non-interactive balance query')
+    .option('--keystore <path>', 'Ethereum keystore JSON file')
+    .option('--password <password>', 'password for keystore decryption')
+    .option('--pem-file <path>', 'PEM file path (not yet supported in wallet import)')
+    .option('--jwk-file <path>', 'JWK file path (not yet supported in wallet import)')
     .action(async (subcommand, options) => {
       await executeWalletCommand(subcommand, options);
     });
@@ -39,19 +50,108 @@ export function walletCommand(): Command {
   return command;
 }
 
+type WalletCommandOptions = {
+  agentId?: string;
+  file?: string;
+  chain?: string;
+  name?: string;
+  json?: boolean;
+  mnemonic?: string;
+  privateKey?: string;
+  address?: string;
+  keystore?: string;
+  password?: string;
+  pemFile?: string;
+  jwkFile?: string;
+};
+
+function isNonInteractiveImport(options: WalletCommandOptions): boolean {
+  return Boolean(
+    options.chain ||
+    options.mnemonic ||
+    options.privateKey ||
+    options.keystore ||
+    options.pemFile ||
+    options.jwkFile
+  );
+}
+
+function normalizeChain(rawChain?: string): string {
+  if (!rawChain) {
+    throw new Error('--chain is required');
+  }
+
+  const chain = rawChain.toLowerCase();
+  switch (chain) {
+    case 'cketh':
+    case 'eth':
+    case 'ethereum':
+      return 'ethereum';
+    case 'polkadot':
+    case 'dot':
+      return 'polkadot';
+    case 'solana':
+    case 'sol':
+      return 'solana';
+    case 'icp':
+      throw new Error('Chain "icp" is not supported by the CLI wallet command');
+    case 'ar':
+    case 'arweave':
+      throw new Error('Chain "arweave" is not supported by the CLI wallet command');
+    default:
+      throw new Error(`Unsupported chain: ${rawChain}`);
+  }
+}
+
+function getAgentId(options: WalletCommandOptions): string {
+  return options.agentId || 'wallet-app';
+}
+
+function printWalletResult(wallet: {
+  id: string;
+  chain: string;
+  address: string;
+  mnemonic?: string;
+  privateKey?: string;
+}, json: boolean = false): void {
+  if (json) {
+    console.log(JSON.stringify({
+      id: wallet.id,
+      chain: wallet.chain,
+      address: wallet.address,
+      mnemonic: wallet.mnemonic ?? null,
+      privateKey: wallet.privateKey ?? null,
+      publicKey: null,
+    }));
+    return;
+  }
+
+  console.log(chalk.green('✓ Wallet ready'));
+  console.log(`ID: ${wallet.id}`);
+  console.log(`Chain: ${wallet.chain}`);
+  console.log(`Address: ${wallet.address}`);
+}
+
 /**
  * Execute wallet subcommand
  */
 async function executeWalletCommand(
   subcommand: string,
-  options: { agentId?: string; file?: string }
+  options: WalletCommandOptions
 ): Promise<void> {
-  if (!options.agentId && subcommand !== 'vetkeys') {
+  const nonInteractiveImport = subcommand === 'import' && isNonInteractiveImport(options);
+  const nonInteractiveBalance = subcommand === 'balance' && Boolean(options.address);
+  const nonInteractiveGenerate = subcommand === 'generate';
+
+  if (!options.agentId && subcommand !== 'vetkeys' && !nonInteractiveImport && !nonInteractiveBalance && !nonInteractiveGenerate) {
     console.error(chalk.red('Error: --agent-id is required'));
     process.exit(1);
   }
 
   switch (subcommand) {
+    case 'generate':
+      await handleGenerateNonInteractive(options);
+      break;
     case 'connect':
       await handleConnect(options.agentId!);
       break;
@@ -59,7 +159,11 @@ async function executeWalletCommand(
       await handleDisconnect(options.agentId!);
       break;
     case 'balance':
-      await handleBalance(options.agentId!);
+      if (nonInteractiveBalance) {
+        await handleBalanceNonInteractive(options);
+      } else {
+        await handleBalance(options.agentId!);
+      }
       break;
     case 'send':
       await handleSend(options.agentId!);
@@ -77,7 +181,11 @@ async function executeWalletCommand(
       await handleExport(options.agentId!);
       break;
     case 'import':
-      await handleImport(options.agentId!, options.file);
+      if (nonInteractiveImport) {
+        await handleImportNonInteractive(options);
+      } else {
+        await handleImport(options.agentId!, options.file);
+      }
       break;
     case 'sync':
       await handleSync(options.agentId!);
@@ -110,6 +218,97 @@ async function executeWalletCommand(
       console.log('  queue     - Transaction queue operations (Phase 5)');
       process.exit(1);
   }
+}
+
+/**
+ * Non-interactive wallet generation for GUI clients
+ */
+async function handleGenerateNonInteractive(options: WalletCommandOptions): Promise<void> {
+  const chain = normalizeChain(options.chain);
+  const wallet = generateWallet(getAgentId(options), chain);
+  printWalletResult(wallet, options.json);
+}
+
+/**
+ * Non-interactive wallet import for GUI clients
+ */
+async function handleImportNonInteractive(options: WalletCommandOptions): Promise<void> {
+  const chain = normalizeChain(options.chain);
+  const agentId = getAgentId(options);
+
+  if (options.mnemonic) {
+    const wallet = importWalletFromMnemonic(agentId, chain, options.mnemonic);
+    printWalletResult(wallet, options.json);
+    return;
+  }
+
+  if (options.privateKey) {
+    const wallet = importWalletFromPrivateKey(agentId, chain, options.privateKey);
+    printWalletResult(wallet, options.json);
+    return;
+  }
+
+  if (options.keystore) {
+    if (!options.password) {
+      throw new Error('--password is required when using --keystore');
+    }
+    const fs = await import('node:fs/promises');
+    const { Wallet } = await import('ethers');
+    const encryptedJson = await fs.readFile(options.keystore, 'utf8');
+    const decrypted = await Wallet.fromEncryptedJson(encryptedJson, options.password);
+    const wallet = importWalletFromPrivateKey(agentId, chain, decrypted.privateKey);
+    printWalletResult(wallet, options.json);
+    return;
+  }
+
+  if (options.pemFile) {
+    throw new Error('PEM import is not supported by the wallet CLI command');
+  }
+
+  if (options.jwkFile) {
+    throw new Error('JWK import is not supported by the wallet CLI command');
+  }
+
+  throw new Error('Provide one of --mnemonic, --private-key, or --keystore');
+}
+
+/**
+ * Non-interactive balance lookup by chain + address for GUI clients
+ */
+async function handleBalanceNonInteractive(options: WalletCommandOptions): Promise<void> {
+  const chain = normalizeChain(options.chain);
+  const address = options.address;
+
+  if (!address) {
+    throw new Error('--address is required for non-interactive wallet balance');
+  }
+
+  if (chain !== 'ethereum') {
+    throw new Error(`Balance lookup is not supported for chain: ${chain}`);
+  }
+
+  const rpcUrl = process.env.ETHEREUM_RPC_URL || 'https://eth.llamarpc.com';
+  const provider = new CkEthProvider({
+    chain: chain as any,
+    rpcUrl,
+    isTestnet: false,
+  });
+
+  await provider.connect();
+  const balance = await provider.getBalance(address);
+
+  if (options.json) {
+    console.log(JSON.stringify({
+      chain,
+      address,
+      balance: balance.amount,
+      denomination: balance.denomination,
+      blockNumber: balance.blockNumber ?? null,
+    }));
+    return;
+  }
+
+  console.log(`${balance.amount} ${balance.denomination}`);
 }
 
 /**
