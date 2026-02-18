@@ -284,7 +284,7 @@ export async function handleBalanceNonInteractive(options: WalletCommandOptions)
 /**
  * Handle wallet connect/create
  */
-async function handleConnect(agentId: string): Promise<void> {
+export async function handleConnect(agentId: string): Promise<void> {
   console.log(chalk.bold('\n🔑 Wallet Connect\n'));
 
   const { method } = await inquirer.prompt<{ method: string }>([
@@ -293,9 +293,9 @@ async function handleConnect(agentId: string): Promise<void> {
       name: 'method',
       message: 'How would you like to create the wallet?',
       choices: [
-        { name: 'generate', value: 'Generate new wallet (recommended)' },
-        { name: 'seed', value: 'Import from seed phrase' },
-        { name: 'private-key', value: 'Import from private key' },
+        { name: 'Generate new wallet', value: 'generate' },
+        { name: 'Import from seed phrase', value: 'seed' },
+        { name: 'Import from private key', value: 'private-key' },
       ],
     },
   ]);
@@ -306,11 +306,11 @@ async function handleConnect(agentId: string): Promise<void> {
       name: 'chain',
       message: 'Which blockchain?',
       choices: [
-        { name: 'cketh', value: 'ckETH (Ethereum on ICP)' },
-        { name: 'polkadot', value: 'Polkadot' },
-        { name: 'solana', value: 'Solana' },
-        { name: 'icp', value: 'ICP' },
-        { name: 'arweave', value: 'Arweave' },
+        { name: 'Ethereum (ckETH)', value: 'cketh' },
+        { name: 'Polkadot', value: 'polkadot' },
+        { name: 'Solana', value: 'solana' },
+        { name: 'ICP', value: 'icp' },
+        { name: 'Arweave', value: 'arweave' },
       ],
     },
   ]);

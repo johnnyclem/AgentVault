@@ -328,6 +328,13 @@ export function deleteArchive(archiveId: string): boolean {
 }
 
 /**
+ * Get absolute path for a stored archive payload.
+ */
+export function getArchivePath(archiveId: string): string {
+  return path.join(ARCHIVES_DIR, `${archiveId}.json`);
+}
+
+/**
  * Get archive statistics
  */
 export function getArchiveStats(agentName?: string): {
