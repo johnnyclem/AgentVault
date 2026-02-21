@@ -88,13 +88,14 @@ export class BittensorClient {
 
   /**
    * Dynamically import axios (optional dependency)
+   * Uses standard ESM dynamic import instead of new Function() for security
    */
   private async importAxios(): Promise<any> {
     try {
-      const dynamicImport = new Function('modulePath', 'return import(modulePath)') as (
-        modulePath: string
-      ) => Promise<{ default: any }>;
-      const axiosModule = await dynamicImport('axios');
+      // SECURITY: Use standard ESM dynamic import instead of new Function()
+      // This avoids code execution patterns that can bypass CSP (SEC-4)
+      // @ts-expect-error - axios is an optional dependency, may not be installed
+      const axiosModule = await import('axios');
       return axiosModule.default;
     } catch (_error) {
       throw new Error(

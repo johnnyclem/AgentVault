@@ -157,11 +157,13 @@ export class VetKeysImplementation {
       // Derive master key from seed phrase (for local use)
       const derivedKey = await this.deriveMasterKey(seedPhrase, algorithm!);
 
+      // SECURITY: Do not include seedPhrase in returned object to prevent memory exposure
+      // The seed phrase should only be used transiently for key derivation
       return {
         type: 'threshold',
         key: derivedKey.key,
         method: derivedKey.method,
-        seedPhrase,
+        // seedPhrase intentionally omitted for security - see SEC-3 in SECURITY_AUDIT
         threshold: threshold!,
         totalParties: totalParties!,
         algorithm: algorithm!,

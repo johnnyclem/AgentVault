@@ -77,13 +77,14 @@ export class ArweaveClient {
 
   /**
    * Dynamically import arweave (optional dependency)
+   * Uses standard ESM dynamic import instead of new Function() for security
    */
   private async importArweave(): Promise<any> {
     try {
-      const dynamicImport = new Function('modulePath', 'return import(modulePath)') as (
-        modulePath: string
-      ) => Promise<{ default: any }>;
-      const arweaveModule = await dynamicImport('arweave');
+      // SECURITY: Use standard ESM dynamic import instead of new Function()
+      // This avoids code execution patterns that can bypass CSP (SEC-4)
+      // @ts-expect-error - arweave is an optional dependency, may not be installed
+      const arweaveModule = await import('arweave');
       return arweaveModule.default;
     } catch (_error) {
       throw new Error(

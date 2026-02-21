@@ -70,8 +70,13 @@ export interface VetKeysDerivedKey {
   key: string;
   /** Key derivation method used */
   method: KeyDerivationMethod;
-  /** Seed phrase used for derivation */
-  seedPhrase: SeedPhrase;
+  /**
+   * Seed phrase used for derivation (optional for security)
+   * SECURITY: seedPhrase is intentionally optional - it should NOT be retained
+   * in memory after key derivation to prevent exposure via memory dumps.
+   * See SEC-3 in SECURITY_AUDIT_AND_COMPLETION_PLAN.md
+   */
+  seedPhrase?: SeedPhrase;
   /** Threshold for reconstruction (t out of n) */
   threshold?: number;
   /** Total participants */

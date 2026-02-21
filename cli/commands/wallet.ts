@@ -24,6 +24,32 @@ import {
 /**
  * Create wallet command
  */
+/**
+ * Print security warning for sensitive CLI options
+ * SECURITY: Secrets passed via CLI are visible in process list and shell history
+ */
+function warnIfSensitiveOptions(options: WalletCommandOptions): void {
+  const sensitiveOptions: Array<keyof WalletCommandOptions> = ['mnemonic', 'privateKey', 'password'];
+  const usedSensitive = sensitiveOptions.filter(opt => options[opt]);
+
+  if (usedSensitive.length > 0) {
+    console.warn(chalk.yellow('\n⚠️  SECURITY WARNING:'));
+    console.warn(chalk.yellow('    Passing secrets via CLI arguments is insecure.'));
+    console.warn(chalk.yellow('    Arguments are visible in `ps aux` and shell history.'));
+    console.warn(chalk.yellow('    Consider using environment variables instead:'));
+    if (options.mnemonic) {
+      console.warn(chalk.yellow('      AGENTVAULT_MNEMONIC=... agentvault wallet import --chain eth'));
+    }
+    if (options.privateKey) {
+      console.warn(chalk.yellow('      AGENTVAULT_PRIVATE_KEY=... agentvault wallet import --chain eth'));
+    }
+    if (options.password) {
+      console.warn(chalk.yellow('      AGENTVAULT_PASSWORD=... agentvault wallet import --keystore ...'));
+    }
+    console.warn('');
+  }
+}
+
 export function walletCommand(): Command {
   const command = new Command('wallet');
 
@@ -35,14 +61,18 @@ export function walletCommand(): Command {
     .option('--chain <chain>', 'chain (eth, cketh, polkadot, solana, icp, arweave)')
     .option('--name <name>', 'wallet label (used by GUI clients)')
     .option('--json', 'output as JSON')
-    .option('--mnemonic <phrase>', 'mnemonic phrase for non-interactive import')
-    .option('--private-key <key>', 'private key for non-interactive import')
+    // SECURITY NOTE: These options expose secrets in process list and shell history
+    // Prefer using environment variables: AGENTVAULT_MNEMONIC, AGENTVAULT_PRIVATE_KEY
+    .option('--mnemonic <phrase>', '[INSECURE] mnemonic phrase (prefer AGENTVAULT_MNEMONIC env var)')
+    .option('--private-key <key>', '[INSECURE] private key (prefer AGENTVAULT_PRIVATE_KEY env var)')
     .option('--address <address>', 'wallet address for non-interactive balance query')
     .option('--keystore <path>', 'Ethereum keystore JSON file')
-    .option('--password <password>', 'password for keystore decryption')
+    .option('--password <password>', '[INSECURE] password (prefer AGENTVAULT_PASSWORD env var)')
     .option('--pem-file <path>', 'PEM file path (not yet supported in wallet import)')
     .option('--jwk-file <path>', 'JWK file path (not yet supported in wallet import)')
     .action(async (subcommand, options) => {
+      // Show security warning if sensitive options are used
+      warnIfSensitiveOptions(options);
       await executeWalletCommand(subcommand, options);
     });
 
@@ -210,31 +240,42 @@ export async function handleGenerateNonInteractive(options: WalletCommandOptions
 
 /**
  * Non-interactive wallet import for GUI clients
+ *
+ * SECURITY: Supports reading secrets from environment variables (preferred)
+ * or CLI arguments (with warning). Environment variables are:
+ * - AGENTVAULT_MNEMONIC: BIP39 mnemonic phrase
+ * - AGENTVAULT_PRIVATE_KEY: Hex private key
+ * - AGENTVAULT_PASSWORD: Keystore password
  */
 export async function handleImportNonInteractive(options: WalletCommandOptions): Promise<void> {
   const chain = normalizeChain(options.chain);
   const agentId = getAgentId(options);
 
-  if (options.mnemonic) {
-    const wallet = importWalletFromMnemonic(agentId, chain, options.mnemonic);
+  // SECURITY: Prefer environment variables over CLI arguments
+  const mnemonic = options.mnemonic || process.env.AGENTVAULT_MNEMONIC;
+  const privateKey = options.privateKey || process.env.AGENTVAULT_PRIVATE_KEY;
+  const password = options.password || process.env.AGENTVAULT_PASSWORD;
+
+  if (mnemonic) {
+    const wallet = importWalletFromMnemonic(agentId, chain, mnemonic);
     printWalletResult(wallet, options.json);
     return;
   }
 
-  if (options.privateKey) {
-    const wallet = importWalletFromPrivateKey(agentId, chain, options.privateKey);
+  if (privateKey) {
+    const wallet = importWalletFromPrivateKey(agentId, chain, privateKey);
     printWalletResult(wallet, options.json);
     return;
   }
 
   if (options.keystore) {
-    if (!options.password) {
-      throw new Error('--password is required when using --keystore');
+    if (!password) {
+      throw new Error('--password or AGENTVAULT_PASSWORD is required when using --keystore');
     }
     const fs = await import('node:fs/promises');
     const { Wallet } = await import('ethers');
     const encryptedJson = await fs.readFile(options.keystore, 'utf8');
-    const decrypted = await Wallet.fromEncryptedJson(encryptedJson, options.password);
+    const decrypted = await Wallet.fromEncryptedJson(encryptedJson, password);
     const wallet = importWalletFromPrivateKey(agentId, chain, decrypted.privateKey);
     printWalletResult(wallet, options.json);
     return;
@@ -248,7 +289,7 @@ export async function handleImportNonInteractive(options: WalletCommandOptions):
     throw new Error('JWK import is not supported by the wallet CLI command');
   }
 
-  throw new Error('Provide one of --mnemonic, --private-key, or --keystore');
+  throw new Error('Provide one of --mnemonic, --private-key, --keystore, or set AGENTVAULT_MNEMONIC/AGENTVAULT_PRIVATE_KEY env var');
 }
 
 /**
