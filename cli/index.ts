@@ -46,6 +46,9 @@ import { cloudBackupCmd } from './commands/cloud-backup.js';
 // Phase 5 commands
 import { vaultCmd } from './commands/vault.js';
 
+// Phase 6 commands (PRD-004: Private ICP Replica)
+import { pilotCmd } from './commands/pilot.js';
+
 export function createProgram(): Command {
   const program = new Command();
 
@@ -95,6 +98,9 @@ export function createProgram(): Command {
 
   // Phase 5 commands
   program.addCommand(vaultCmd);
+
+  // Phase 6 commands (PRD-004: Private ICP Replica)
+  program.addCommand(pilotCmd);
 
   return program;
 }
