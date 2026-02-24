@@ -55,6 +55,9 @@ struct MainView: View {
         case .chat:
             ChatView()
                 .environmentObject(agentStore)
+        case .iosGuild:
+            iOSGuildView()
+                .environmentObject(agentStore)
         }
     }
 

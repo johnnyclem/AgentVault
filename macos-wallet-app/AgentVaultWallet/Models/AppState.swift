@@ -32,6 +32,8 @@ enum NavigationDestination: Hashable {
     // Agent management & chat
     case agentHub
     case chat
+    // iOS-specific Guild
+    case iosGuild
 }
 
 /// Alert types

@@ -46,6 +46,9 @@ import { cloudBackupCmd } from './commands/cloud-backup.js';
 // Phase 5 commands
 import { vaultCmd } from './commands/vault.js';
 
+// iOS skills command
+import { skillsCmd } from './commands/skills.js';
+
 export function createProgram(): Command {
   const program = new Command();
 
@@ -95,6 +98,9 @@ export function createProgram(): Command {
 
   // Phase 5 commands
   program.addCommand(vaultCmd);
+
+  // iOS skills command
+  program.addCommand(skillsCmd);
 
   return program;
 }
