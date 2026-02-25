@@ -57,6 +57,28 @@ struct SidebarView: View {
                     Label("Chat", systemImage: "bubble.left.and.bubble.right")
                 }
 
+                NavigationLink(value: NavigationDestination.iosGuild) {
+                    Label {
+                        HStack {
+                            Text("iOS Guild")
+                            Spacer()
+                            let iosAgentCount = agentStore.agents
+                                .filter { $0.environment["AGENTVAULT_DOMAIN"] == "ios" }.count
+                            if iosAgentCount > 0 {
+                                Text("\(iosAgentCount)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(.quaternary, in: Capsule())
+                            }
+                        }
+                    } icon: {
+                        Image(systemName: "iphone")
+                            .foregroundStyle(.blue)
+                    }
+                }
+
                 // Quick links to individual agents
                 if !agentStore.primaryAgents.isEmpty {
                     ForEach(agentStore.primaryAgents.prefix(5)) { agent in
