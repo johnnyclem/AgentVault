@@ -7,9 +7,10 @@
  *
  * - 'local': Local dfx/icp replica
  * - 'ic': IC mainnet
+ * - 'private': Company-owned private ICP replica (PRD-004)
  * - string: Named environment from icp.yaml (e.g. 'dev', 'staging', 'production')
  */
-export type NetworkType = 'local' | 'ic' | string;
+export type NetworkType = 'local' | 'ic' | 'private' | string;
 
 /**
  * Which tool is being used for deployment

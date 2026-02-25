@@ -1,3 +1,82 @@
+// ── Verification / Proof types ──────────────────────────────────────────────
+
+export interface VetKeySignature {
+  id: string
+  actionId: string
+  actionType: string
+  actionDescription: string
+  publicKey: string
+  signature: string
+  message: string
+  signerPrincipal: string
+  timestamp: string
+  verified: boolean | null   // null = pending verification
+}
+
+export interface ArweaveAnchor {
+  txId: string
+  permalink: string
+  blockHeight: number
+  blockHash: string
+  timestamp: string
+  dataSize: number
+  contentHash: string
+  status: 'confirmed' | 'pending' | 'failed'
+}
+
+export interface CoverageReport {
+  overall: number
+  lines: number
+  branches: number
+  functions: number
+  statements: number
+  threshold: number      // required minimum (e.g. 80)
+  passesThreshold: boolean
+  generatedAt: string
+  commitHash: string
+  fileCount: number
+}
+
+export interface ComplianceScore {
+  score: number          // 0-100
+  grade: 'A' | 'B' | 'C' | 'D' | 'F'
+  coverageWeight: number
+  vetKeyWeight: number
+  arweaveWeight: number
+  details: {
+    coverageContribution: number
+    vetKeyContribution: number
+    arweaveContribution: number
+  }
+  meetsStandard: boolean
+  standardThreshold: number
+}
+
+export interface ProofRecord {
+  id: string
+  vaultId: string
+  agentId: string
+  agentName: string
+  taskId?: string
+  taskDescription?: string
+  commitHash: string
+  coverage: CoverageReport
+  vetKeyChain: VetKeySignature[]
+  arweaveAnchor?: ArweaveAnchor
+  compliance: ComplianceScore
+  shareToken?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ShareProofResult {
+  shareUrl: string
+  shareToken: string
+  expiresAt: string
+}
+
+// ── End Verification / Proof types ──────────────────────────────────────────
+
 export interface ApiError {
   message: string
   code?: string
