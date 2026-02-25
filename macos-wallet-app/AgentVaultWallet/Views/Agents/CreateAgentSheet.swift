@@ -142,7 +142,7 @@ struct CreateAgentSheet: View {
                 HStack(spacing: 6) {
                     ZStack {
                         Circle()
-                            .fill(s.rawValue <= step.rawValue ? Color.accentColor : .quaternary)
+                            .fill(s.rawValue <= step.rawValue ? .primary : .quaternary)
                             .frame(width: 24, height: 24)
                         if s.rawValue < step.rawValue {
                             Image(systemName: "checkmark")
@@ -160,7 +160,7 @@ struct CreateAgentSheet: View {
                 }
                 if idx < CreateStep.allCases.count - 1 {
                     Rectangle()
-                        .fill(s.rawValue < step.rawValue ? Color.accentColor : .quaternary)
+                        .fill(s.rawValue < step.rawValue ? .primary : .quaternary)
                         .frame(height: 1)
                         .frame(maxWidth: .infinity)
                 }

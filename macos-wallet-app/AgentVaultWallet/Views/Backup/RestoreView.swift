@@ -203,11 +203,11 @@ struct RestoreView: View {
                 .font(.headline)
 
             VStack(spacing: 0) {
-                InfoRow(label: "Created", value: backup.createdAt.formatted(date: .long, time: .shortened))
+                WalletInfoRow(label: "Created", value: backup.createdAt.formatted(date: .long, time: .shortened))
                 Divider().padding(.leading)
-                InfoRow(label: "App Version", value: backup.appVersion)
+                WalletInfoRow(label: "App Version", value: backup.appVersion)
                 Divider().padding(.leading)
-                InfoRow(label: "Wallets", value: "\(backup.wallets.count)")
+                WalletInfoRow(label: "Wallets", value: "\(backup.wallets.count)")
             }
             .background(.background, in: RoundedRectangle(cornerRadius: 10))
             .overlay(RoundedRectangle(cornerRadius: 10).stroke(.secondary.opacity(0.15)))
