@@ -1,5 +1,5 @@
 /**
- * Vault command - Manage agent secrets via HashiCorp Vault
+ * Vault command - Manage agent secrets via HashiCorp Vault or Bitwarden CLI
  */
 
 import { Command } from 'commander';
@@ -16,21 +16,48 @@ import {
   type VaultConfig,
   type VaultAuthMethod,
 } from '../../src/vault/index.js';
+import { BitwardenProvider } from '../../src/vault/bitwarden.js';
+import { HashiCorpVaultProvider } from '../../src/vault/hashicorp-provider.js';
+import type { SecretProvider } from '../../src/vault/provider.js';
+
+// ---------------------------------------------------------------------------
+// Backend resolution helpers
+// ---------------------------------------------------------------------------
+
+type BackendType = 'hashicorp' | 'bitwarden';
+
+function resolveBackend(backendOpt: string | undefined): BackendType {
+  const b = (backendOpt ?? process.env.AGENTVAULT_VAULT_BACKEND ?? 'hashicorp').toLowerCase();
+  if (b === 'bitwarden' || b === 'bw') return 'bitwarden';
+  return 'hashicorp';
+}
+
+function buildProvider(agentId: string, backend: BackendType): SecretProvider {
+  if (backend === 'bitwarden') {
+    return new BitwardenProvider({ agentId });
+  }
+  return HashiCorpVaultProvider.forAgent(agentId);
+}
+
+// ---------------------------------------------------------------------------
 
 const vaultCmd = new Command('vault');
 
 vaultCmd
-  .description('Manage agent secrets and API keys via HashiCorp Vault')
+  .description('Manage agent secrets and API keys (HashiCorp Vault or Bitwarden)')
   .action(async () => {
-    console.log(chalk.yellow('Please specify a subcommand: init, get, put, list, delete, health, or policy'));
+    console.log(chalk.yellow('Please specify a subcommand: init, store, get, put, list, delete, health, or policy'));
     console.log(chalk.gray(`\nExamples:
-  ${chalk.cyan('agentvault vault init')}${chalk.gray('                                    Configure Vault connection')}
-  ${chalk.cyan('agentvault vault health')}${chalk.gray('                                  Check Vault server health')}
-  ${chalk.cyan('agentvault vault put <agent-id> <key> <value>')}${chalk.gray('            Store a secret')}
-  ${chalk.cyan('agentvault vault get <agent-id> <key>')}${chalk.gray('                    Retrieve a secret')}
-  ${chalk.cyan('agentvault vault list <agent-id>')}${chalk.gray('                         List agent secrets')}
-  ${chalk.cyan('agentvault vault delete <agent-id> <key>')}${chalk.gray('                 Delete a secret')}
-  ${chalk.cyan('agentvault vault policy <agent-id>')}${chalk.gray('                       View agent policy')}`));
+  ${chalk.cyan('agentvault vault init')}${chalk.gray('                                         Configure Vault connection')}
+  ${chalk.cyan('agentvault vault health')}${chalk.gray('                                       Check backend health')}
+  ${chalk.cyan('agentvault vault store --key api_binance --value $KEY')}${chalk.gray('         Store a named secret')}
+  ${chalk.cyan('agentvault vault put <agent-id> <key> <value>')}${chalk.gray('                 Store a secret (explicit agent)')}
+  ${chalk.cyan('agentvault vault get <agent-id> <key>')}${chalk.gray('                         Retrieve a secret')}
+  ${chalk.cyan('agentvault vault list <agent-id>')}${chalk.gray('                              List agent secrets')}
+  ${chalk.cyan('agentvault vault delete <agent-id> <key>')}${chalk.gray('                      Delete a secret')}
+  ${chalk.cyan('agentvault vault policy <agent-id>')}${chalk.gray('                            View agent policy')}
+
+  ${chalk.gray('Set AGENTVAULT_VAULT_BACKEND=bitwarden to use the Bitwarden CLI instead.')}`));
   });
 
 // --- vault init ---
@@ -181,43 +208,129 @@ vaultCmd
 // --- vault health ---
 vaultCmd
   .command('health')
-  .description('Check HashiCorp Vault server health status')
-  .action(async () => {
-    const config = loadVaultConfig();
-    if (!config) {
-      console.error(chalk.red('Vault is not configured. Run `agentvault vault init` first.'));
-      process.exit(1);
+  .description('Check secret backend health status')
+  .option('--backend <backend>', 'Secret backend to use: hashicorp (default) or bitwarden')
+  .action(async (options) => {
+    const backend = resolveBackend(options.backend as string | undefined);
+
+    // For HashiCorp we still do the detailed health check via VaultClient
+    if (backend === 'hashicorp') {
+      const config = loadVaultConfig();
+      if (!config) {
+        console.error(chalk.red('Vault is not configured. Run `agentvault vault init` first.'));
+        process.exit(1);
+      }
+
+      const spinner = ora('Checking Vault health...').start();
+      try {
+        const policy = getOrCreateAgentPolicy('_health_check');
+        const client = VaultClient.createWithConfig(config, policy);
+        const result = await client.health();
+
+        if (result.success && result.data) {
+          const status = result.data;
+          if (status.sealed) {
+            spinner.warn(chalk.yellow('Vault is sealed'));
+          } else {
+            spinner.succeed(chalk.green('Vault is healthy'));
+          }
+
+          console.log(chalk.cyan('\nVault Status:'));
+          console.log(`  Backend:     HashiCorp Vault`);
+          console.log(`  Address:     ${config.address}`);
+          console.log(`  Version:     ${status.version}`);
+          console.log(`  Initialized: ${status.initialized ? chalk.green('yes') : chalk.red('no')}`);
+          console.log(`  Sealed:      ${status.sealed ? chalk.red('yes') : chalk.green('no')}`);
+          if (status.clusterName) {
+            console.log(`  Cluster:     ${status.clusterName}`);
+          }
+        } else {
+          spinner.fail(chalk.red(result.error ?? 'Failed to check Vault health'));
+          process.exit(1);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        spinner.fail(chalk.red(`Health check failed: ${message}`));
+        process.exit(1);
+      }
+      return;
     }
 
-    const spinner = ora('Checking Vault health...').start();
+    // Bitwarden health check
+    const spinner = ora('Checking Bitwarden CLI health...').start();
     try {
-      const policy = getOrCreateAgentPolicy('_health_check');
-      const client = VaultClient.createWithConfig(config, policy);
-      const result = await client.health();
-
-      if (result.success && result.data) {
-        const status = result.data;
-        if (status.sealed) {
-          spinner.warn(chalk.yellow('Vault is sealed'));
-        } else {
-          spinner.succeed(chalk.green('Vault is healthy'));
-        }
-
-        console.log(chalk.cyan('\nVault Status:'));
-        console.log(`  Address:     ${config.address}`);
-        console.log(`  Version:     ${status.version}`);
-        console.log(`  Initialized: ${status.initialized ? chalk.green('yes') : chalk.red('no')}`);
-        console.log(`  Sealed:      ${status.sealed ? chalk.red('yes') : chalk.green('no')}`);
-        if (status.clusterName) {
-          console.log(`  Cluster:     ${status.clusterName}`);
-        }
+      const provider = new BitwardenProvider({ agentId: '_health_check' });
+      const result = await provider.healthCheck();
+      if (result.healthy) {
+        spinner.succeed(chalk.green(result.message));
       } else {
-        spinner.fail(chalk.red(result.error ?? 'Failed to check Vault health'));
+        spinner.fail(chalk.red(result.message));
         process.exit(1);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       spinner.fail(chalk.red(`Health check failed: ${message}`));
+      process.exit(1);
+    }
+  });
+
+// --- vault store ---
+// Simplified "store this secret right now" command.
+// Uses --key / --value flags instead of positional args so it's shell-friendly:
+//   agentvault vault store --key api_binance --value $KEY
+// The agent-id defaults to the current project config or can be set via --agent.
+vaultCmd
+  .command('store')
+  .description('Store a named secret (zero persistence in canister)')
+  .requiredOption('-k, --key <key>', 'Secret key name, e.g. api_binance')
+  .option('-v, --value <value>', 'Secret value (omit to read from stdin or interactive prompt)')
+  .option('-a, --agent <agent-id>', 'Agent ID (defaults to "default")')
+  .option('--backend <backend>', 'Secret backend: hashicorp (default) or bitwarden')
+  .action(async (options) => {
+    const agentId: string = (options.agent as string | undefined) ?? 'default';
+    const key: string = options.key as string;
+    const backend = resolveBackend(options.backend as string | undefined);
+
+    let value: string = options.value as string | undefined ?? '';
+
+    // Read from stdin or prompt when --value is not provided
+    if (!value) {
+      if (process.stdin.isTTY) {
+        const answers = await inquirer.prompt<{ secretValue: string }>([
+          {
+            type: 'password',
+            name: 'secretValue',
+            message: `Enter value for "${key}":`,
+            mask: '*',
+          },
+        ]);
+        value = answers.secretValue;
+      } else {
+        // Non-interactive: read from stdin pipe
+        const chunks: Buffer[] = [];
+        for await (const chunk of process.stdin) {
+          chunks.push(chunk as Buffer);
+        }
+        value = Buffer.concat(chunks).toString('utf-8').trim();
+      }
+    }
+
+    if (!value) {
+      console.error(chalk.red('Secret value cannot be empty'));
+      process.exit(1);
+    }
+
+    const backendLabel = backend === 'bitwarden' ? 'Bitwarden' : 'HashiCorp Vault';
+    const spinner = ora(`Storing secret "${key}" for agent "${agentId}" via ${backendLabel}...`).start();
+
+    try {
+      const provider = buildProvider(agentId, backend);
+      await provider.storeSecret(key, value);
+      spinner.succeed(chalk.green(`Secret "${key}" stored for agent "${agentId}" via ${backendLabel}`));
+      console.log(chalk.gray('  Value is held only in the backend – zero persistence in canister.'));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      spinner.fail(chalk.red(message));
       process.exit(1);
     }
   });
