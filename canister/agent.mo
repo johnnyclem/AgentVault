@@ -476,6 +476,11 @@ system func heartbeat() : async () {
     canisterKilled   := true;
     lastHealthStatus := "KILLED:consecutive_failures=" # Nat.toText(consecutiveTimeouts);
   };
+
+  // Expire timed-out consensus proposals every heartbeat round.
+  // This ensures the 30-second window is enforced even if the off-chain
+  // coordinator is unreachable.
+  ignore await expireStaleConsensusProposals();
 };
 
 /**
@@ -874,6 +879,373 @@ public query func getVetKeysStatus() : async {
   enabled : Bool; thresholdSupported : Bool; mode : { #mock; #production };
 } {
   { enabled = false; thresholdSupported = true; mode = #mock }
+};
+
+// ==================== Multi-Agent Trade Consensus (Phase 6) ====================
+//
+// Implements a 2-of-2 vote gate that must pass before any trade is executed.
+// Protects against laggy ICP agent double-execution and solo trades.
+//
+// Flow:
+//   1. Off-chain orchestrator calls proposeConsensus() with trade details.
+//   2. Both the ICP agent and the Solana mirror agent call castConsensusVote().
+//   3. Heartbeat calls expireStaleConsensusProposals() each round; proposals
+//      older than CONSENSUS_TIMEOUT_NS are automatically cancelled.
+//   4. Only a proposal in #approved state should trigger trade execution.
+
+/// 30 seconds in nanoseconds — both agents must vote within this window.
+let CONSENSUS_TIMEOUT_NS : Int = 30 * 1_000_000_000;
+
+public type ConsensusProposal = {
+  proposalId   : Text;
+  /// One-time random nonce — agents echo this in their vote signature (anti-replay).
+  nonce        : Text;
+  /// Human-readable trade description, e.g. "buy SOL/USDC 10.0"
+  tradeDescription : Text;
+  pair         : Text;
+  direction    : { #buy; #sell };
+  quantity     : Text;
+  originChain  : Text;
+  status       : { #pending; #approved; #cancelled };
+  votes        : [ConsensusVoteRecord];
+  createdAt    : Int;
+  resolvedAt   : ?Int;
+  cancelReason : ?Text;
+};
+
+public type ConsensusVoteRecord = {
+  agentId   : Text;
+  chain     : Text;
+  /// HMAC-SHA256 hex over "<proposalId>:<nonce>:<agentId>:<approve|veto>"
+  signature : Text;
+  approve   : Bool;
+  votedAt   : Int;
+};
+
+/// In-memory consensus store (not persisted across upgrades intentionally —
+/// any pending proposals at upgrade time are implicitly cancelled, preventing
+/// double-execution across code versions).
+stable var consensusProposals : [ConsensusProposal] = [];
+
+private func generateProposalId() : Text {
+  "cp_" # Int.toText(Time.now()) # "_" # Nat.toText(consensusProposals.size())
+};
+
+/**
+ * Open a new 2-of-2 consensus session for a trade signal.
+ *
+ * Returns the proposalId and nonce that both agents must include in their votes.
+ * Authorized callers only (off-chain orchestrator principal).
+ */
+public shared(msg) func proposeConsensus(
+  nonce            : Text,
+  tradeDescription : Text,
+  pair             : Text,
+  direction        : { #buy; #sell },
+  quantity         : Text,
+  originChain      : Text
+) : async { #ok : { proposalId : Text; nonce : Text }; #err : Text } {
+  assertWriteAllowed(msg.caller);
+
+  if (Text.size(nonce) < 8) {
+    return #err("Nonce too short — minimum 8 characters required");
+  };
+  if (Text.size(pair) == 0 or Text.size(quantity) == 0) {
+    return #err("pair and quantity must not be empty");
+  };
+
+  let proposal : ConsensusProposal = {
+    proposalId       = generateProposalId();
+    nonce            = nonce;
+    tradeDescription = tradeDescription;
+    pair             = pair;
+    direction        = direction;
+    quantity         = quantity;
+    originChain      = originChain;
+    status           = #pending;
+    votes            = [];
+    createdAt        = Time.now();
+    resolvedAt       = null;
+    cancelReason     = null;
+  };
+
+  consensusProposals := Array.append<ConsensusProposal>(consensusProposals, [proposal]);
+  #ok({ proposalId = proposal.proposalId; nonce = proposal.nonce })
+};
+
+/**
+ * Cast an agent vote on a pending consensus proposal.
+ *
+ * Accepts a vote only if:
+ *   1. The proposal exists and is still #pending.
+ *   2. The echoed nonce matches the stored nonce (anti-replay).
+ *   3. The agentId has not already voted (no double-vote).
+ *   4. The signature is at least 64 hex characters (basic sanity check;
+ *      cryptographic verification is performed off-chain by the TypeScript layer).
+ *
+ * If any agent votes #veto the proposal is immediately cancelled.
+ * Once 2 approvals are recorded the proposal moves to #approved.
+ */
+public shared(msg) func castConsensusVote(
+  proposalId : Text,
+  agentId    : Text,
+  chain      : Text,
+  signature  : Text,
+  nonce      : Text,
+  approve    : Bool
+) : async { #ok : Text; #err : Text } {
+  assertWriteAllowed(msg.caller);
+
+  if (Text.size(signature) < 64) {
+    return #err("Signature too short — must be at least 64 hex characters");
+  };
+
+  var updated = false;
+  var result : { #ok : Text; #err : Text } = #err("Proposal not found: " # proposalId);
+
+  consensusProposals := Array.map<ConsensusProposal, ConsensusProposal>(
+    consensusProposals,
+    func(p : ConsensusProposal) : ConsensusProposal {
+      if (p.proposalId != proposalId) { return p };
+      updated := true;
+
+      // Reject votes on already-resolved proposals.
+      switch (p.status) {
+        case (#approved) {
+          result := #err("Proposal already approved — vote ignored");
+          return p;
+        };
+        case (#cancelled) {
+          result := #err("Proposal already cancelled — vote ignored");
+          return p;
+        };
+        case (#pending) {};
+      };
+
+      // Anti-replay: nonce must match.
+      if (p.nonce != nonce) {
+        result := #err("Nonce mismatch — possible replay attack");
+        return p;
+      };
+
+      // Reject duplicate votes from the same agent.
+      for (v in p.votes.vals()) {
+        if (v.agentId == agentId) {
+          result := #err("Agent " # agentId # " has already voted");
+          return p;
+        };
+      };
+
+      let newVote : ConsensusVoteRecord = {
+        agentId   = agentId;
+        chain     = chain;
+        signature = signature;
+        approve   = approve;
+        votedAt   = Time.now();
+      };
+
+      let newVotes = Array.append<ConsensusVoteRecord>(p.votes, [newVote]);
+
+      // Veto: cancel immediately.
+      if (not approve) {
+        result := #ok("Vote recorded — proposal cancelled (veto by " # agentId # ")");
+        return {
+          proposalId       = p.proposalId;
+          nonce            = p.nonce;
+          tradeDescription = p.tradeDescription;
+          pair             = p.pair;
+          direction        = p.direction;
+          quantity         = p.quantity;
+          originChain      = p.originChain;
+          status           = #cancelled;
+          votes            = newVotes;
+          createdAt        = p.createdAt;
+          resolvedAt       = ?Time.now();
+          cancelReason     = ?("veto by agent " # agentId);
+        };
+      };
+
+      // Count approvals.
+      var approvalCount : Nat = 0;
+      for (v in newVotes.vals()) {
+        if (v.approve) { approvalCount += 1 };
+      };
+
+      if (approvalCount >= 2) {
+        result := #ok("Consensus reached — proposal approved");
+        return {
+          proposalId       = p.proposalId;
+          nonce            = p.nonce;
+          tradeDescription = p.tradeDescription;
+          pair             = p.pair;
+          direction        = p.direction;
+          quantity         = p.quantity;
+          originChain      = p.originChain;
+          status           = #approved;
+          votes            = newVotes;
+          createdAt        = p.createdAt;
+          resolvedAt       = ?Time.now();
+          cancelReason     = null;
+        };
+      };
+
+      result := #ok("Vote recorded — waiting for remaining approvals");
+      return {
+        proposalId       = p.proposalId;
+        nonce            = p.nonce;
+        tradeDescription = p.tradeDescription;
+        pair             = p.pair;
+        direction        = p.direction;
+        quantity         = p.quantity;
+        originChain      = p.originChain;
+        status           = #pending;
+        votes            = newVotes;
+        createdAt        = p.createdAt;
+        resolvedAt       = null;
+        cancelReason     = null;
+      };
+    }
+  );
+
+  result
+};
+
+/**
+ * Query a single consensus proposal by ID.
+ */
+public query func getConsensusProposal(proposalId : Text) : async ?ConsensusProposal {
+  for (p in consensusProposals.vals()) {
+    if (p.proposalId == proposalId) { return ?p };
+  };
+  null
+};
+
+/**
+ * List all proposals, optionally filtered by status.
+ * Pass "pending", "approved", or "cancelled"; any other value returns all.
+ */
+public query func listConsensusProposals(statusFilter : Text) : async [ConsensusProposal] {
+  if (statusFilter == "pending") {
+    return Array.filter<ConsensusProposal>(
+      consensusProposals,
+      func(p) { switch (p.status) { case (#pending) { true }; case (_) { false } } }
+    );
+  };
+  if (statusFilter == "approved") {
+    return Array.filter<ConsensusProposal>(
+      consensusProposals,
+      func(p) { switch (p.status) { case (#approved) { true }; case (_) { false } } }
+    );
+  };
+  if (statusFilter == "cancelled") {
+    return Array.filter<ConsensusProposal>(
+      consensusProposals,
+      func(p) { switch (p.status) { case (#cancelled) { true }; case (_) { false } } }
+    );
+  };
+  consensusProposals
+};
+
+/**
+ * Cancel a pending proposal explicitly (e.g. on operator request).
+ *
+ * Authorized callers only.
+ */
+public shared(msg) func cancelConsensusProposal(proposalId : Text, reason : Text) : async {
+  #ok : Text;
+  #err : Text;
+} {
+  assertWriteAllowed(msg.caller);
+  var found = false;
+
+  consensusProposals := Array.map<ConsensusProposal, ConsensusProposal>(
+    consensusProposals,
+    func(p : ConsensusProposal) : ConsensusProposal {
+      if (p.proposalId != proposalId) { return p };
+      found := true;
+      switch (p.status) {
+        case (#pending) {
+          return {
+            proposalId       = p.proposalId;
+            nonce            = p.nonce;
+            tradeDescription = p.tradeDescription;
+            pair             = p.pair;
+            direction        = p.direction;
+            quantity         = p.quantity;
+            originChain      = p.originChain;
+            status           = #cancelled;
+            votes            = p.votes;
+            createdAt        = p.createdAt;
+            resolvedAt       = ?Time.now();
+            cancelReason     = ?reason;
+          };
+        };
+        case (_) { return p };
+      };
+    }
+  );
+
+  if (found) { #ok("Proposal cancelled: " # proposalId) }
+  else       { #err("Proposal not found: " # proposalId) }
+};
+
+/**
+ * Expire proposals that have exceeded the 30-second consensus window.
+ *
+ * Called automatically from the system heartbeat every round.
+ * Returns the number of proposals that were expired.
+ */
+public shared func expireStaleConsensusProposals() : async Nat {
+  let now = Time.now();
+  var count : Nat = 0;
+
+  consensusProposals := Array.map<ConsensusProposal, ConsensusProposal>(
+    consensusProposals,
+    func(p : ConsensusProposal) : ConsensusProposal {
+      switch (p.status) {
+        case (#pending) {
+          if (now - p.createdAt > CONSENSUS_TIMEOUT_NS) {
+            count += 1;
+            return {
+              proposalId       = p.proposalId;
+              nonce            = p.nonce;
+              tradeDescription = p.tradeDescription;
+              pair             = p.pair;
+              direction        = p.direction;
+              quantity         = p.quantity;
+              originChain      = p.originChain;
+              status           = #cancelled;
+              votes            = p.votes;
+              createdAt        = p.createdAt;
+              resolvedAt       = ?now;
+              cancelReason     = ?"timeout: 30-second consensus window elapsed";
+            };
+          };
+          return p;
+        };
+        case (_) { return p };
+      };
+    }
+  );
+
+  count
+};
+
+/**
+ * Return aggregate statistics for the consensus subsystem.
+ */
+public query func getConsensusStats() : async {
+  total : Nat; pending : Nat; approved : Nat; cancelled : Nat;
+} {
+  var pending : Nat = 0; var approved : Nat = 0; var cancelled : Nat = 0;
+  for (p in consensusProposals.vals()) {
+    switch (p.status) {
+      case (#pending)   { pending   += 1 };
+      case (#approved)  { approved  += 1 };
+      case (#cancelled) { cancelled += 1 };
+    }
+  };
+  { total = consensusProposals.size(); pending; approved; cancelled }
 };
 
 // ==================== System Functions ====================

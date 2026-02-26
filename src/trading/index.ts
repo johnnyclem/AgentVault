@@ -40,3 +40,21 @@ export {
 export type {
   SandboxViolation,
 } from './skill-sandbox.js';
+
+export {
+  TradeConsensusManager,
+  buildVote,
+  signVote,
+  verifyVote,
+  CONSENSUS_TIMEOUT_MS,
+  REQUIRED_VOTES,
+} from './consensus.js';
+export type {
+  AgentChain,
+  TradeDirection,
+  TradeSignal,
+  ConsensusVote,
+  ConsensusSession,
+  ConsensusStatus,
+  ConsensusManagerOptions,
+} from './consensus.js';
