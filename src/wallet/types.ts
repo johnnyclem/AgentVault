@@ -8,6 +8,33 @@
 export type ChainType = 'cketh' | 'polkadot' | 'solana' | 'icp' | 'arweave';
 
 /**
+ * AES-256-GCM encrypted ciphertext bundle
+ */
+export interface EncryptedCiphertext {
+  /** 12-byte IV as hex */
+  iv: string;
+  /** AES-256-GCM ciphertext as hex */
+  ciphertext: string;
+  /** 16-byte GCM authentication tag as hex */
+  tag: string;
+}
+
+/**
+ * Encrypted wallet key bundle stored at rest.
+ * The AES key is derived from the mnemonic + salt via PBKDF2-SHA256.
+ */
+export interface EncryptedKeyBundle {
+  /** Schema version for forward-compatibility */
+  version: 1;
+  /** 32-byte random per-wallet PBKDF2 salt as hex */
+  salt: string;
+  /** Encrypted private key (secp256k1 or ed25519) */
+  privateKey?: EncryptedCiphertext;
+  /** Encrypted BIP39 mnemonic */
+  mnemonic?: EncryptedCiphertext;
+}
+
+/**
  * Wallet creation methods
  */
 export type WalletCreationMethod = 'seed' | 'private-key' | 'mnemonic';
@@ -43,6 +70,8 @@ export interface WalletData {
   creationMethod: WalletCreationMethod;
   /** Chain-specific metadata */
   chainMetadata?: Record<string, any>;
+  /** AES-256-GCM encrypted key bundle (replaces plaintext privateKey/mnemonic at rest) */
+  encryptedSecrets?: EncryptedKeyBundle;
 }
 
 /**
@@ -161,6 +190,12 @@ export interface WalletStorageOptions {
   baseDir?: string;
   /** Enable encryption */
   encrypt?: boolean;
+  /**
+   * BIP39 mnemonic used to derive the AES-256-GCM storage key via PBKDF2.
+   * When provided, private keys and mnemonics are encrypted at rest in
+   * encryptedSecrets and the plaintext fields are omitted from the file.
+   */
+  encryptionKey?: string;
 }
 
 /**

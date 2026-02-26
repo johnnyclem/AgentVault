@@ -13,6 +13,10 @@ import {
   deserializeWallet,
   validateCborData,
 } from './cbor-serializer.js';
+import {
+  encryptWalletSecrets,
+  decryptWalletSecrets,
+} from './wallet-crypto.js';
 import type {
   WalletData,
   WalletStorageOptions,
@@ -79,10 +83,17 @@ export function ensureWalletDirectories(
 }
 
 /**
- * Save wallet to encrypted storage
+ * Save wallet to storage, encrypting private keys and mnemonics with
+ * AES-256-GCM when options.encryptionKey (a BIP39 mnemonic) is supplied.
  *
- * @param wallet - Wallet data to save
- * @param options - Storage options
+ * When encryption is active the on-disk CBOR file will contain an
+ * `encryptedSecrets` bundle and the plaintext `privateKey` / `mnemonic`
+ * fields will be absent, ensuring no sensitive material is committed to
+ * the canister or filesystem in cleartext.
+ *
+ * @param wallet  - Wallet data to save
+ * @param options - Storage options; supply `encryptionKey` to enable at-rest
+ *                  encryption of private keys / mnemonics
  */
 export function saveWallet(
   wallet: WalletData,
@@ -91,8 +102,13 @@ export function saveWallet(
   // Ensure directories exist
   ensureWalletDirectories(wallet.agentId, options);
 
+  // Encrypt sensitive fields when a key is available
+  const walletToStore = options.encryptionKey
+    ? encryptWalletSecrets(wallet, options.encryptionKey)
+    : wallet;
+
   // Serialize wallet to CBOR
-  const serialized = serializeWallet(wallet);
+  const serialized = serializeWallet(walletToStore);
 
   // Get wallet file path
   const walletPath = getWalletFilePath(wallet.agentId, wallet.id, options);
@@ -102,12 +118,13 @@ export function saveWallet(
 }
 
 /**
- * Load wallet from storage
+ * Load wallet from storage, decrypting secrets when options.encryptionKey
+ * is supplied and the wallet contains an encrypted bundle.
  *
- * @param agentId - Agent ID
+ * @param agentId  - Agent ID
  * @param walletId - Wallet ID
- * @param options - Storage options
- * @returns Loaded wallet data or null if not found
+ * @param options  - Storage options; supply `encryptionKey` to decrypt secrets
+ * @returns Loaded (and optionally decrypted) wallet data, or null if not found
  */
 export function loadWallet(
   agentId: string,
@@ -131,6 +148,11 @@ export function loadWallet(
 
   // Deserialize wallet
   const wallet = deserializeWallet(new Uint8Array(data));
+
+  // Decrypt secrets when a key is present
+  if (options.encryptionKey && wallet.encryptedSecrets) {
+    return decryptWalletSecrets(wallet, options.encryptionKey);
+  }
 
   return wallet;
 }
