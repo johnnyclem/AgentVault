@@ -18,6 +18,7 @@ import {
   type ClawdbotTask,
   type ClawdbotSettings,
 } from '../config-schemas.js';
+import { SkillSandbox } from '../../trading/skill-sandbox.js';
 
 /**
  * Find Clawdbot directory or configuration file
@@ -183,6 +184,18 @@ export async function parseClawdbotConfig(
   sourcePath: string,
   verbose: boolean = false
 ): Promise<ClawdbotConfig> {
+  // ── Sandbox enforcement ─────────────────────────────────────────────────
+  // OpenClaw / Clawdbot skills must never execute as root and may only write
+  // to /tmp.  Enforce both constraints before any skill code runs.
+  const sandbox = new SkillSandbox();
+  sandbox.assertSafe(); // throws if uid === 0
+
+  if (verbose) {
+    const info = sandbox.describe();
+    console.log(`[Clawdbot] Sandbox: uid=${info.uid}, writeRoot=${info.writeRoot}`);
+  }
+  // ── End sandbox enforcement ─────────────────────────────────────────────
+
   if (verbose) {
     console.log(`[Clawdbot] Parsing configuration from: ${sourcePath}`);
   }
