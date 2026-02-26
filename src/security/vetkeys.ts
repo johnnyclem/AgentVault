@@ -19,6 +19,7 @@
  */
 
 import * as crypto from 'node:crypto';
+import { debugLog } from '../debugging/debug-logger.js';
 import type {
   EncryptedData,
   VetKeysOptions,
@@ -426,12 +427,12 @@ export class VetKeysImplementation {
     }
   ): Promise<boolean> {
     if (!this.useCanister) {
-      console.warn('Canister integration disabled, skipping canister storage');
+      debugLog('Canister integration disabled, skipping canister storage');
       return false;
     }
 
     if (!this.canisterId) {
-      console.warn('Canister ID not configured, skipping canister storage');
+      debugLog('Canister ID not configured, skipping canister storage');
       return false;
     }
 
@@ -449,14 +450,14 @@ export class VetKeysImplementation {
       });
 
       if ('ok' in result) {
-        console.log('Encrypted secret stored on canister:', secretId);
+        debugLog('Encrypted secret stored on canister:', secretId);
         return true;
       }
 
       return false;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      console.warn(`Failed to store encrypted secret on canister: ${message}`);
+      debugLog(`Failed to store encrypted secret on canister: ${message}`);
       return false;
     }
   }
@@ -494,7 +495,7 @@ export class VetKeysImplementation {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      console.warn(`Failed to retrieve encrypted secret from canister: ${message}`);
+      debugLog(`Failed to retrieve encrypted secret from canister: ${message}`);
       return null;
     }
   }
@@ -518,7 +519,7 @@ export class VetKeysImplementation {
       return secrets.map(s => s.id);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      console.warn(`Failed to list encrypted secrets from canister: ${message}`);
+      debugLog(`Failed to list encrypted secrets from canister: ${message}`);
       return [];
     }
   }
@@ -547,7 +548,7 @@ export class VetKeysImplementation {
       return false;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      console.warn(`Failed to delete encrypted secret from canister: ${message}`);
+      debugLog(`Failed to delete encrypted secret from canister: ${message}`);
       return false;
     }
   }
@@ -567,7 +568,7 @@ export class VetKeysImplementation {
     message: string
   ): Promise<boolean> {
     if (!this.canisterId) {
-      console.warn('VetKeys canister not configured: cannot verify threshold signature');
+      debugLog('VetKeys canister not configured: cannot verify threshold signature');
       return false;
     }
 
@@ -584,7 +585,7 @@ export class VetKeysImplementation {
       return false;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.warn(`Failed to verify threshold signature on canister: ${errorMessage}`);
+      debugLog(`Failed to verify threshold signature on canister: ${errorMessage}`);
       return false;
     }
   }
@@ -630,7 +631,7 @@ export class VetKeysImplementation {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      console.warn(`Failed to get VetKeys status from canister: ${message}`);
+      debugLog(`Failed to get VetKeys status from canister: ${message}`);
       return {
         enabled: false,
         thresholdSupported: true,

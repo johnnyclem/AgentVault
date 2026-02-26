@@ -19,6 +19,7 @@ import {
   type ClawdbotSettings,
 } from '../config-schemas.js';
 import { SkillSandbox } from '../../trading/skill-sandbox.js';
+import { debugLog } from '../../debugging/debug-logger.js';
 
 /**
  * Find Clawdbot directory or configuration file
@@ -190,15 +191,11 @@ export async function parseClawdbotConfig(
   const sandbox = new SkillSandbox();
   sandbox.assertSafe(); // throws if uid === 0
 
-  if (verbose) {
-    const info = sandbox.describe();
-    console.log(`[Clawdbot] Sandbox: uid=${info.uid}, writeRoot=${info.writeRoot}`);
-  }
+  const info = sandbox.describe();
+  debugLog(`[Clawdbot] Sandbox: uid=${info.uid}, writeRoot=${info.writeRoot}`);
   // ── End sandbox enforcement ─────────────────────────────────────────────
 
-  if (verbose) {
-    console.log(`[Clawdbot] Parsing configuration from: ${sourcePath}`);
-  }
+  debugLog(`[Clawdbot] Parsing configuration from: ${sourcePath}`);
 
   const configLocation = findClawdbotConfig(sourcePath);
 
@@ -212,9 +209,7 @@ export async function parseClawdbotConfig(
   let config: ClawdbotConfig;
 
   if (configLocation.type === 'json') {
-    if (verbose) {
-      console.log(`[Clawdbot] Found JSON config: ${configLocation.path}`);
-    }
+    debugLog(`[Clawdbot] Found JSON config: ${configLocation.path}`);
     const content = fs.readFileSync(configLocation.path, 'utf-8');
     const parsed = JSON.parse(content);
     const settings = { ...DEFAULT_CLAWDBOT_SETTINGS, ...parsed.settings };
@@ -229,33 +224,25 @@ export async function parseClawdbotConfig(
       context: parsed.context || {},
     };
   } else {
-    if (verbose) {
-      console.log(`[Clawdbot] Found directory: ${configLocation.path}`);
-    }
+    debugLog(`[Clawdbot] Found directory: ${configLocation.path}`);
     config = readClawdbotDirectory(configLocation.path);
-    if (verbose) {
-      console.log(`[Clawdbot] Parsed projects: ${config.projects?.length || 0}`);
-      console.log(`[Clawdbot] Parsed tasks: ${config.tasks?.length || 0}`);
-      console.log(`[Clawdbot] Parsed context keys: ${Object.keys(config.context || {}).length}`);
-      if (config.settings) {
-        console.log(`[Clawdbot] Model: ${config.settings.model}`);
-        console.log(`[Clawdbot] Temperature: ${config.settings.temperature}`);
-        console.log(`[Clawdbot] Max Tokens: ${config.settings.maxTokens}`);
-      }
+    debugLog(`[Clawdbot] Parsed projects: ${config.projects?.length || 0}`);
+    debugLog(`[Clawdbot] Parsed tasks: ${config.tasks?.length || 0}`);
+    debugLog(`[Clawdbot] Parsed context keys: ${Object.keys(config.context || {}).length}`);
+    if (config.settings) {
+      debugLog(`[Clawdbot] Model: ${config.settings.model}`);
+      debugLog(`[Clawdbot] Temperature: ${config.settings.temperature}`);
+      debugLog(`[Clawdbot] Max Tokens: ${config.settings.maxTokens}`);
     }
   }
 
   const validation = validateClawdbotConfig(config);
 
-  if (verbose || !validation.valid) {
-    if (validation.errors.length > 0) {
-      console.error('[Clawdbot] Validation errors:');
-      validation.errors.forEach((error) => console.error(`  - ${error}`));
-    }
-    if (validation.warnings.length > 0) {
-      console.warn('[Clawdbot] Warnings:');
-      validation.warnings.forEach((warning) => console.warn(`  - ${warning}`));
-    }
+  if (validation.errors.length > 0) {
+    validation.errors.forEach((error) => debugLog(`[Clawdbot] Validation error: ${error}`));
+  }
+  if (validation.warnings.length > 0) {
+    validation.warnings.forEach((warning) => debugLog(`[Clawdbot] Warning: ${warning}`));
   }
 
   if (!validation.valid) {
