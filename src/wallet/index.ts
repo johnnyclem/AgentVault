@@ -51,6 +51,17 @@ export {
   deriveWalletKey,
 } from './key-derivation.js';
 
+// Wallet Crypto (key generation + at-rest encryption)
+export {
+  secp256k1KeypairFromSeed,
+  ed25519KeypairFromSeed,
+  deriveStorageKey,
+  encryptSecret,
+  decryptSecret,
+  encryptWalletSecrets,
+  decryptWalletSecrets,
+} from './wallet-crypto.js';
+
 // Wallet Manager
 export {
   createWallet,
