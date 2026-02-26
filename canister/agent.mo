@@ -1,6 +1,23 @@
 /**
  * AgentVault Canister (Motoko) - Hardened Production Version
  *
+ * This canister serves as the on-chain execution environment for AI agents.
+ * It provides state management, task execution, memory storage, and WASM module loading.
+ * Implements the standard 14-function agent interface.
+ */
+
+import Memory "mo:base/Memory";
+import Buffer "mo:base/Buffer";
+import Int "mo:base/Int";
+import Time "mo:base/Time";
+import Iter "mo:base/Iter";
+import Blob "mo:base/Blob";
+import Text "mo:base/Text";
+import Array "mo:base/Array";
+import Option "mo:base/Option";
+import Principal "mo:base/Principal";
+
+// ==================== Types ====================
  * Security hardening applied:
  *
  *  1. HEAP LIMIT  — Prim.rts_heap_size() checked on every write call; aborts at 64 MB.
@@ -896,4 +913,215 @@ public query func getMetrics() : async {
 system func preupgrade() {
   // This assert causes the IC to abort the upgrade if frozen mode is active.
   assert (not frozenMode); // upgrade blocked: canister is frozen — call manualUnlock() first
+};
+
+// ==================== Mirror Canister Sync (Fault Tolerance) ====================
+//
+// Allows state replication to a second ICP canister via inter-canister calls.
+// On total primary wipe, the operator can call syncFromMirror to recover.
+//
+// NOTE: Inter-canister calls consume cycles on both canisters.
+//       Use sparingly or on a scheduled basis (e.g. once per hour via heartbeat).
+
+/**
+ * Remote mirror canister interface (subset of functions we replicate).
+ * Must match the corresponding public functions on the mirror canister.
+ */
+type MirrorActor = actor {
+  receiveSync : (
+    memories   : [Memory],
+    tasks      : [Task],
+    ctx        : [(Text, Text)],
+    config     : ?AgentConfig,
+    syncedAt   : Int
+  ) -> async { #ok : Text; #err : Text };
+  exportSyncState : () -> async {
+    memories : [Memory];
+    tasks    : [Task];
+    ctx      : [(Text, Text)];
+    config   : ?AgentConfig;
+    syncedAt : Int;
+  };
+};
+
+/** Principal of the registered mirror canister (empty = no mirror configured). */
+stable var mirrorCanisterId : Text = "";
+
+/** ISO timestamp of the most recent successful push to the mirror. */
+stable var lastSyncToMirrorAt : Int = 0;
+
+/** ISO timestamp of the most recent successful pull from the mirror. */
+stable var lastSyncFromMirrorAt : Int = 0;
+
+/**
+ * Register the mirror canister.
+ *
+ * @param canisterId - Principal text of the mirror canister
+ * @returns Registration result
+ */
+public shared func setMirrorCanister(canisterId : Text) : async {
+  #ok : Text;
+  #err : Text;
+} {
+  if (Text.size(canisterId) == 0) {
+    return #err("Mirror canister ID cannot be empty");
+  };
+  mirrorCanisterId := canisterId;
+  #ok("Mirror canister registered: " # canisterId)
+};
+
+/**
+ * Clear the mirror canister registration.
+ */
+public shared func clearMirrorCanister() : async Text {
+  mirrorCanisterId := "";
+  "Mirror canister cleared"
+};
+
+/**
+ * Get the currently registered mirror canister ID.
+ */
+public query func getMirrorCanister() : async ?Text {
+  if (Text.size(mirrorCanisterId) == 0) {
+    null
+  } else {
+    ?mirrorCanisterId
+  }
+};
+
+/**
+ * Push (replicate) current state to the mirror canister.
+ *
+ * Copies: memories, tasks, context key-value pairs, and agent config.
+ * Does NOT copy encrypted secrets or wallet registry (security boundary).
+ *
+ * @returns Sync result
+ */
+public shared func syncToMirror(targetCanisterId : Text) : async {
+  #ok : Text;
+  #err : Text;
+} {
+  let target = if (Text.size(targetCanisterId) > 0) targetCanisterId else mirrorCanisterId;
+
+  if (Text.size(target) == 0) {
+    return #err("No mirror canister configured. Call setMirrorCanister first.");
+  };
+
+  let mirror : MirrorActor = actor(target);
+
+  try {
+    let result = await mirror.receiveSync(
+      memories,
+      tasks,
+      context,
+      agentConfig,
+      Time.now()
+    );
+
+    switch (result) {
+      case (#ok(msg)) {
+        lastSyncToMirrorAt := Time.now();
+        #ok("Synced to mirror " # target # ": " # msg)
+      };
+      case (#err(e)) {
+        #err("Mirror rejected sync: " # e)
+      };
+    }
+  } catch (e) {
+    #err("Inter-canister call failed: " # Error.message(e))
+  }
+};
+
+/**
+ * Pull (restore) state from the mirror canister into this canister.
+ *
+ * Use this when the primary canister state has been wiped and needs recovery.
+ *
+ * @param sourceCanisterId - Mirror canister to pull from (uses registered ID if empty)
+ * @returns Restore result
+ */
+public shared func syncFromMirror(sourceCanisterId : Text) : async {
+  #ok : Text;
+  #err : Text;
+} {
+  let source = if (Text.size(sourceCanisterId) > 0) sourceCanisterId else mirrorCanisterId;
+
+  if (Text.size(source) == 0) {
+    return #err("No mirror canister configured. Provide a source canister ID.");
+  };
+
+  let mirror : MirrorActor = actor(source);
+
+  try {
+    let snapshot = await mirror.exportSyncState();
+
+    memories    := snapshot.memories;
+    tasks       := snapshot.tasks;
+    context     := snapshot.ctx;
+    agentConfig := snapshot.config;
+
+    lastSyncFromMirrorAt := Time.now();
+
+    #ok("State restored from mirror " # source # " (syncedAt: " # Int.toText(snapshot.syncedAt) # ")")
+  } catch (e) {
+    #err("Inter-canister pull failed: " # Error.message(e))
+  }
+};
+
+/**
+ * Accept a state snapshot pushed by the primary canister (mirror-side function).
+ *
+ * Both the primary and the mirror deploy the same canister WASM, so both
+ * expose this function.  Only the primary's controller should call it.
+ */
+public shared func receiveSync(
+  inMemories : [Memory],
+  inTasks    : [Task],
+  inCtx      : [(Text, Text)],
+  inConfig   : ?AgentConfig,
+  syncedAt   : Int
+) : async { #ok : Text; #err : Text } {
+  memories    := inMemories;
+  tasks       := inTasks;
+  context     := inCtx;
+  agentConfig := inConfig;
+  lastSyncFromMirrorAt := syncedAt;
+
+  #ok("Sync received at " # Int.toText(syncedAt))
+};
+
+/**
+ * Export current state snapshot for a primary-side pull (mirror-side function).
+ */
+public query func exportSyncState() : async {
+  memories : [Memory];
+  tasks    : [Task];
+  ctx      : [(Text, Text)];
+  config   : ?AgentConfig;
+  syncedAt : Int;
+} {
+  {
+    memories = memories;
+    tasks    = tasks;
+    ctx      = context;
+    config   = agentConfig;
+    syncedAt = lastSyncFromMirrorAt;
+  }
+};
+
+/**
+ * Return mirror configuration and last-sync timestamps.
+ */
+public query func getMirrorStatus() : async {
+  configured          : Bool;
+  mirrorCanisterId    : Text;
+  lastSyncToMirrorAt  : Int;
+  lastSyncFromMirrorAt : Int;
+} {
+  {
+    configured           = Text.size(mirrorCanisterId) > 0;
+    mirrorCanisterId     = mirrorCanisterId;
+    lastSyncToMirrorAt   = lastSyncToMirrorAt;
+    lastSyncFromMirrorAt = lastSyncFromMirrorAt;
+  }
 };
