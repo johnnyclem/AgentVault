@@ -1,8 +1,7 @@
 /**
  * Backup Module
  *
- * Exports backup functionality including Merkle-root full backups.
+ * Exports backup functionality.
  */
 
 export * from './backup.js';
-export * from './merkle.js';

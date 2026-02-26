@@ -3,7 +3,6 @@ import chalk from 'chalk';
 import ora from 'ora';
 import {
   exportBackup,
-  fullBackup,
   previewBackup,
   importBackup,
   listBackups,
@@ -29,83 +28,37 @@ backupCmd
   .command('export')
   .description('Export agent configuration and data to a backup file')
   .argument('<agent-name>', 'Agent name to backup')
-  .option('-o, --output <path>', 'Output file path (default: ./backup.json or ./backup.zip for --full)')
+  .option('-o, --output <path>', 'Output file path', './backup.json')
   .option('-c, --canister-id <id>', 'Canister ID to include live canister state')
   .option('--no-canister-state', 'Skip fetching canister state even if canister ID provided')
-  .option(
-    '--full',
-    'Create a full encrypted backup: Merkle-root manifest + AES-256-GCM payload + ed25519-signed key'
-  )
-  .option('--signing-key <path>', 'Path to ed25519 signing key file (auto-created if absent)')
   .action(async (agentName, options) => {
-    const isFull: boolean = Boolean(options.full);
+    const outputPath = options.output.endsWith('.json') ? options.output : `${options.output}.json`;
     const includeCanisterState = options.canisterId ? options.canisterState !== false : false;
+    const spinner = ora(`Exporting backup for ${agentName}...`).start();
 
-    if (isFull) {
-      // Full encrypted backup
-      const defaultOut = `./backup-${agentName}.zip`;
-      const outputPath = options.output ?? defaultOut;
-      const spinner = ora(`Creating full encrypted backup for ${agentName}...`).start();
+    try {
+      const result = await exportBackup({
+        agentName,
+        outputPath,
+        includeConfig: true,
+        canisterId: options.canisterId,
+        includeCanisterState,
+      });
 
-      try {
-        const result = await fullBackup({
-          agentName,
-          outputPath,
-          includeConfig: true,
-          canisterId: options.canisterId,
-          includeCanisterState,
-          signingKeyPath: options.signingKey,
-        });
-
-        if (result.success && result.path && result.manifest) {
-          spinner.succeed(chalk.green(`Full backup written to ${result.path}`));
-          const sizeBytes = result.sizeBytes ?? result.manifest.size;
-          console.log(chalk.gray(`Size:             ${formatBackupSize(sizeBytes)}`));
-          console.log(chalk.gray(`Components:       ${result.manifest.components.join(', ')}`));
-          console.log(chalk.cyan(`Merkle root:      ${result.merkleRoot}`));
-          console.log(chalk.cyan(`ed25519 pubkey:   ${result.ed25519PublicKey}`));
-          console.log(chalk.cyan(`Key signature:    ${result.manifest.keySignature?.slice(0, 32)}...`));
-        } else {
-          spinner.fail(chalk.red(`Full backup failed: ${result.error ?? 'unknown error'}`));
-          process.exit(1);
-        }
-      } catch (error) {
-        spinner.fail(chalk.red('Full backup export failed'));
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        console.error(chalk.red(message));
-        process.exit(1);
-      }
-    } else {
-      // Standard JSON backup (existing behaviour)
-      const defaultOut = './backup.json';
-      const rawOut = options.output ?? defaultOut;
-      const outputPath = rawOut.endsWith('.json') ? rawOut : `${rawOut}.json`;
-      const spinner = ora(`Exporting backup for ${agentName}...`).start();
-
-      try {
-        const result = await exportBackup({
-          agentName,
-          outputPath,
-          includeConfig: true,
-          canisterId: options.canisterId,
-          includeCanisterState,
-        });
-
-        if (result.success && result.path && result.manifest) {
-          spinner.succeed(chalk.green(`Backup exported to ${result.path}`));
-          const sizeBytes = result.sizeBytes ?? result.manifest.size;
-          console.log(chalk.gray(`Size: ${formatBackupSize(sizeBytes)}`));
-          console.log(chalk.gray(`Components: ${result.manifest.components.join(', ')}`));
-        } else {
-          spinner.fail(chalk.red('Backup export failed'));
-          process.exit(1);
-        }
-      } catch (error) {
+      if (result.success && result.path && result.manifest) {
+        spinner.succeed(chalk.green(`Backup exported to ${result.path}`));
+        const sizeBytes = result.sizeBytes || result.manifest.size;
+        console.log(chalk.gray(`Size: ${formatBackupSize(sizeBytes)}`));
+        console.log(chalk.gray(`Components: ${result.manifest.components.join(', ')}`));
+      } else {
         spinner.fail(chalk.red('Backup export failed'));
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        console.error(chalk.red(message));
         process.exit(1);
       }
+    } catch (error) {
+      spinner.fail(chalk.red('Backup export failed'));
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.error(chalk.red(message));
+      process.exit(1);
     }
   });
 
