@@ -53,6 +53,10 @@ import { skillsCmd } from './commands/skills.js';
 // Phase 6 commands
 import { orchestrateCmd } from './commands/orchestrate.js';
 
+// Fault Tolerance commands
+import { cronCmd } from './commands/cron.js';
+import { mirrorCmd } from './commands/mirror.js';
+
 export function createProgram(): Command {
   const program = new Command();
 
@@ -109,6 +113,10 @@ export function createProgram(): Command {
   program.addCommand(skillsCmd);
   // Phase 6 commands
   program.addCommand(orchestrateCmd());
+
+  // Fault Tolerance commands
+  program.addCommand(cronCmd());
+  program.addCommand(mirrorCmd());
 
   return program;
 }
