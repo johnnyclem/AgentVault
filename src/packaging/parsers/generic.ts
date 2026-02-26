@@ -9,6 +9,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as yaml from 'yaml';
+import { debugLog } from '../../debugging/debug-logger.js';
 import type {
   GenericConfig,
   ConfigLocation,
@@ -139,9 +140,7 @@ export async function parseGenericConfig(
   sourcePath: string,
   verbose: boolean = false
 ): Promise<GenericConfig> {
-  if (verbose) {
-    console.log(`[Generic] Parsing configuration from: ${sourcePath}`);
-  }
+  debugLog(`[Generic] Parsing configuration from: ${sourcePath}`);
 
   const configLocation = findGenericConfig(sourcePath);
 
@@ -152,9 +151,7 @@ export async function parseGenericConfig(
     );
   }
 
-  if (verbose) {
-    console.log(`[Generic] Found ${configLocation.type.toUpperCase()} config: ${configLocation.path}`);
-  }
+  debugLog(`[Generic] Found ${configLocation.type.toUpperCase()} config: ${configLocation.path}`);
 
   let config: GenericConfig;
 
@@ -193,15 +190,13 @@ export async function parseGenericConfig(
       };
     }
 
-    if (verbose) {
-      console.log(`[Generic] Parsed name: ${config.name}`);
-      console.log(`[Generic] Parsed version: ${config.version}`);
-      console.log(`[Generic] Parsed entryPoint: ${config.entryPoint || 'none'}`);
-      console.log(`[Generic] Parsed workingDirectory: ${config.workingDirectory || 'none'}`);
-      console.log(`[Generic] Parsed environment keys: ${Object.keys(config.environment || {}).length}`);
-      console.log(`[Generic] Parsed allowedFiles: ${config.allowedFiles?.length || 0}`);
-      console.log(`[Generic] Parsed maxFileSize: ${config.maxFileSize || 'unlimited'}`);
-    }
+    debugLog(`[Generic] Parsed name: ${config.name}`);
+    debugLog(`[Generic] Parsed version: ${config.version}`);
+    debugLog(`[Generic] Parsed entryPoint: ${config.entryPoint || 'none'}`);
+    debugLog(`[Generic] Parsed workingDirectory: ${config.workingDirectory || 'none'}`);
+    debugLog(`[Generic] Parsed environment keys: ${Object.keys(config.environment || {}).length}`);
+    debugLog(`[Generic] Parsed allowedFiles: ${config.allowedFiles?.length || 0}`);
+    debugLog(`[Generic] Parsed maxFileSize: ${config.maxFileSize || 'unlimited'}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     throw new Error(`Failed to parse Generic config: ${message}`);
@@ -215,11 +210,9 @@ export async function parseGenericConfig(
     throw new Error(errorMessage);
   }
 
-  // Display warnings if verbose
-  if (verbose && validation.warnings.length > 0) {
-    console.log(`[Generic] Warnings:`);
+  if (validation.warnings.length > 0) {
     for (const warning of validation.warnings) {
-      console.log(`[Generic]   - ${warning}`);
+      debugLog(`[Generic] Warning: ${warning}`);
     }
   }
 
