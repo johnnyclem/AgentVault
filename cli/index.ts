@@ -52,6 +52,8 @@ import { pilotCmd } from './commands/pilot.js';
 import { skillsCmd } from './commands/skills.js';
 // Phase 6 commands
 import { orchestrateCmd } from './commands/orchestrate.js';
+// Google ADK / A2A agent minting
+import { mintCmd } from './commands/mint.js';
 
 export function createProgram(): Command {
   const program = new Command();
@@ -109,6 +111,8 @@ export function createProgram(): Command {
   program.addCommand(skillsCmd);
   // Phase 6 commands
   program.addCommand(orchestrateCmd());
+  // Google ADK / A2A agent minting
+  program.addCommand(mintCmd());
 
   return program;
 }
