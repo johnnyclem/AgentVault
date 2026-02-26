@@ -4,6 +4,7 @@
  * Portable JSON format backup with embedded manifest and checksums
  * Stores backups in ~/.agentvault/backups/
  * CLE-101: Enhanced to include real canister state
+ * CLE-MRB: Full backup adds SHA-256 Merkle root and ed25519-signed AES-256-GCM key
  */
 
 import fs from 'node:fs';
@@ -11,6 +12,7 @@ import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import type { AgentConfig } from '../packaging/types.js';
+import { computeMerkleRoot, computeLeafHashes, type MerkleEntry } from './merkle.js';
 
 const AGENTVAULT_DIR = path.join(os.homedir(), '.agentvault');
 const BACKUPS_DIR = path.join(AGENTVAULT_DIR, 'backups');
@@ -39,6 +41,15 @@ export interface CanisterState {
   context?: unknown;
 }
 
+export interface EncryptedKeyEnvelope {
+  /** AES-256-GCM-wrapped data-encryption key: hex-encoded ciphertext */
+  ciphertext: string;
+  /** 12-byte IV used to wrap the key: hex */
+  iv: string;
+  /** 16-byte GCM auth tag: hex */
+  tag: string;
+}
+
 export interface BackupManifest {
   version: string;
   agentName: string;
@@ -50,6 +61,29 @@ export interface BackupManifest {
   checksums: Record<string, string>;
   size: number;
   components: string[];
+  /**
+   * SHA-256 Merkle root of all backup entries (sorted by path).
+   * Present only in full backups (--full flag).
+   */
+  merkleRoot?: string;
+  /**
+   * AES-256-GCM data-encryption key wrapped with a key derived from
+   * the ed25519 signing key via HKDF-SHA256.
+   * Present only in full backups.
+   */
+  encryptedKey?: EncryptedKeyEnvelope;
+  /**
+   * ed25519 signature (hex) over the raw bytes of encryptedKey
+   * (ciphertext || iv || tag). Allows verifying the key has not been
+   * swapped without decrypting it.
+   * Present only in full backups.
+   */
+  keySignature?: string;
+  /**
+   * ed25519 public key (hex) corresponding to the signing key.
+   * Present only in full backups.
+   */
+  ed25519PublicKey?: string;
 }
 
 export interface BackupOptions {
@@ -58,6 +92,15 @@ export interface BackupOptions {
   includeConfig?: boolean;
   canisterId?: string;
   includeCanisterState?: boolean;
+}
+
+export interface FullBackupOptions extends BackupOptions {
+  /**
+   * Path to the 32-byte ed25519 private key stored as hex.
+   * Defaults to ~/.agentvault/backup-signing.key.
+   * If the file does not exist, a new keypair is generated and saved.
+   */
+  signingKeyPath?: string;
 }
 
 export interface ImportOptions {
@@ -72,6 +115,13 @@ export interface BackupResult {
   error?: string;
   sizeBytes?: number;
   manifest?: BackupManifest;
+}
+
+export interface FullBackupResult extends BackupResult {
+  /** SHA-256 Merkle root of all backup entries */
+  merkleRoot?: string;
+  /** ed25519 public key (hex) used to sign the wrapped AES key */
+  ed25519PublicKey?: string;
 }
 
 export interface ImportResult {
@@ -138,6 +188,234 @@ async function fetchCanisterState(canisterId: string): Promise<CanisterState | n
   } catch (error) {
     console.warn('Failed to fetch canister state:', error);
     return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Full-backup cryptographic helpers
+// ---------------------------------------------------------------------------
+
+const SIGNING_KEY_FILENAME = 'backup-signing.key';
+
+/**
+ * Load or create an ed25519 private key (32 raw bytes) stored as hex at
+ * `keyPath`.  Returns { privateKey, publicKey } as Buffers.
+ */
+export async function loadOrCreateSigningKey(
+  keyPath: string
+): Promise<{ privateKey: Buffer; publicKey: Buffer }> {
+  const { ed25519 } = await import('@noble/curves/ed25519');
+
+  let privKeyHex: string;
+
+  if (fs.existsSync(keyPath)) {
+    privKeyHex = fs.readFileSync(keyPath, 'utf8').trim();
+    if (!/^[0-9a-f]{64}$/i.test(privKeyHex)) {
+      throw new Error(`Signing key at ${keyPath} is not valid 32-byte hex`);
+    }
+  } else {
+    // Generate new key and persist it
+    const raw = crypto.randomBytes(32);
+    privKeyHex = raw.toString('hex');
+    const dir = path.dirname(keyPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(keyPath, privKeyHex, { encoding: 'utf8', mode: 0o600 });
+  }
+
+  const privateKey = Buffer.from(privKeyHex, 'hex');
+  const publicKey = Buffer.from(ed25519.getPublicKey(privateKey));
+  return { privateKey, publicKey };
+}
+
+/**
+ * Derive a 32-byte AES key-wrapping key from an ed25519 private key using
+ * HKDF-SHA256.  Using a separate wrapping key means the signing key is never
+ * used directly for symmetric encryption.
+ */
+function deriveWrappingKey(privateKey: Buffer): Buffer {
+  return Buffer.from(crypto.hkdfSync(
+    'sha256',
+    privateKey,
+    Buffer.from('agentvault-backup-key-wrapping'),
+    Buffer.from('backup-key-wrapping-v1'),
+    32
+  ));
+}
+
+/**
+ * Encrypt `plaintext` with AES-256-GCM using `key`.
+ * Returns { ciphertext, iv, tag } all as Buffers.
+ */
+function aesGcmEncrypt(
+  plaintext: Buffer,
+  key: Buffer
+): { ciphertext: Buffer; iv: Buffer; tag: Buffer } {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return { ciphertext, iv, tag };
+}
+
+/**
+ * Create a full encrypted backup zip.
+ *
+ * Steps:
+ *  1. Collect backup entries (logical files).
+ *  2. Compute SHA-256 Merkle root of all entries.
+ *  3. Generate a random 32-byte AES-256-GCM data-encryption key.
+ *  4. Encrypt the backup payload with that key.
+ *  5. Wrap (encrypt) the data key with a key derived from the ed25519 signing key.
+ *  6. Sign the wrapped-key bytes (ciphertext || iv || tag) with ed25519.
+ *  7. Write a JSON-envelope backup file containing the manifest + ciphertext.
+ */
+export async function fullBackup(options: FullBackupOptions): Promise<FullBackupResult> {
+  try {
+    ensureBackupsDir();
+
+    const {
+      agentName,
+      outputPath,
+      includeConfig = true,
+      canisterId,
+      includeCanisterState = false,
+      signingKeyPath = path.join(AGENTVAULT_DIR, SIGNING_KEY_FILENAME),
+    } = options;
+
+    const { ed25519 } = await import('@noble/curves/ed25519');
+
+    // ------------------------------------------------------------------
+    // 1. Load or create ed25519 signing key
+    // ------------------------------------------------------------------
+    const { privateKey, publicKey } = await loadOrCreateSigningKey(signingKeyPath);
+
+    // ------------------------------------------------------------------
+    // 2. Collect backup entries
+    // ------------------------------------------------------------------
+    const entries: MerkleEntry[] = [];
+    const components: string[] = [];
+
+    // Config / agent identity entry (stub – real config loader can be wired in)
+    if (includeConfig) {
+      const configPayload = JSON.stringify({ agentName, canisterId: canisterId ?? agentName }, null, 2);
+      entries.push({ path: 'config.json', content: Buffer.from(configPayload, 'utf8') });
+      components.push('config');
+    }
+
+    // Optional live canister state
+    let canisterState: CanisterState | undefined;
+    if (includeCanisterState && canisterId) {
+      const state = await fetchCanisterState(canisterId);
+      if (state) {
+        canisterState = state;
+        const statePayload = JSON.stringify(state, null, 2);
+        entries.push({ path: 'canister-state.json', content: Buffer.from(statePayload, 'utf8') });
+        components.push('canister-state');
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // 3. Compute Merkle root & per-file leaf hashes
+    // ------------------------------------------------------------------
+    const merkleRoot = computeMerkleRoot(entries);
+    const leafHashes = computeLeafHashes(entries);
+
+    // ------------------------------------------------------------------
+    // 4. Build manifest (without size yet)
+    // ------------------------------------------------------------------
+    const now = new Date();
+    const manifest: BackupManifest = {
+      version: '2.0',
+      agentName,
+      timestamp: now,
+      created: now,
+      canisterId: canisterId ?? agentName,
+      canisterState,
+      checksums: leafHashes,
+      size: 0,
+      components,
+      merkleRoot,
+      ed25519PublicKey: publicKey.toString('hex'),
+    };
+
+    // ------------------------------------------------------------------
+    // 5. Encrypt the payload (all entries as a single JSON bundle)
+    // ------------------------------------------------------------------
+    const payloadObj: Record<string, string> = {};
+    for (const entry of entries) {
+      payloadObj[entry.path] = entry.content.toString('base64');
+    }
+    const payloadJson = Buffer.from(JSON.stringify(payloadObj), 'utf8');
+
+    const dataKey = crypto.randomBytes(32);
+    const {
+      ciphertext: encPayload,
+      iv: payloadIv,
+      tag: payloadTag,
+    } = aesGcmEncrypt(payloadJson, dataKey);
+
+    // ------------------------------------------------------------------
+    // 6. Wrap the data key with HKDF-derived wrapping key
+    // ------------------------------------------------------------------
+    const wrappingKey = deriveWrappingKey(privateKey);
+    const {
+      ciphertext: wrappedKeyCt,
+      iv: wrapIv,
+      tag: wrapTag,
+    } = aesGcmEncrypt(dataKey, wrappingKey);
+
+    // ------------------------------------------------------------------
+    // 7. Sign the wrapped-key envelope bytes with ed25519
+    // ------------------------------------------------------------------
+    const wrappedKeyBytes = Buffer.concat([wrappedKeyCt, wrapIv, wrapTag]);
+    const signature = Buffer.from(ed25519.sign(wrappedKeyBytes, privateKey));
+
+    manifest.encryptedKey = {
+      ciphertext: wrappedKeyCt.toString('hex'),
+      iv: wrapIv.toString('hex'),
+      tag: wrapTag.toString('hex'),
+    };
+    manifest.keySignature = signature.toString('hex');
+
+    // ------------------------------------------------------------------
+    // 8. Serialise to disk as a JSON-envelope ".zip" file
+    // ------------------------------------------------------------------
+    const timestamp = now.toISOString().replace(/[:.]/g, '-');
+    const filename = outputPath
+      ? path.basename(outputPath)
+      : `${agentName}-${timestamp}-full.zip`;
+    const filePath = outputPath || path.join(BACKUPS_DIR, filename);
+
+    const archive = {
+      format: 'agentvault-full-backup-v1',
+      manifest,
+      encryptedPayload: {
+        ciphertext: encPayload.toString('hex'),
+        iv: payloadIv.toString('hex'),
+        tag: payloadTag.toString('hex'),
+      },
+    };
+
+    fs.writeFileSync(filePath, JSON.stringify(archive, null, 2), 'utf8');
+
+    const stats = fs.statSync(filePath);
+    manifest.size = stats.size;
+
+    return {
+      success: true,
+      path: filePath,
+      sizeBytes: stats.size,
+      manifest,
+      merkleRoot,
+      ed25519PublicKey: publicKey.toString('hex'),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
   }
 }
 
