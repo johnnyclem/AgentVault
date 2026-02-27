@@ -1276,6 +1276,133 @@ public query func getMetrics() : async {
   }
 };
 
+// ==================== Multi-Factor Approval (MFA) — On-Chain Nonce & Audit ====================
+//
+// The agent generates its own TOTP seed locally (never sent to the canister).
+// Only the monotonically-incrementing nonce and the tamper-evident audit log
+// live on-chain, providing replay-protection and a forensic trail.
+//
+// Design:
+//   • mfaGlobalNonce  — single counter; every challenge call bumps it by 1.
+//   • mfaAuditLog     — append-only array of MfaAuditEntry records.
+//
+// Auth: only the owner or allowlisted principals may write.
+
+public type MfaAuditEntry = {
+  id        : Text;
+  requestId : Text;
+  branchId  : Text;
+  event     : Text;              // "approved" | "rejected" | "anomaly-detected" | …
+  nonce     : ?Nat;
+  challengeHash : ?Text;        // SHA-256(nonce ‖ branchId ‖ timestamp)
+  auditToken    : ?Text;        // HMAC returned to the CLI on success
+  deviceFingerprint : ?Text;
+  timestamp : Text;             // ISO-8601
+  detail    : ?Text;
+};
+
+/// Monotonically increasing nonce — bumped by incrementMfaNonce().
+stable var mfaGlobalNonce : Nat = 0;
+
+/// Immutable audit trail — only appended to, never modified.
+stable var mfaAuditLog : [MfaAuditEntry] = [];
+
+/**
+ * Read the current on-chain nonce.
+ * The CLI uses this value to build the challenge hash before calling incrementMfaNonce().
+ */
+public query func getMfaGlobalNonce() : async Nat {
+  mfaGlobalNonce
+};
+
+/**
+ * Increment the global nonce and return the new value.
+ *
+ * Called by the agent when it is about to issue a challenge to the human approver.
+ * Each nonce is single-use: the CLI verifies that the value returned here matches
+ * the nonce embedded in the approver's reply before accepting the approval.
+ *
+ * Authorized principals only.
+ */
+public shared(msg) func incrementMfaNonce() : async { #ok : Nat; #err : Text } {
+  if (not isAuthorized(msg.caller)) {
+    return #err("Caller not authorized: " # Principal.toText(msg.caller));
+  };
+  assertNotKilled();
+  assertNotFrozen();
+
+  mfaGlobalNonce += 1;
+  #ok(mfaGlobalNonce)
+};
+
+/**
+ * Append an MFA audit entry to the on-chain log.
+ *
+ * Called by the CLI after a successful (or failed) approval attempt so that
+ * every decision is permanently recorded and attributable.
+ *
+ * Authorized principals only.
+ */
+public shared(msg) func logMfaApproval(entry : MfaAuditEntry) : async { #ok : Text; #err : Text } {
+  if (not isAuthorized(msg.caller)) {
+    return #err("Caller not authorized: " # Principal.toText(msg.caller));
+  };
+  assertNotKilled();
+  assertMemoryLimit();
+
+  mfaAuditLog := Array.append<MfaAuditEntry>(mfaAuditLog, [entry]);
+  #ok("Audit entry logged: " # entry.id)
+};
+
+/**
+ * Query audit entries for a specific branch.
+ *
+ * Returns all entries whose branchId matches the provided string.
+ * Use getMfaAuditLogAll() for the complete unfiltered log.
+ */
+public query func getMfaAuditLog(branchId : Text) : async [MfaAuditEntry] {
+  Array.filter<MfaAuditEntry>(
+    mfaAuditLog,
+    func(e : MfaAuditEntry) : Bool { e.branchId == branchId }
+  )
+};
+
+/**
+ * Query the entire MFA audit log (all branches).
+ */
+public query func getMfaAuditLogAll() : async [MfaAuditEntry] {
+  mfaAuditLog
+};
+
+/**
+ * Summary statistics for the MFA subsystem.
+ */
+public query func getMfaStats() : async {
+  globalNonce    : Nat;
+  totalAuditEntries : Nat;
+  approvedCount  : Nat;
+  rejectedCount  : Nat;
+  anomalyCount   : Nat;
+} {
+  var approved : Nat = 0;
+  var rejected : Nat = 0;
+  var anomaly  : Nat = 0;
+
+  for (e in mfaAuditLog.vals()) {
+    if      (e.event == "approved")         { approved += 1 }
+    else if (e.event == "rejected")         { rejected += 1 }
+    else if (e.event == "anomaly-detected") { anomaly  += 1 };
+  };
+
+  {
+    globalNonce       = mfaGlobalNonce;
+    totalAuditEntries = mfaAuditLog.size();
+    approvedCount     = approved;
+    rejectedCount     = rejected;
+    anomalyCount      = anomaly;
+  }
+};
+
 // ==================== Upgrade Guard ====================
 
 /**
