@@ -16,6 +16,12 @@ export { decryptJSON } from './vetkeys.js';
 // Multi-sig approval workflows
 export * from './multisig.js';
 
+// TOTP (RFC 6238) — pure-Node implementation for Authy / Google Authenticator
+export * from './totp.js';
+
+// Multi-Factor Agent Approval — TOTP + nonce + one-time link + rate-limit + anomaly
+export * from './mfa-approval.js';
+
 // HashiCorp Vault integration
 export { VaultClient } from '../vault/client.js';
 export type {
