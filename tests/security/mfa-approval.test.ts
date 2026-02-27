@@ -508,3 +508,196 @@ describe('getMfaStatus()', () => {
     expect(s.currentNonce).toBe(2);
   });
 });
+
+// ─── 11. Biometric (WebAuthn) approval ────────────────────────────────────────
+
+async function loadWebAuthn() {
+  return import('../../src/security/webauthn.js');
+}
+
+describe('verifyBiometricApproval() — happy path', () => {
+  it('accepts a valid biometric assertion', async () => {
+    const { setupMfa, issueChallenge, verifyBiometricApproval } = await loadMfa();
+    const { setupBiometricCredential, signChallenge } = await loadWebAuthn();
+
+    setupMfa('branch-bio');
+    const challenge = issueChallenge('req-bio-001', 'branch-bio');
+    setupBiometricCredential('bio-device-fp');
+
+    const assertion = signChallenge(challenge.challengeHash, 'bio-device-fp');
+    const result = verifyBiometricApproval({
+      requestId: 'req-bio-001',
+      branchId: 'branch-bio',
+      challengeHash: challenge.challengeHash,
+      assertion,
+      nonce: challenge.nonce,
+      deviceFingerprint: 'bio-device-fp',
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.auditToken).toMatch(/^[a-f0-9]{64}$/);
+    }
+  });
+
+  it('records approved-biometric event in audit log', async () => {
+    const { setupMfa, issueChallenge, verifyBiometricApproval, getMfaAuditLog } = await loadMfa();
+    const { setupBiometricCredential, signChallenge } = await loadWebAuthn();
+
+    setupMfa('branch-bio-audit');
+    const challenge = issueChallenge('req-bio-002', 'branch-bio-audit');
+    setupBiometricCredential('bio-audit-fp');
+
+    const assertion = signChallenge(challenge.challengeHash, 'bio-audit-fp');
+    verifyBiometricApproval({
+      requestId: 'req-bio-002',
+      branchId: 'branch-bio-audit',
+      challengeHash: challenge.challengeHash,
+      assertion,
+      nonce: challenge.nonce,
+      deviceFingerprint: 'bio-audit-fp',
+    });
+
+    const log = getMfaAuditLog('branch-bio-audit');
+    expect(log.some((e) => e.event === 'approved-biometric')).toBe(true);
+  });
+});
+
+describe('verifyBiometricApproval() — rejections', () => {
+  it('rejects when no biometric credential enrolled', async () => {
+    const { setupMfa, issueChallenge, verifyBiometricApproval } = await loadMfa();
+    const { setupBiometricCredential, signChallenge } = await loadWebAuthn();
+
+    setupMfa('branch-bio-nokey');
+    const challenge = issueChallenge('req-bio-003', 'branch-bio-nokey');
+    setupBiometricCredential('other-fp'); // different fingerprint
+    const assertion = signChallenge(challenge.challengeHash, 'other-fp');
+
+    const result = verifyBiometricApproval({
+      requestId: 'req-bio-003',
+      branchId: 'branch-bio-nokey',
+      challengeHash: challenge.challengeHash,
+      assertion,
+      nonce: challenge.nonce,
+      deviceFingerprint: 'fp-not-enrolled', // mismatch
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('biometric-not-enrolled');
+  });
+
+  it('rejects a tampered biometric signature', async () => {
+    const { setupMfa, issueChallenge, verifyBiometricApproval } = await loadMfa();
+    const { setupBiometricCredential, signChallenge } = await loadWebAuthn();
+
+    setupMfa('branch-bio-tamper');
+    const challenge = issueChallenge('req-bio-004', 'branch-bio-tamper');
+    setupBiometricCredential('bio-tamper-fp');
+    const assertion = signChallenge(challenge.challengeHash, 'bio-tamper-fp');
+
+    // Tamper the signature
+    const sigBuf = Buffer.from(assertion.signatureB64, 'base64url');
+    sigBuf[0] ^= 0xff;
+    const tamperedAssertion = { ...assertion, signatureB64: sigBuf.toString('base64url') };
+
+    const result = verifyBiometricApproval({
+      requestId: 'req-bio-004',
+      branchId: 'branch-bio-tamper',
+      challengeHash: challenge.challengeHash,
+      assertion: tamperedAssertion,
+      nonce: challenge.nonce,
+      deviceFingerprint: 'bio-tamper-fp',
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('biometric-signature-invalid');
+  });
+
+  it('rejects nonce mismatch in biometric path', async () => {
+    const { setupMfa, issueChallenge, verifyBiometricApproval } = await loadMfa();
+    const { setupBiometricCredential, signChallenge } = await loadWebAuthn();
+
+    setupMfa('branch-bio-nonce');
+    issueChallenge('req-bio-005a', 'branch-bio-nonce'); // nonce=1
+    const c2 = issueChallenge('req-bio-005b', 'branch-bio-nonce'); // nonce=2
+    setupBiometricCredential('bio-nonce-fp');
+    const assertion = signChallenge(c2.challengeHash, 'bio-nonce-fp');
+
+    const result = verifyBiometricApproval({
+      requestId: 'req-bio-005b',
+      branchId: 'branch-bio-nonce',
+      challengeHash: c2.challengeHash,
+      assertion,
+      nonce: 1, // wrong — current is 2
+      deviceFingerprint: 'bio-nonce-fp',
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('nonce-mismatch');
+  });
+});
+
+// ─── 12. Anomaly detection ping ────────────────────────────────────────────────
+
+describe('Anomaly detection — "Was this you?" ping', () => {
+  it('anomaly-ping-sent event appears after new-device anomaly', async () => {
+    const { setupMfa, issueChallenge, verifyMfaApproval, getMfaAuditLog } = await loadMfa();
+    const { generateTotp, base32Decode } = await loadTotp();
+
+    const setup = setupMfa('branch-ping');
+    const secret = base32Decode(setup.totpSecretB32);
+
+    // First approval — enrol device A
+    const c1 = issueChallenge('req-1', 'branch-ping');
+    verifyMfaApproval({
+      requestId: 'req-1', branchId: 'branch-ping',
+      totpCode: generateTotp(secret), nonce: c1.nonce,
+      deviceFingerprint: 'device-known',
+    });
+
+    // Second approval — new unknown device triggers anomaly + ping
+    const c2 = issueChallenge('req-2', 'branch-ping');
+    const r2 = verifyMfaApproval({
+      requestId: 'req-2', branchId: 'branch-ping',
+      totpCode: generateTotp(secret), nonce: c2.nonce,
+      deviceFingerprint: 'device-new-stranger',
+    });
+    expect(r2.ok).toBe(false);
+    if (!r2.ok) expect(r2.reason).toBe('anomaly');
+
+    const log = getMfaAuditLog('branch-ping');
+    expect(log.some((e) => e.event === 'anomaly-ping-sent')).toBe(true);
+    const pingEntry = log.find((e) => e.event === 'anomaly-ping-sent');
+    expect(pingEntry?.detail).toContain('agentvault approve mfa unlock');
+  });
+
+  it('unlockBranch() clears pendingAnomalyFingerprint', async () => {
+    const { setupMfa, issueChallenge, verifyMfaApproval, unlockBranch, getMfaStatus } =
+      await loadMfa();
+    const { generateTotp, base32Decode } = await loadTotp();
+
+    const setup = setupMfa('branch-ping-unlock');
+    const secret = base32Decode(setup.totpSecretB32);
+
+    const c1 = issueChallenge('req-1', 'branch-ping-unlock');
+    verifyMfaApproval({
+      requestId: 'req-1', branchId: 'branch-ping-unlock',
+      totpCode: generateTotp(secret), nonce: c1.nonce,
+      deviceFingerprint: 'device-a',
+    });
+
+    const c2 = issueChallenge('req-2', 'branch-ping-unlock');
+    verifyMfaApproval({
+      requestId: 'req-2', branchId: 'branch-ping-unlock',
+      totpCode: generateTotp(secret), nonce: c2.nonce,
+      deviceFingerprint: 'device-b-new',
+    }); // anomaly → locked
+
+    // Unlock with TOTP and register new device
+    const unlocked = unlockBranch('branch-ping-unlock', generateTotp(secret), 'device-b-new');
+    expect(unlocked).toBe(true);
+
+    const status = getMfaStatus('branch-ping-unlock');
+    expect(status.locked).toBe(false);
+  });
+});

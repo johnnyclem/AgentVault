@@ -12,28 +12,37 @@
  *     The agent verifies the code against the stored seed and checks the nonce.
  *     Replay protection: nonce is written to a used-set immediately after success.
  *
- *  2. One-time link (60 s)
+ *  2. Biometric fallback (WebAuthn / Secure Enclave)
+ *     When TOTP is unavailable, the approver signs the challengeHash with a
+ *     device-bound P-256 key (simulating iOS Face ID / Android fingerprint).
+ *     The private key never leaves the local Secure Enclave equivalent; only
+ *     the ECDSA signature is transmitted.  Verified against the enrolled public key.
+ *
+ *  3. One-time link (60 s)
  *     Each challenge also generates a short-lived URL:
  *       https://agentvault.approve/<requestId>?token=<hex>
  *     Token = HMAC-SHA256(requestId ‖ nonce ‖ expiresAt, linkSigningKey)
  *     The link dies on first use or after 60 seconds — whichever comes first.
  *
- *  3. Rate limiting
+ *  4. Rate limiting
  *     Max 3 successful approvals per signer per rolling hour.
  *     Excess attempts are rejected and logged.
  *
- *  4. Anomaly detection
+ *  5. Anomaly detection
  *     Each approver device has a fingerprint = SHA-256(hostname ‖ platform ‖ arch)[:16].
  *     First approval from a new fingerprint for a known signer triggers:
  *       • branch auto-lock
  *       • anomaly-detected audit entry
+ *       • "Was this you?" ping flag stored in the audit entry (detail field)
  *     The operator must call unlockBranch() with a fresh TOTP code to resume.
+ *     Replying YES via TOTP to the anomaly ping registers the device as trusted.
  *
- *  5. Audit log
+ *  6. Audit log (local + ICP)
  *     Every event (setup, challenge, approve, reject, anomaly, lock) is appended to
- *     ~/.agentvault/mfa/audit-<branchId>.yaml for local forensics.
+ *     ~/.agentvault/mfa/audit-<branchId>.yaml for local forensics AND submitted
+ *     asynchronously to the ICP canister for tamper-evident on-chain storage.
  *     The verifyMfaApproval() return value includes an auditToken
- *     (HMAC over the approval payload) suitable for forwarding to the ICP canister.
+ *     (HMAC over the approval payload) suitable for on-chain verification.
  */
 
 import fs from 'node:fs';
@@ -48,6 +57,13 @@ import {
   verifyTotp,
   otpAuthUri,
 } from './totp.js';
+import {
+  verifyWebAuthnAssertion,
+  getDevicePublicKey,
+  getSignCounter,
+  type WebAuthnAssertion,
+} from './webauthn.js';
+import { submitIcpAuditEntry } from './icp-audit.js';
 
 // ─── Directory paths ─────────────────────────────────────────────────────────
 
@@ -83,7 +99,7 @@ export interface MfaChallenge {
   expiresAt: string;
 }
 
-/** Input for verifyMfaApproval(). */
+/** Input for verifyMfaApproval() — TOTP path. */
 export interface MfaVerifyInput {
   requestId: string;
   branchId: string;
@@ -95,9 +111,23 @@ export interface MfaVerifyInput {
   deviceFingerprint?: string;
 }
 
-/** Discriminated union returned by verifyMfaApproval(). */
+/** Input for verifyBiometricApproval() — biometric / WebAuthn path. */
+export interface MfaBiometricInput {
+  requestId: string;
+  branchId: string;
+  /** The challengeHash from issueChallenge() that the device signed. */
+  challengeHash: string;
+  /** WebAuthn assertion produced by signChallenge(). */
+  assertion: WebAuthnAssertion;
+  /** Nonce that was issued in the challenge (must match currentNonce). */
+  nonce: number;
+  /** Device fingerprint that owns the biometric credential. */
+  deviceFingerprint?: string;
+}
+
+/** Discriminated union returned by verifyMfaApproval() and verifyBiometricApproval(). */
 export type MfaVerifyResult =
-  | { ok: true; auditToken: string }
+  | { ok: true; auditToken: string; icpQueued?: boolean }
   | {
       ok: false;
       reason:
@@ -107,7 +137,10 @@ export type MfaVerifyResult =
         | 'rate-limited'
         | 'anomaly'
         | 'not-setup'
-        | 'branch-locked';
+        | 'branch-locked'
+        | 'biometric-not-enrolled'
+        | 'biometric-signature-invalid'
+        | 'biometric-counter-replay';
     };
 
 /** Event kinds recorded in the audit log. */
@@ -115,9 +148,11 @@ export type MfaAuditEventType =
   | 'setup'
   | 'challenge-issued'
   | 'approved'
+  | 'approved-biometric'
   | 'rejected'
   | 'rate-limit-exceeded'
   | 'anomaly-detected'
+  | 'anomaly-ping-sent'
   | 'branch-locked'
   | 'branch-unlocked';
 
@@ -154,6 +189,8 @@ interface MfaState {
   currentNonce: number;
   usedNonces: number[];
   locked: boolean;
+  /** Pending anomaly: fingerprint that triggered the lock, awaiting "Was this you?" reply. */
+  pendingAnomalyFingerprint?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -255,6 +292,12 @@ function appendAuditEntry(entry: MfaAuditEntry): void {
   }
   log.push(entry);
   fs.writeFileSync(fp, stringify(log), 'utf8');
+
+  // Async fire-and-forget to ICP — never blocks the local flow.
+  // Failures are queued locally and retried on the next flush.
+  submitIcpAuditEntry(entry).catch(() => {
+    // Silently queued — getIcpQueueDepth() shows pending count.
+  });
 }
 
 // ─── Challenge hash ───────────────────────────────────────────────────────────
@@ -593,6 +636,7 @@ export function verifyMfaApproval(input: MfaVerifyInput): MfaVerifyResult {
   if (deviceCheck === 'new-device') {
     // Auto-lock the branch and demand secondary confirmation
     state.locked = true;
+    state.pendingAnomalyFingerprint = fingerprint;
     state.updatedAt = new Date().toISOString();
     saveState(state);
 
@@ -603,7 +647,16 @@ export function verifyMfaApproval(input: MfaVerifyInput): MfaVerifyResult {
       event: 'anomaly-detected',
       nonce,
       timestamp: now,
-      detail: `Unknown device fingerprint ${fingerprint} — approval paused`,
+      detail: `Unknown device fingerprint ${fingerprint} — was this you? Reply YES via TOTP to agentvault approve mfa unlock --branch ${branchId} --register-device ${fingerprint}`,
+      deviceFingerprint: fingerprint,
+    });
+    appendAuditEntry({
+      id: makeAuditId(),
+      requestId,
+      branchId,
+      event: 'anomaly-ping-sent',
+      timestamp: now,
+      detail: `Branch auto-locked. Operator notified: run 'agentvault approve mfa unlock --branch ${branchId} --totp <code> --register-device ${fingerprint}' to confirm and re-register, or leave unregistered to deny.`,
       deviceFingerprint: fingerprint,
     });
     appendAuditEntry({
@@ -650,6 +703,149 @@ export function verifyMfaApproval(input: MfaVerifyInput): MfaVerifyResult {
 }
 
 /**
+ * Verify a biometric (WebAuthn) assertion instead of a TOTP code.
+ *
+ * This is the Layer 2 fallback path: used when TOTP is unavailable or the
+ * approver's device natively supports WebAuthn (iOS Face ID, Android fingerprint,
+ * YubiKey, etc.).
+ *
+ * The flow:
+ *   1. Caller obtains a challengeHash from issueChallenge().
+ *   2. Device signs it via signChallenge() (or browser WebAuthn API).
+ *   3. This function verifies the ECDSA signature, nonce, rate-limit, and anomaly.
+ *   4. On success an auditToken is returned identical to the TOTP path.
+ *
+ * @param input - { requestId, branchId, challengeHash, assertion, nonce, deviceFingerprint? }
+ */
+export function verifyBiometricApproval(input: MfaBiometricInput): MfaVerifyResult {
+  const { requestId, branchId, challengeHash, assertion, nonce } = input;
+  const fingerprint = input.deviceFingerprint ?? getDeviceFingerprint();
+  const now = new Date().toISOString();
+
+  // ── Layer 1: setup / lock check ──────────────────────────────────────────
+  const state = loadState(branchId);
+  if (!state) return { ok: false, reason: 'not-setup' };
+
+  if (state.locked) {
+    appendAuditEntry({
+      id: makeAuditId(), requestId, branchId, event: 'rejected',
+      nonce, timestamp: now,
+      detail: 'Branch is locked — biometric approval blocked',
+      deviceFingerprint: fingerprint,
+    });
+    return { ok: false, reason: 'branch-locked' };
+  }
+
+  // ── Layer 2: nonce match + replay ─────────────────────────────────────────
+  if (nonce !== state.currentNonce) {
+    appendAuditEntry({
+      id: makeAuditId(), requestId, branchId, event: 'rejected',
+      nonce, timestamp: now,
+      detail: `Nonce mismatch — expected ${state.currentNonce}, got ${nonce}`,
+      deviceFingerprint: fingerprint,
+    });
+    return { ok: false, reason: 'nonce-mismatch' };
+  }
+
+  if (state.usedNonces.includes(nonce)) {
+    appendAuditEntry({
+      id: makeAuditId(), requestId, branchId, event: 'rejected',
+      nonce, timestamp: now,
+      detail: 'Nonce already consumed — replay attempt blocked',
+      deviceFingerprint: fingerprint,
+    });
+    return { ok: false, reason: 'nonce-replayed' };
+  }
+
+  // ── Layer 3: biometric signature verification ─────────────────────────────
+  const publicKeyB64 = getDevicePublicKey(fingerprint);
+  if (!publicKeyB64) {
+    appendAuditEntry({
+      id: makeAuditId(), requestId, branchId, event: 'rejected',
+      nonce, timestamp: now,
+      detail: `No biometric credential enrolled for device ${fingerprint}`,
+      deviceFingerprint: fingerprint,
+    });
+    return { ok: false, reason: 'biometric-not-enrolled' };
+  }
+
+  const lastCounter = getSignCounter(fingerprint) - 1; // current stored is already incremented
+  const verifyResult = verifyWebAuthnAssertion(
+    assertion,
+    challengeHash,
+    publicKeyB64,
+    lastCounter,
+  );
+
+  if (!verifyResult.ok) {
+    const reason = verifyResult.reason === 'counter-replay'
+      ? 'biometric-counter-replay'
+      : 'biometric-signature-invalid';
+    appendAuditEntry({
+      id: makeAuditId(), requestId, branchId, event: 'rejected',
+      nonce, timestamp: now,
+      detail: `Biometric verification failed: ${verifyResult.reason}`,
+      deviceFingerprint: fingerprint,
+    });
+    return { ok: false, reason };
+  }
+
+  // ── Layer 4: rate limiting ────────────────────────────────────────────────
+  if (!checkAndRecordRateLimit(fingerprint)) {
+    appendAuditEntry({
+      id: makeAuditId(), requestId, branchId,
+      event: 'rate-limit-exceeded', nonce, timestamp: now,
+      detail: `Device ${fingerprint} exceeded ${RATE_MAX} approvals / hour`,
+      deviceFingerprint: fingerprint,
+    });
+    return { ok: false, reason: 'rate-limited' };
+  }
+
+  // ── Layer 5: anomaly detection ────────────────────────────────────────────
+  const deviceCheck = checkDevice(branchId, fingerprint);
+  if (deviceCheck === 'new-device') {
+    state.locked = true;
+    state.pendingAnomalyFingerprint = fingerprint;
+    state.updatedAt = new Date().toISOString();
+    saveState(state);
+
+    appendAuditEntry({
+      id: makeAuditId(), requestId, branchId, event: 'anomaly-detected',
+      nonce, timestamp: now,
+      detail: `Unknown biometric device ${fingerprint} — was this you? Reply YES via TOTP to unlock.`,
+      deviceFingerprint: fingerprint,
+    });
+    appendAuditEntry({
+      id: makeAuditId(), requestId, branchId, event: 'branch-locked',
+      timestamp: now,
+      detail: 'Auto-locked after biometric anomaly.',
+      deviceFingerprint: fingerprint,
+    });
+    return { ok: false, reason: 'anomaly' };
+  }
+
+  // ── All layers passed ─────────────────────────────────────────────────────
+  state.usedNonces.push(nonce);
+  state.updatedAt = now;
+  saveState(state);
+
+  const auditToken = crypto
+    .createHmac('sha256', base32Decode(state.totpSecretB32))
+    .update(`biometric:${nonce}:${requestId}:${branchId}:${now}`)
+    .digest('hex');
+
+  appendAuditEntry({
+    id: makeAuditId(), requestId, branchId,
+    event: 'approved-biometric', nonce, challengeHash,
+    auditToken, timestamp: now,
+    detail: `Approved via biometric by device ${fingerprint} (signCounter=${assertion.signCounter})`,
+    deviceFingerprint: fingerprint,
+  });
+
+  return { ok: true, auditToken };
+}
+
+/**
  * Unlock a branch after an anomaly has been investigated.
  *
  * Requires a valid TOTP code to prevent unauthorised unlocking.
@@ -671,6 +867,7 @@ export function unlockBranch(
   if (!verifyTotp(secret, totpCode)) return false;
 
   state.locked = false;
+  state.pendingAnomalyFingerprint = undefined;
   state.updatedAt = new Date().toISOString();
   saveState(state);
 
@@ -684,7 +881,9 @@ export function unlockBranch(
     branchId,
     event: 'branch-unlocked',
     timestamp: new Date().toISOString(),
-    detail: 'Branch unlocked after anomaly confirmation',
+    detail: newFingerprint
+      ? `Branch unlocked; device ${newFingerprint} registered as trusted (anomaly confirmed as operator)`
+      : 'Branch unlocked after anomaly investigation (new device NOT registered)',
     deviceFingerprint: newFingerprint,
   });
 

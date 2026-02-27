@@ -12,10 +12,11 @@ import {
   getApprovalSummary,
   cleanupExpiredRequests,
   type ApprovalConfig,
-  // MFA
+  // MFA — TOTP path
   setupMfa,
   issueChallenge,
   verifyMfaApproval,
+  verifyBiometricApproval,
   validateOtpToken,
   unlockBranch,
   getMfaAuditLog,
@@ -23,6 +24,11 @@ import {
   getDeviceFingerprint,
   registerDevice,
 } from '../../src/security/index.js';
+import {
+  setupBiometricCredential,
+  signChallenge,
+  hasBiometricCredential,
+} from '../../src/security/webauthn.js';
 
 const approveCmd = new Command('approve');
 
@@ -534,6 +540,141 @@ mfaCmd
   .action(async (options) => {
     registerDevice(options.signer, options.fingerprint);
     console.log(chalk.green(`Device ${options.fingerprint} registered for signer ${options.signer}.`));
+  });
+
+// ─── Biometric subcommands ────────────────────────────────────────────────────
+// Layer 2: WebAuthn / Secure Enclave fallback when TOTP is unavailable.
+
+// agentvault approve mfa biometric-setup [--fingerprint <hex>]
+mfaCmd
+  .command('biometric-setup')
+  .description(
+    'Enrol this device\'s biometric key (P-256 / WebAuthn).\n' +
+    'Generates a device-bound ECDSA keypair stored in ~/.agentvault/mfa/.\n' +
+    'The private key is AES-256-GCM encrypted and never leaves this machine.\n' +
+    'In a browser this maps to navigator.credentials.create() with Face ID / fingerprint.',
+  )
+  .option(
+    '--fingerprint <hex>',
+    'Override device fingerprint (default: auto-detected from hostname+platform+arch)',
+  )
+  .action(async (options) => {
+    const spinner = ora('Generating biometric credential…').start();
+    try {
+      const fingerprint = options.fingerprint ?? getDeviceFingerprint();
+      const setup = setupBiometricCredential(fingerprint);
+
+      spinner.succeed(chalk.green('Biometric credential enrolled'));
+      console.log(chalk.bold('\n  Credential ID:'));
+      console.log(`  ${chalk.cyan(setup.credentialId)}`);
+      console.log(chalk.bold('\n  Public key (SPKI, base64url) — register with ICP canister:'));
+      console.log(`  ${chalk.yellow(setup.publicKeyB64)}`);
+      console.log(chalk.bold('\n  Device fingerprint:'));
+      console.log(`  ${chalk.gray(setup.deviceFingerprint)}`);
+      console.log(
+        chalk.gray(
+          '\n  The private key is stored encrypted in ~/.agentvault/mfa/\n' +
+          '  Send the public key to your ICP canister to enable remote verification.\n' +
+          '  Use --fingerprint to enrol on behalf of another device.',
+        ),
+      );
+    } catch (error) {
+      spinner.fail(chalk.red('Biometric enrolment failed'));
+      console.error(chalk.red(error instanceof Error ? error.message : String(error)));
+      process.exit(1);
+    }
+  });
+
+// agentvault approve mfa biometric-verify <request-id> <nonce> --branch <branch-id>
+mfaCmd
+  .command('biometric-verify')
+  .description(
+    'Approve a pending request using the device biometric key instead of TOTP.\n' +
+    'Signs the challenge hash from issueChallenge() with the enrolled P-256 key.\n' +
+    'Use this when your TOTP app is unavailable (lost phone, etc.).',
+  )
+  .argument('<request-id>', 'Approval request ID')
+  .argument('<nonce>', 'Nonce from the challenge (integer)')
+  .requiredOption('--branch <branch-id>', 'Branch that owns the TOTP seed')
+  .option('--challenge-hash <hex>', 'SHA-256 challenge hash (from: agentvault approve mfa challenge)')
+  .option('--fingerprint <hex>', 'Override device fingerprint')
+  .action(async (requestId, nonceStr, options) => {
+    const spinner = ora('Signing with biometric key…').start();
+    try {
+      const nonce = parseInt(nonceStr, 10);
+      if (isNaN(nonce)) {
+        spinner.fail(chalk.red('Invalid nonce — must be an integer'));
+        process.exit(1);
+      }
+
+      const fingerprint = options.fingerprint ?? getDeviceFingerprint();
+
+      if (!hasBiometricCredential(fingerprint)) {
+        spinner.fail(chalk.red(`No biometric credential found for device ${fingerprint}`));
+        console.log(
+          chalk.yellow('  Run: agentvault approve mfa biometric-setup'),
+        );
+        process.exit(1);
+      }
+
+      // The challenge hash is required for biometric verification — it was shown
+      // by `agentvault approve mfa challenge` and must be copy-pasted here.
+      if (!options.challengeHash) {
+        spinner.fail(chalk.red('--challenge-hash is required for biometric verification'));
+        console.log(chalk.gray('  Get it from: agentvault approve mfa challenge <request-id> --branch <branch-id>'));
+        process.exit(1);
+      }
+
+      const challengeHash = options.challengeHash as string;
+
+      // Sign the challenge with device key
+      const assertion = signChallenge(challengeHash, fingerprint);
+
+      // Verify through all MFA layers
+      const result = verifyBiometricApproval({
+        requestId,
+        branchId: options.branch,
+        challengeHash,
+        assertion,
+        nonce,
+        deviceFingerprint: fingerprint,
+      });
+
+      if (result.ok) {
+        spinner.succeed(chalk.green('Biometric approval verified'));
+        console.log(chalk.bold('\n  Audit token (forward to ICP canister):'));
+        console.log(`  ${chalk.cyan(result.auditToken)}`);
+        console.log(chalk.bold('\n  Assertion (credential + signature):'));
+        console.log(chalk.gray(`  credentialId:  ${assertion.credentialId}`));
+        console.log(chalk.gray(`  signCounter:   ${assertion.signCounter}`));
+        console.log(chalk.gray(`  signatureB64:  ${assertion.signatureB64.slice(0, 32)}…`));
+        console.log(
+          chalk.gray('\n  Run: agentvault approve sign <request-id> <signer> to complete the multi-sig flow.'),
+        );
+      } else {
+        spinner.fail(chalk.red(`Biometric verification failed: ${result.reason}`));
+
+        const hints: Record<string, string> = {
+          'biometric-not-enrolled': 'Run: agentvault approve mfa biometric-setup to enrol this device.',
+          'biometric-signature-invalid': 'Signature did not match the enrolled public key.',
+          'biometric-counter-replay': 'Sign counter did not increment — possible replay attack.',
+          'nonce-mismatch': 'Use the nonce from the latest challenge.',
+          'nonce-replayed': 'This nonce is already used. Issue a new challenge.',
+          'rate-limited': 'You have exceeded 3 approvals / hour.',
+          'anomaly': 'Unknown device — branch auto-locked. Run: agentvault approve mfa unlock',
+          'branch-locked': 'Branch is locked. Run: agentvault approve mfa unlock --branch <id>',
+          'not-setup': 'MFA not configured. Run: agentvault approve mfa setup --branch <id>',
+        };
+
+        const hint = hints[result.reason];
+        if (hint) console.log(chalk.yellow(`  Hint: ${hint}`));
+        process.exit(1);
+      }
+    } catch (error) {
+      spinner.fail(chalk.red('Biometric verification error'));
+      console.error(chalk.red(error instanceof Error ? error.message : String(error)));
+      process.exit(1);
+    }
   });
 
 approveCmd.addCommand(mfaCmd);
