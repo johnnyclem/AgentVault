@@ -36,8 +36,12 @@ export interface EncryptedKeyBundle {
 
 /**
  * Wallet creation methods
+ *
+ * 'hsm' indicates the key was generated inside a hardware secure element or
+ * Trusted Execution Environment (Ledger / Intel SGX).  No private key or
+ * mnemonic is ever present in a wallet created with this method.
  */
-export type WalletCreationMethod = 'seed' | 'private-key' | 'mnemonic';
+export type WalletCreationMethod = 'seed' | 'private-key' | 'mnemonic' | 'hsm';
 
 /**
  * Derivation path for BIP39 seed phrases
@@ -180,6 +184,25 @@ export interface WalletCreationOptions {
   walletId?: string;
   /** Optional chain-specific metadata */
   chainMetadata?: Record<string, any>;
+}
+
+/**
+ * Options for creating a wallet via HSM / TEE keygen.
+ * No mnemonic or private key is supplied – the device generates them internally.
+ */
+export interface HsmWalletCreationOptions {
+  /** Agent ID to associate the wallet with. */
+  agentId: string;
+  /** Blockchain network. */
+  chain: ChainType;
+  /** HSM backend to use ('ledger' | 'sgx'). */
+  hsmBackend: 'ledger' | 'sgx';
+  /** BIP32 / SLIP10 derivation path (defaults to chain-standard path). */
+  derivationPath?: string;
+  /** Optional custom wallet ID. */
+  walletId?: string;
+  /** Backend-specific options (e.g. SGX socket path). */
+  hsmOptions?: Record<string, string>;
 }
 
 /**
