@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "agentId": "test-agent",
-  "exportedAt": 1772159052941,
+  "exportedAt": 1772220598753,
   "format": "json",
   "wallets": [
     {
@@ -10,8 +10,8 @@
       "chain": "cketh",
       "address": "0x1234567890abcdef1234567890abcdef12345678",
       "privateKey": "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
-      "createdAt": 1772159052938,
-      "updatedAt": 1772159052938,
+      "createdAt": 1772220598750,
+      "updatedAt": 1772220598750,
       "creationMethod": "private-key"
     },
     {
@@ -20,8 +20,8 @@
       "chain": "cketh",
       "address": "0x1234567890abcdef1234567890abcdef12345678",
       "privateKey": "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
-      "createdAt": 1772159052938,
-      "updatedAt": 1772159052938,
+      "createdAt": 1772220598750,
+      "updatedAt": 1772220598750,
       "creationMethod": "private-key"
     }
   ]
