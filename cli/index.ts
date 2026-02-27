@@ -59,6 +59,9 @@ import { mintCmd } from './commands/mint.js';
 import { cronCmd } from './commands/cron.js';
 import { mirrorCmd } from './commands/mirror.js';
 
+// Security & audit commands
+import { repoCmd } from './commands/repo.js';
+
 export function createProgram(): Command {
   const program = new Command();
 
@@ -121,6 +124,9 @@ export function createProgram(): Command {
   // Fault Tolerance commands
   program.addCommand(cronCmd());
   program.addCommand(mirrorCmd());
+
+  // Security & audit commands
+  program.addCommand(repoCmd);
 
   return program;
 }
