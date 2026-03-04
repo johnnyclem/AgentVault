@@ -77,34 +77,27 @@ struct ChatBubbleView: View {
                 .textSelection(.enabled)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .background(isUser ? userBubbleBackground : assistantBubbleBackground)
-                .overlay(
-                    // Streaming cursor
-                    message.isStreaming ?
-                        AnyView(streamingCursor) : AnyView(EmptyView())
+                .background(
+                    (isUser ? AnyShapeStyle(Color.accentColor.gradient) : assistantBubbleBackground),
+                    in: BubbleShape(isUser: isUser)
                 )
+                .overlay(alignment: .bottomTrailing) {
+                    if message.isStreaming {
+                        BlinkingCursor()
+                            .padding(.trailing, 14)
+                            .padding(.bottom, 10)
+                    }
+                }
         }
     }
 
-    private var userBubbleBackground: some ShapeStyle {
-        Color.accentColor.gradient
+    private var userBubbleBackground: some View {
+        BubbleShape(isUser: true)
+            .fill(Color.accentColor.gradient)
     }
 
-    private var assistantBubbleBackground: some View {
-        BubbleShape(isUser: false)
-            .fill(.quaternary)
-    }
-
-    private var streamingCursor: some View {
-        HStack {
-            Spacer()
-            VStack {
-                Spacer()
-                BlinkingCursor()
-                    .padding(.trailing, 14)
-                    .padding(.bottom, 10)
-            }
-        }
+    private var assistantBubbleBackground: AnyShapeStyle {
+        AnyShapeStyle(.quaternary)
     }
 
     // MARK: - Timestamp
