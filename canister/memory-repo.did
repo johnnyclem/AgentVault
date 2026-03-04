@@ -1,0 +1,81 @@
+// ──────────────────────────────────────────────────────────────────────────────
+//  MemoryRepo Canister — Candid Interface
+// ──────────────────────────────────────────────────────────────────────────────
+
+// ─── Shared Types ────────────────────────────────────────────────────────────
+
+type Commit = record {
+  id        : text;
+  timestamp : int;
+  message   : text;
+  diff      : text;
+  tags      : vec text;
+  parent    : opt text;
+  branch    : text;
+};
+
+type RepoStatus = record {
+  initialized   : bool;
+  currentBranch : text;
+  totalCommits  : nat;
+  totalBranches : nat;
+  owner         : text;
+};
+
+type RebaseResult = variant {
+  ok  : record { newBranch : text; commitsReplayed : nat };
+  err : text;
+};
+
+type MergeStrategy = variant {
+  auto   : null;
+  manual : null;
+};
+
+type ConflictEntry = record {
+  commitId : text;
+  message  : text;
+  tags     : vec text;
+  diff     : text;
+};
+
+type MergeResult = variant {
+  ok        : record { merged : nat; message : text };
+  conflicts : vec ConflictEntry;
+  err       : text;
+};
+
+// ─── Service ─────────────────────────────────────────────────────────────────
+
+service : {
+
+  // ── Repository Lifecycle ────────────────────────────────────────────────────
+
+  initRepo     : (text) -> (variant { ok : text; err : text });
+
+  // ── Commit Operations ───────────────────────────────────────────────────────
+
+  commit       : (text, text, vec text) -> (variant { ok : text; err : text });
+  getCommit    : (text) -> (opt Commit) query;
+
+  // ── Log & State Queries ─────────────────────────────────────────────────────
+
+  log            : (opt text) -> (vec Commit) query;
+  getCurrentState: () -> (opt text) query;
+  getRepoStatus  : () -> (RepoStatus) query;
+
+  // ── Branch Operations ───────────────────────────────────────────────────────
+
+  getBranches  : () -> (vec record { text; text }) query;
+  createBranch : (text) -> (variant { ok : text; err : text });
+  switchBranch : (text) -> (variant { ok : text; err : text });
+
+  // ── Rebase (PRD 3) ─────────────────────────────────────────────────────────
+
+  rebase : (text, opt text) -> (RebaseResult);
+
+  // ── Merge & Cherry-Pick (PRD 4) ────────────────────────────────────────────
+
+  merge     : (text, MergeStrategy) -> (MergeResult);
+  cherryPick: (text) -> (variant { ok : text; err : text });
+};
