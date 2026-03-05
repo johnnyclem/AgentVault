@@ -1,5 +1,5 @@
 /**
- * Candid IDL Factory for MemoryRepo canister
+ * Candid IDL Factory for MemoryRepo canister (Hardened)
  *
  * This file provides the IDL factory function used to create canister actors.
  * Manually generated based on memory-repo.did to avoid build-time dependencies.
@@ -23,6 +23,14 @@ const RepoStatusRecord = (IDL: any) => IDL.Record({
   owner: IDL.Text,
 });
 
+const SecurityStatusRecord = (IDL: any) => IDL.Record({
+  owner: IDL.Text,
+  frozenMode: IDL.Bool,
+  canisterKilled: IDL.Bool,
+  authorizedCount: IDL.Nat,
+  heapBytes: IDL.Nat,
+});
+
 const ConflictEntryRecord = (IDL: any) => IDL.Record({
   commitId: IDL.Text,
   message: IDL.Text,
@@ -40,7 +48,27 @@ const OperationResultVariant = (IDL: any) => IDL.Variant({
   err: IDL.Text,
 });
 
+const RebaseResultVariant = (IDL: any) => IDL.Variant({
+  ok: IDL.Record({ newBranch: IDL.Text, commitsReplayed: IDL.Nat }),
+  err: IDL.Text,
+});
+
+const MergeResultVariant = (IDL: any) => IDL.Variant({
+  ok: IDL.Record({ merged: IDL.Nat, message: IDL.Text }),
+  conflicts: IDL.Vec(ConflictEntryRecord(IDL)),
+  err: IDL.Text,
+});
+
 export const idlFactory = ({ IDL }: any) => IDL.Service({
+  // ── Owner & Security Management ───────────────────────────────────────
+  freeze: IDL.Func([], [OperationResultVariant(IDL)], []),
+  manualUnlock: IDL.Func([], [OperationResultVariant(IDL)], []),
+  killCanister: IDL.Func([], [OperationResultVariant(IDL)], []),
+  reviveCanister: IDL.Func([], [OperationResultVariant(IDL)], []),
+  addAuthorizedPrincipal: IDL.Func([IDL.Principal], [OperationResultVariant(IDL)], []),
+  removeAuthorizedPrincipal: IDL.Func([IDL.Principal], [OperationResultVariant(IDL)], []),
+  getSecurityStatus: IDL.Func([], [SecurityStatusRecord(IDL)], ['query']),
+
   // ── Repository Lifecycle ──────────────────────────────────────────────
   initRepo: IDL.Func([IDL.Text], [OperationResultVariant(IDL)], []),
 
@@ -74,21 +102,14 @@ export const idlFactory = ({ IDL }: any) => IDL.Service({
   // ── Rebase (PRD 3) ────────────────────────────────────────────────────
   rebase: IDL.Func(
     [IDL.Text, IDL.Opt(IDL.Text)],
-    [IDL.Variant({
-      ok: IDL.Record({ newBranch: IDL.Text, commitsReplayed: IDL.Nat }),
-      err: IDL.Text,
-    })],
+    [RebaseResultVariant(IDL)],
     [],
   ),
 
   // ── Merge & Cherry-Pick (PRD 4) ───────────────────────────────────────
   merge: IDL.Func(
     [IDL.Text, MergeStrategyVariant(IDL)],
-    [IDL.Variant({
-      ok: IDL.Record({ merged: IDL.Nat, message: IDL.Text }),
-      conflicts: IDL.Vec(ConflictEntryRecord(IDL)),
-      err: IDL.Text,
-    })],
+    [MergeResultVariant(IDL)],
     [],
   ),
 

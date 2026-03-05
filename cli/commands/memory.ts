@@ -1,5 +1,5 @@
 /**
- * agentvault memory — Git-style memory repository commands
+ * agentvault memory — Git-style memory repository commands (Hardened)
  *
  * Subcommands:
  *   memory init [soul-file]              Initialize repo from soul.md
@@ -22,36 +22,61 @@
  */
 
 import * as fs from 'node:fs';
-import { Command } from 'commander';
+import * as path from 'node:path';
+import { Command, Option } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
-import { createMemoryRepoActor, createAnonymousAgent } from '../../src/canister/memory-repo-actor.js';
-import type { Commit, MergeResult } from '../../src/canister/memory-repo-actor.js';
+import {
+  createMemoryRepoActor,
+  createAnonymousAgent,
+  validateCanisterId,
+} from '../../src/canister/memory-repo-actor.js';
+import type { Commit, MergeResult, MergeStrategy } from '../../src/canister/memory-repo-actor.js';
 
 /**
  * Resolve the MemoryRepo canister ID from CLI flag, env var, or canister_ids.json.
  */
 function resolveCanisterId(options: { canisterId?: string }): string {
-  if (options.canisterId) return options.canisterId;
-  if (process.env.MEMORY_REPO_CANISTER_ID) return process.env.MEMORY_REPO_CANISTER_ID;
-
-  // Try dfx-generated canister_ids.json
-  try {
-    const raw = fs.readFileSync('canister_ids.json', 'utf-8');
-    const ids = JSON.parse(raw);
-    if (ids.memory_repo?.local) return ids.memory_repo.local;
-    if (ids.memory_repo?.ic) return ids.memory_repo.ic;
-  } catch {
-    // canister_ids.json not found
+  if (options.canisterId) {
+    validateCanisterId(options.canisterId);
+    return options.canisterId;
   }
 
-  // Try .dfx/local/canister_ids.json
-  try {
-    const raw = fs.readFileSync('.dfx/local/canister_ids.json', 'utf-8');
-    const ids = JSON.parse(raw);
-    if (ids.memory_repo?.local) return ids.memory_repo.local;
-  } catch {
-    // .dfx not found
+  if (process.env.MEMORY_REPO_CANISTER_ID) {
+    const envId = process.env.MEMORY_REPO_CANISTER_ID;
+    validateCanisterId(envId);
+    return envId;
+  }
+
+  // Try dfx-generated canister_ids.json (resolve from project root via dfx.json)
+  const projectRoot = findProjectRoot();
+  const filePaths = projectRoot
+    ? [
+        path.join(projectRoot, 'canister_ids.json'),
+        path.join(projectRoot, '.dfx', 'local', 'canister_ids.json'),
+      ]
+    : [
+        'canister_ids.json',
+        '.dfx/local/canister_ids.json',
+      ];
+
+  for (const filePath of filePaths) {
+    try {
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      const ids = JSON.parse(raw);
+      const localId = ids?.memory_repo?.local;
+      if (typeof localId === 'string' && localId) {
+        validateCanisterId(localId);
+        return localId;
+      }
+      const icId = ids?.memory_repo?.ic;
+      if (typeof icId === 'string' && icId) {
+        validateCanisterId(icId);
+        return icId;
+      }
+    } catch {
+      // File not found or parse error — try next
+    }
   }
 
   throw new Error(
@@ -61,9 +86,36 @@ function resolveCanisterId(options: { canisterId?: string }): string {
 }
 
 /**
- * Format a timestamp (nanoseconds from ICP) into a human-readable date string.
+ * Walk up from cwd looking for dfx.json to find the project root.
  */
-function formatTimestamp(ns: number): string {
+function findProjectRoot(): string | null {
+  let dir = process.cwd();
+  const root = path.parse(dir).root;
+  while (dir !== root) {
+    if (fs.existsSync(path.join(dir, 'dfx.json'))) return dir;
+    dir = path.dirname(dir);
+  }
+  return null;
+}
+
+/**
+ * Create a properly initialized agent for the given host.
+ * Fetches root key for local replicas.
+ */
+async function createInitializedAgent(host?: string): Promise<ReturnType<typeof createAnonymousAgent>> {
+  const agent = createAnonymousAgent(host);
+  const resolvedHost = host ?? process.env.ICP_LOCAL_URL ?? 'http://localhost:4943';
+  // Fetch root key for local/dev replicas (not mainnet)
+  if (!resolvedHost.includes('ic0.app') && !resolvedHost.includes('icp0.io')) {
+    await agent.fetchRootKey();
+  }
+  return agent;
+}
+
+/**
+ * Format a timestamp (nanoseconds bigint from ICP) into a human-readable date string.
+ */
+function formatTimestamp(ns: bigint | number): string {
   const ms = Number(BigInt(ns) / BigInt(1_000_000));
   return new Date(ms).toISOString().replace('T', ' ').replace(/\.\d+Z$/, ' UTC');
 }
@@ -86,11 +138,24 @@ function printCommit(c: Commit): void {
   console.log();
 }
 
+/**
+ * Validate a branch name (alphanumeric, hyphens, dots, slashes).
+ */
+function validateBranchName(name: string): void {
+  if (!name || name.length > 128) {
+    throw new Error('Branch name must be 1-128 characters');
+  }
+  if (!/^[a-zA-Z0-9._/-]+$/.test(name)) {
+    throw new Error('Branch name may only contain alphanumeric, hyphens, dots, and slashes');
+  }
+}
+
 const memoryCmd = new Command('memory');
 
 memoryCmd
   .description('Git-style memory repository commands for agent identity and versioned memory')
-  .option('--canister-id <id>', 'MemoryRepo canister ID (overrides env/config)');
+  .option('--canister-id <id>', 'MemoryRepo canister ID (overrides env/config)')
+  .option('--host <url>', 'ICP replica host URL (overrides ICP_LOCAL_URL env)');
 
 // ─── memory init ────────────────────────────────────────────────────────────
 
@@ -111,8 +176,13 @@ memoryCmd
         process.exit(1);
       }
 
+      if (!soulContent.trim()) {
+        spinner.fail(chalk.red('Soul file is empty'));
+        process.exit(1);
+      }
+
       const canisterId = resolveCanisterId(parentOpts);
-      const agent = createAnonymousAgent();
+      const agent = await createInitializedAgent(parentOpts.host);
       const actor = createMemoryRepoActor(canisterId, agent);
 
       const result = await actor.initRepo(soulContent);
@@ -144,8 +214,18 @@ memoryCmd
     const spinner = ora('Creating commit...').start();
 
     try {
+      if (!message.trim()) {
+        spinner.fail(chalk.red('Commit message cannot be empty'));
+        process.exit(1);
+      }
+
+      if (!options.diff.trim()) {
+        spinner.fail(chalk.red('Diff content cannot be empty'));
+        process.exit(1);
+      }
+
       const canisterId = resolveCanisterId(parentOpts);
-      const agent = createAnonymousAgent();
+      const agent = await createInitializedAgent(parentOpts.host);
       const actor = createMemoryRepoActor(canisterId, agent);
 
       const tags = options.tags ? options.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
@@ -177,7 +257,7 @@ memoryCmd
 
     try {
       const canisterId = resolveCanisterId(parentOpts);
-      const agent = createAnonymousAgent();
+      const agent = await createInitializedAgent(parentOpts.host);
       const actor = createMemoryRepoActor(canisterId, agent);
 
       const branchArg: [string] | [] = options.branch ? [options.branch] : [];
@@ -191,7 +271,8 @@ memoryCmd
       }
 
       if (options.json) {
-        console.log(JSON.stringify(commits, null, 2));
+        console.log(JSON.stringify(commits, (_key, value) =>
+          typeof value === 'bigint' ? value.toString() : value, 2));
         return;
       }
 
@@ -218,7 +299,7 @@ memoryCmd
 
     try {
       const canisterId = resolveCanisterId(parentOpts);
-      const agent = createAnonymousAgent();
+      const agent = await createInitializedAgent(parentOpts.host);
       const actor = createMemoryRepoActor(canisterId, agent);
 
       const status = await actor.getRepoStatus();
@@ -228,8 +309,8 @@ memoryCmd
       console.log(chalk.gray('  ' + '─'.repeat(40)));
       console.log(`  Initialized:     ${status.initialized ? chalk.green('yes') : chalk.red('no')}`);
       console.log(`  Current branch:  ${chalk.green(status.currentBranch)}`);
-      console.log(`  Total commits:   ${status.totalCommits}`);
-      console.log(`  Total branches:  ${status.totalBranches}`);
+      console.log(`  Total commits:   ${status.totalCommits.toString()}`);
+      console.log(`  Total branches:  ${status.totalBranches.toString()}`);
       console.log(`  Owner:           ${chalk.gray(status.owner)}`);
       console.log();
     } catch (error) {
@@ -248,13 +329,13 @@ memoryCmd
   .action(async (name: string | undefined, _opts: unknown, cmd: Command) => {
     const parentOpts = cmd.parent?.opts() ?? {};
 
-    try {
-      const canisterId = resolveCanisterId(parentOpts);
-      const agent = createAnonymousAgent();
-      const actor = createMemoryRepoActor(canisterId, agent);
-
-      if (name) {
-        const spinner = ora(`Creating branch '${name}'...`).start();
+    if (name) {
+      const spinner = ora(`Creating branch '${name}'...`).start();
+      try {
+        validateBranchName(name);
+        const canisterId = resolveCanisterId(parentOpts);
+        const agent = await createInitializedAgent(parentOpts.host);
+        const actor = createMemoryRepoActor(canisterId, agent);
         const result = await actor.createBranch(name);
         if ('ok' in result) {
           spinner.succeed(chalk.green(result.ok));
@@ -262,8 +343,16 @@ memoryCmd
           spinner.fail(chalk.red(result.err));
           process.exit(1);
         }
-      } else {
-        const spinner = ora('Loading branches...').start();
+      } catch (error) {
+        spinner.fail(chalk.red(error instanceof Error ? error.message : String(error)));
+        process.exit(1);
+      }
+    } else {
+      const spinner = ora('Loading branches...').start();
+      try {
+        const canisterId = resolveCanisterId(parentOpts);
+        const agent = await createInitializedAgent(parentOpts.host);
+        const actor = createMemoryRepoActor(canisterId, agent);
         const branchList = await actor.getBranches();
         const status = await actor.getRepoStatus();
         spinner.stop();
@@ -279,10 +368,10 @@ memoryCmd
           console.log(`  ${marker}${bName} ${chalk.gray(`-> ${headId}`)}`);
         }
         console.log();
+      } catch (error) {
+        spinner.fail(chalk.red(error instanceof Error ? error.message : String(error)));
+        process.exit(1);
       }
-    } catch (error) {
-      console.error(chalk.red(error instanceof Error ? error.message : String(error)));
-      process.exit(1);
     }
   });
 
@@ -298,7 +387,7 @@ memoryCmd
 
     try {
       const canisterId = resolveCanisterId(parentOpts);
-      const agent = createAnonymousAgent();
+      const agent = await createInitializedAgent(parentOpts.host);
       const actor = createMemoryRepoActor(canisterId, agent);
 
       const result = await actor.switchBranch(branch);
@@ -329,21 +418,22 @@ memoryCmd
 
     try {
       const canisterId = resolveCanisterId(parentOpts);
-      const agent = createAnonymousAgent();
+      const agent = await createInitializedAgent(parentOpts.host);
       const actor = createMemoryRepoActor(canisterId, agent);
 
       const result = await actor.getCommit(commitId);
-      spinner.stop();
 
       if (result.length === 0) {
-        console.log(chalk.red(`Commit '${commitId}' not found.`));
+        spinner.fail(chalk.red(`Commit '${commitId}' not found.`));
         process.exit(1);
       }
 
+      spinner.stop();
       const c = result[0];
 
       if (options.json) {
-        console.log(JSON.stringify(c, null, 2));
+        console.log(JSON.stringify(c, (_key, value) =>
+          typeof value === 'bigint' ? value.toString() : value, 2));
         return;
       }
 
@@ -381,8 +471,13 @@ memoryCmd
         process.exit(1);
       }
 
+      if (!soulContent.trim()) {
+        spinner.fail(chalk.red('Soul file is empty'));
+        process.exit(1);
+      }
+
       const canisterId = resolveCanisterId(parentOpts);
-      const agent = createAnonymousAgent();
+      const agent = await createInitializedAgent(parentOpts.host);
       const actor = createMemoryRepoActor(canisterId, agent);
 
       const branchArg: [string] | [] = options.branch ? [options.branch] : [];
@@ -390,7 +485,7 @@ memoryCmd
 
       if ('ok' in result) {
         spinner.succeed(chalk.green(
-          `Rebase complete: ${result.ok.commitsReplayed} commit(s) replayed on branch '${result.ok.newBranch}'`,
+          `Rebase complete: ${result.ok.commitsReplayed.toString()} commit(s) replayed on branch '${result.ok.newBranch}'`,
         ));
       } else {
         spinner.fail(chalk.red(result.err));
@@ -409,18 +504,20 @@ memoryCmd
   .command('merge')
   .description('Merge commits from another branch into the current branch')
   .requiredOption('--from-branch <name>', 'Branch to merge from')
-  .option('--strategy <strategy>', 'Merge strategy: auto or manual', 'auto')
+  .addOption(new Option('--strategy <strategy>', 'Merge strategy').choices(['auto', 'manual']).default('auto'))
   .action(async (options: { fromBranch: string; strategy: string }, cmd: Command) => {
     const parentOpts = cmd.parent?.opts() ?? {};
     const spinner = ora(`Merging from '${options.fromBranch}'...`).start();
 
     try {
       const canisterId = resolveCanisterId(parentOpts);
-      const agent = createAnonymousAgent();
+      const agent = await createInitializedAgent(parentOpts.host);
       const actor = createMemoryRepoActor(canisterId, agent);
 
-      const strategy = options.strategy === 'manual' ? { manual: null } : { auto: null };
-      const result: MergeResult = await actor.merge(options.fromBranch, strategy as any);
+      const strategy: MergeStrategy = options.strategy === 'manual'
+        ? { manual: null }
+        : { auto: null };
+      const result: MergeResult = await actor.merge(options.fromBranch, strategy);
 
       if ('ok' in result) {
         spinner.succeed(chalk.green(result.ok.message));
@@ -454,7 +551,7 @@ memoryCmd
 
     try {
       const canisterId = resolveCanisterId(parentOpts);
-      const agent = createAnonymousAgent();
+      const agent = await createInitializedAgent(parentOpts.host);
       const actor = createMemoryRepoActor(canisterId, agent);
 
       const result = await actor.cherryPick(commitId);

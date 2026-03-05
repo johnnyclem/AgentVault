@@ -15,22 +15,31 @@ describe('memory CLI Command', () => {
     expect(option).toBeDefined();
   });
 
+  it('should have the --host option', () => {
+    const option = memoryCmd.options.find((o) => o.long === '--host');
+    expect(option).toBeDefined();
+  });
+
   it('should have subcommand init', () => {
     const sub = memoryCmd.commands.find((c) => c.name() === 'init');
     expect(sub).toBeDefined();
     expect(sub?.description()).toContain('soul.md');
   });
 
-  it('should have subcommand commit', () => {
+  it('should have subcommand commit with required --diff option', () => {
     const sub = memoryCmd.commands.find((c) => c.name() === 'commit');
     expect(sub).toBeDefined();
     expect(sub?.description()).toContain('commit');
+    const diffOpt = sub?.options.find((o) => o.long === '--diff');
+    expect(diffOpt).toBeDefined();
+    expect(diffOpt?.required).toBe(true);
   });
 
-  it('should have subcommand log', () => {
+  it('should have subcommand log with --branch and --json options', () => {
     const sub = memoryCmd.commands.find((c) => c.name() === 'log');
     expect(sub).toBeDefined();
-    expect(sub?.description()).toContain('log');
+    expect(sub?.options.find((o) => o.long === '--branch')).toBeDefined();
+    expect(sub?.options.find((o) => o.long === '--json')).toBeDefined();
   });
 
   it('should have subcommand status', () => {
@@ -51,22 +60,30 @@ describe('memory CLI Command', () => {
     expect(sub?.description()).toContain('Switch');
   });
 
-  it('should have subcommand show', () => {
+  it('should have subcommand show with --json option', () => {
     const sub = memoryCmd.commands.find((c) => c.name() === 'show');
     expect(sub).toBeDefined();
-    expect(sub?.description()).toContain('commit');
+    expect(sub?.options.find((o) => o.long === '--json')).toBeDefined();
   });
 
-  it('should have subcommand rebase', () => {
+  it('should have subcommand rebase with required --from-soul option', () => {
     const sub = memoryCmd.commands.find((c) => c.name() === 'rebase');
     expect(sub).toBeDefined();
     expect(sub?.description()).toContain('Rebase');
+    const fromSoulOpt = sub?.options.find((o) => o.long === '--from-soul');
+    expect(fromSoulOpt).toBeDefined();
+    expect(fromSoulOpt?.required).toBe(true);
   });
 
-  it('should have subcommand merge', () => {
+  it('should have subcommand merge with required --from-branch and --strategy choices', () => {
     const sub = memoryCmd.commands.find((c) => c.name() === 'merge');
     expect(sub).toBeDefined();
     expect(sub?.description()).toContain('Merge');
+    const fromBranchOpt = sub?.options.find((o) => o.long === '--from-branch');
+    expect(fromBranchOpt).toBeDefined();
+    expect(fromBranchOpt?.required).toBe(true);
+    const strategyOpt = sub?.options.find((o) => o.long === '--strategy');
+    expect(strategyOpt).toBeDefined();
   });
 
   it('should have subcommand cherry-pick', () => {

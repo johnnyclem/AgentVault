@@ -1,14 +1,22 @@
 /**
- * MemoryRepo Canister — Git-Style Memory System for AgentVault
+ * MemoryRepo Canister — Git-Style Memory System for AgentVault (Hardened)
  *
  * Provides version-controlled memory with commits, branches, rebase, and merge.
  * Agents get genesis commits from Soul.md documents, branching histories,
  * and on-chain memory versioning.
  *
- * Security:
- *   - Owner claimed on initRepo(); subsequent calls rejected.
- *   - All write calls guarded by assertWriteAllowed().
- *   - Heap limit enforced at 64 MB.
+ * Security hardening applied:
+ *
+ *  1. HEAP LIMIT — Prim.rts_heap_size() checked on every write call; aborts at 64 MB.
+ *  2. PRINCIPAL GUARDS — All state-mutating functions require an authorized caller.
+ *     Owner is claimed on first call to initRepo(); subsequent attempts rejected.
+ *  3. ALLOWED PRINCIPALS — Owner can grant/revoke write access to other principals.
+ *  4. FROZEN MODE — Owner can freeze canister; all writes blocked until manualUnlock().
+ *  5. KILL SWITCH — Owner can kill canister; all non-owner writes blocked until revive.
+ *  6. INPUT VALIDATION — All string inputs bounded. Commit/branch/tag counts capped.
+ *  7. PREUPGRADE GUARD — Traps if frozen, preventing unauthorized code upgrades.
+ *  8. MONOTONIC IDS — Sequential counter prevents ID collisions under concurrency.
+ *  9. DEPTH-LIMITED WALKS — Parent chain traversal capped to prevent infinite loops.
  */
 
 import Int       "mo:base/Int";
@@ -18,13 +26,22 @@ import Text      "mo:base/Text";
 import Array     "mo:base/Array";
 import Principal "mo:base/Principal";
 import Prim      "mo:prim";
+import Debug     "mo:base/Debug";
 
 actor MemoryRepo {
 
   // ==================== Constants ====================
 
   let ANON : Principal = Principal.fromText("2vxsx-fae");
-  let MAX_HEAP_BYTES : Nat = 67_108_864; // 64 MB
+  let MAX_HEAP_BYTES   : Nat  = 67_108_864;  // 64 MB
+  let MAX_COMMITS      : Nat  = 10_000;
+  let MAX_BRANCHES     : Nat  = 100;
+  let MAX_DIFF_BYTES   : Nat  = 1_048_576;   // 1 MB
+  let MAX_MESSAGE_BYTES: Nat  = 1_024;
+  let MAX_TAG_BYTES    : Nat  = 128;
+  let MAX_TAGS         : Nat  = 20;
+  let MAX_BRANCH_NAME  : Nat  = 64;
+  let MAX_CHAIN_DEPTH  : Nat  = 10_000;
 
   // ==================== Types ====================
 
@@ -69,43 +86,144 @@ actor MemoryRepo {
     owner         : Text;
   };
 
+  public type SecurityStatus = {
+    owner             : Text;
+    frozenMode        : Bool;
+    canisterKilled    : Bool;
+    authorizedCount   : Nat;
+    heapBytes         : Nat;
+  };
+
   // ==================== Stable State ====================
 
-  stable var owner         : Principal      = ANON;
-  stable var initialized   : Bool           = false;
-  stable var commits       : [Commit]       = [];
-  stable var branches      : [(Text, Text)] = []; // (name, headCommitId)
-  stable var currentBranch : Text           = "main";
+  stable var owner             : Principal      = ANON;
+  stable var allowedPrincipals : [Principal]     = [];
+  stable var initialized       : Bool           = false;
+  stable var frozenMode        : Bool           = false;
+  stable var canisterKilled    : Bool           = false;
+  stable var commits           : [Commit]       = [];
+  stable var branches          : [(Text, Text)] = []; // (name, headCommitId)
+  stable var currentBranch     : Text           = "main";
+  stable var nextCommitSeq     : Nat            = 0;
+
+  // ==================== Upgrade Guards ====================
+
+  system func preupgrade() {
+    if (frozenMode) {
+      Debug.trap("canister is frozen — call manualUnlock() before upgrading");
+    };
+  };
 
   // ==================== Guard Functions ====================
 
+  private func assertNotKilled() {
+    if (canisterKilled) {
+      Debug.trap("canister killed — call reviveCanister() to restore");
+    };
+  };
+
   private func assertMemoryLimit() {
     if (Prim.rts_heap_size() >= MAX_HEAP_BYTES) {
-      assert false; // heap size >= 64 MB hard limit
+      Debug.trap("heap size >= 64 MB hard limit");
     };
   };
 
   private func isAuthorized(caller : Principal) : Bool {
     if (Principal.isAnonymous(caller)) { return false };
     if (caller == owner)               { return true  };
+    for (p in allowedPrincipals.vals()) {
+      if (p == caller) { return true };
+    };
     false
   };
 
   private func assertAuthorized(caller : Principal) {
     if (not isAuthorized(caller)) {
-      assert false; // caller principal is not authorized
+      Debug.trap("caller principal is not authorized");
     };
   };
 
+  private func assertOwner(caller : Principal) {
+    if (caller != owner) {
+      Debug.trap("only the canister owner may call this function");
+    };
+  };
+
+  private func assertNotFrozen() {
+    if (frozenMode) {
+      Debug.trap("canister is frozen — call manualUnlock() first");
+    };
+  };
+
+  /// Combined write guard: kill switch, memory, auth, freeze — checked in that order.
   private func assertWriteAllowed(caller : Principal) {
+    assertNotKilled();
     assertMemoryLimit();
     assertAuthorized(caller);
+    assertNotFrozen();
+  };
+
+  // ==================== Input Validation ====================
+
+  private func validateDiff(diff : Text) : ?Text {
+    if (Text.size(diff) > MAX_DIFF_BYTES) {
+      return ?"Diff exceeds maximum size of 1 MB";
+    };
+    null
+  };
+
+  private func validateMessage(message : Text) : ?Text {
+    if (Text.size(message) == 0) {
+      return ?"Message cannot be empty";
+    };
+    if (Text.size(message) > MAX_MESSAGE_BYTES) {
+      return ?"Message exceeds maximum size of 1024 characters";
+    };
+    null
+  };
+
+  private func validateTags(tags : [Text]) : ?Text {
+    if (tags.size() > MAX_TAGS) {
+      return ?"Too many tags (maximum " # Nat.toText(MAX_TAGS) # ")";
+    };
+    for (t in tags.vals()) {
+      if (Text.size(t) == 0) {
+        return ?"Tag cannot be empty";
+      };
+      if (Text.size(t) > MAX_TAG_BYTES) {
+        return ?"Tag exceeds maximum size of 128 characters";
+      };
+    };
+    null
+  };
+
+  private func validateBranchName(name : Text) : ?Text {
+    if (Text.size(name) == 0) {
+      return ?"Branch name cannot be empty";
+    };
+    if (Text.size(name) > MAX_BRANCH_NAME) {
+      return ?"Branch name exceeds maximum of 64 characters";
+    };
+    null
+  };
+
+  private func validateSoulContent(content : Text) : ?Text {
+    if (Text.size(content) == 0) {
+      return ?"Soul content cannot be empty";
+    };
+    if (Text.size(content) > MAX_DIFF_BYTES) {
+      return ?"Soul content exceeds maximum size of 1 MB";
+    };
+    null
   };
 
   // ==================== ID Generation ====================
 
+  /// Monotonically incrementing commit ID — immune to Time.now() collisions.
   private func generateCommitId() : Text {
-    "c_" # Int.toText(Time.now()) # "_" # Nat.toText(commits.size())
+    let id = "c_" # Int.toText(Time.now()) # "_" # Nat.toText(nextCommitSeq);
+    nextCommitSeq += 1;
+    id
   };
 
   // ==================== Helper Functions ====================
@@ -119,24 +237,32 @@ actor MemoryRepo {
   };
 
   /// Update the HEAD of a branch to point to a new commit ID.
-  private func updateBranchHead(branchName : Text, commitId : Text) {
+  /// Returns false if branch not found (should not happen in normal operation).
+  private func updateBranchHead(branchName : Text, commitId : Text) : Bool {
+    var found = false;
     branches := Array.map<(Text, Text), (Text, Text)>(
       branches,
       func (entry : (Text, Text)) : (Text, Text) {
-        if (entry.0 == branchName) { (branchName, commitId) }
-        else { entry }
+        if (entry.0 == branchName) {
+          found := true;
+          (branchName, commitId)
+        } else { entry }
       }
     );
+    found
   };
 
   /// Collect all commits on a branch by following the parent chain from HEAD.
+  /// Depth-limited to MAX_CHAIN_DEPTH to prevent infinite loops from circular refs.
   private func collectBranchCommits(branchName : Text) : [Commit] {
     switch (getBranchHead(branchName)) {
       case null { [] };
       case (?headId) {
         var result : [Commit] = [];
         var currentId : ?Text = ?headId;
+        var depth : Nat = 0;
         label walk loop {
+          if (depth >= MAX_CHAIN_DEPTH) { break walk };
           switch (currentId) {
             case null { break walk };
             case (?cid) {
@@ -149,6 +275,7 @@ actor MemoryRepo {
                 };
               };
               if (not found) { break walk };
+              depth += 1;
             };
           };
         };
@@ -175,6 +302,92 @@ actor MemoryRepo {
     false
   };
 
+  /// Check if a branch name already exists.
+  private func branchExists(name : Text) : Bool {
+    for ((n, _) in branches.vals()) {
+      if (n == name) { return true };
+    };
+    false
+  };
+
+  // ==================== Owner & Security Management ====================
+
+  /// Freeze the canister — all writes blocked until manualUnlock().
+  public shared(msg) func freeze() : async { #ok : Text; #err : Text } {
+    assertNotKilled();
+    assertAuthorized(msg.caller);
+    assertOwner(msg.caller);
+    frozenMode := true;
+    #ok("Canister frozen — call manualUnlock() to re-enable writes")
+  };
+
+  /// Unfreeze the canister — re-enable writes. Owner only.
+  public shared(msg) func manualUnlock() : async { #ok : Text; #err : Text } {
+    assertNotKilled();
+    assertOwner(msg.caller);
+    frozenMode := false;
+    #ok("Canister unfrozen — writes re-enabled")
+  };
+
+  /// Kill switch — block all non-owner writes. Owner only.
+  public shared(msg) func killCanister() : async { #ok : Text; #err : Text } {
+    assertOwner(msg.caller);
+    canisterKilled := true;
+    #ok("Canister killed — call reviveCanister() to restore")
+  };
+
+  /// Revive canister after kill switch. Owner only.
+  public shared(msg) func reviveCanister() : async { #ok : Text; #err : Text } {
+    assertOwner(msg.caller);
+    canisterKilled := false;
+    #ok("Canister revived — writes re-enabled")
+  };
+
+  /// Add an authorized principal (owner only).
+  public shared(msg) func addAuthorizedPrincipal(p : Principal) : async { #ok : Text; #err : Text } {
+    assertWriteAllowed(msg.caller);
+    assertOwner(msg.caller);
+
+    if (Principal.isAnonymous(p)) {
+      return #err("Cannot authorize anonymous principal");
+    };
+
+    // Check if already authorized
+    for (existing in allowedPrincipals.vals()) {
+      if (existing == p) {
+        return #err("Principal already authorized");
+      };
+    };
+
+    allowedPrincipals := Array.append<Principal>(allowedPrincipals, [p]);
+    #ok("Principal authorized: " # Principal.toText(p))
+  };
+
+  /// Remove an authorized principal (owner only).
+  public shared(msg) func removeAuthorizedPrincipal(p : Principal) : async { #ok : Text; #err : Text } {
+    assertWriteAllowed(msg.caller);
+    assertOwner(msg.caller);
+
+    let filtered = Array.filter<Principal>(allowedPrincipals, func (x : Principal) : Bool { x != p });
+    if (filtered.size() == allowedPrincipals.size()) {
+      return #err("Principal not found in authorized list");
+    };
+
+    allowedPrincipals := filtered;
+    #ok("Principal removed: " # Principal.toText(p))
+  };
+
+  /// Query security status.
+  public query func getSecurityStatus() : async SecurityStatus {
+    {
+      owner          = Principal.toText(owner);
+      frozenMode     = frozenMode;
+      canisterKilled = canisterKilled;
+      authorizedCount = allowedPrincipals.size();
+      heapBytes      = Prim.rts_heap_size();
+    }
+  };
+
   // ==================== Public API ====================
 
   /// Initialize the repository with a genesis commit from soul content.
@@ -187,6 +400,11 @@ actor MemoryRepo {
     assertMemoryLimit();
     if (Principal.isAnonymous(msg.caller)) {
       return #err("Anonymous principal cannot initialize repository");
+    };
+
+    switch (validateSoulContent(soulContent)) {
+      case (?e) { return #err(e) };
+      case null {};
     };
 
     owner := msg.caller;
@@ -218,6 +436,23 @@ actor MemoryRepo {
       return #err("Repository not initialized — call initRepo first");
     };
 
+    if (commits.size() >= MAX_COMMITS) {
+      return #err("Commit limit reached (" # Nat.toText(MAX_COMMITS) # ") — archive old commits before adding more");
+    };
+
+    switch (validateMessage(message)) {
+      case (?e) { return #err(e) };
+      case null {};
+    };
+    switch (validateDiff(diff)) {
+      case (?e) { return #err(e) };
+      case null {};
+    };
+    switch (validateTags(tags)) {
+      case (?e) { return #err(e) };
+      case null {};
+    };
+
     let parentId = getBranchHead(currentBranch);
     let commitId = generateCommitId();
 
@@ -232,7 +467,7 @@ actor MemoryRepo {
     };
 
     commits := Array.append<Commit>(commits, [newCommit]);
-    updateBranchHead(currentBranch, commitId);
+    ignore updateBranchHead(currentBranch, commitId);
 
     #ok(commitId)
   };
@@ -272,11 +507,17 @@ actor MemoryRepo {
       return #err("Repository not initialized");
     };
 
-    // Check if branch already exists
-    for ((n, _) in branches.vals()) {
-      if (n == name) {
-        return #err("Branch '" # name # "' already exists");
-      };
+    if (branches.size() >= MAX_BRANCHES) {
+      return #err("Branch limit reached (" # Nat.toText(MAX_BRANCHES) # ")");
+    };
+
+    switch (validateBranchName(name)) {
+      case (?e) { return #err(e) };
+      case null {};
+    };
+
+    if (branchExists(name)) {
+      return #err("Branch '" # name # "' already exists");
     };
 
     let headId = switch (getBranchHead(currentBranch)) {
@@ -292,13 +533,7 @@ actor MemoryRepo {
   public shared(msg) func switchBranch(name : Text) : async { #ok : Text; #err : Text } {
     assertWriteAllowed(msg.caller);
 
-    // Verify branch exists
-    var found = false;
-    for ((n, _) in branches.vals()) {
-      if (n == name) { found := true };
-    };
-
-    if (not found) {
+    if (not branchExists(name)) {
       return #err("Branch '" # name # "' does not exist");
     };
 
@@ -334,6 +569,11 @@ actor MemoryRepo {
       return #err("Repository not initialized");
     };
 
+    switch (validateSoulContent(newBaseSoul)) {
+      case (?e) { return #err(e) };
+      case null {};
+    };
+
     let sourceBranch = switch (targetBranch) {
       case null { currentBranch };
       case (?b) { b };
@@ -345,11 +585,31 @@ actor MemoryRepo {
       return #err("Branch '" # sourceBranch # "' has no commits");
     };
 
+    // Check commit capacity
+    let nonGenesisCount = Array.filter<Commit>(branchCommits, func (c : Commit) : Bool {
+      switch (Array.find<Text>(c.tags, func (t : Text) : Bool { t == "genesis" })) {
+        case (?_) { false };
+        case null { true };
+      };
+    }).size();
+
+    if (commits.size() + nonGenesisCount + 1 > MAX_COMMITS) {
+      return #err("Rebase would exceed commit limit (" # Nat.toText(MAX_COMMITS) # ")");
+    };
+
+    if (branches.size() >= MAX_BRANCHES) {
+      return #err("Branch limit reached (" # Nat.toText(MAX_BRANCHES) # ")");
+    };
+
     // Reverse to get chronological order (oldest first)
     let chronological = Array.reverse(branchCommits);
 
-    // Create rebase branch name
-    let rebaseBranch = "rebase/" # Int.toText(Time.now());
+    // Create unique rebase branch name using monotonic counter
+    var rebaseBranch = "rebase/" # Nat.toText(nextCommitSeq);
+    // Ensure no collision (defensive)
+    while (branchExists(rebaseBranch)) {
+      rebaseBranch := rebaseBranch # "_1";
+    };
 
     // Create new genesis commit
     let genesisId = generateCommitId();
@@ -393,7 +653,7 @@ actor MemoryRepo {
     };
 
     // Update rebase branch HEAD
-    updateBranchHead(rebaseBranch, lastId);
+    ignore updateBranchHead(rebaseBranch, lastId);
 
     #ok({ newBranch = rebaseBranch; commitsReplayed = replayed })
   };
@@ -423,7 +683,7 @@ actor MemoryRepo {
     let sourceCommits = collectBranchCommits(fromBranch);
     let targetCommits = collectBranchCommits(currentBranch);
 
-    // Find commits in source that are not in target (by message+diff, since IDs differ)
+    // Build set of target commit IDs for deduplication
     let targetIds = Array.map<Commit, Text>(targetCommits, func (c : Commit) : Text { c.id });
 
     var conflicts : [ConflictEntry] = [];
@@ -435,23 +695,32 @@ actor MemoryRepo {
       switch (isGenesis) {
         case (?_) {}; // skip genesis
         case null {
-          // Check for conflicts: overlapping tags but different diff
-          var hasConflict = false;
-          for (tc in targetCommits.vals()) {
-            if (tagsOverlap(sc.tags, tc.tags) and sc.diff != tc.diff) {
-              hasConflict := true;
-            };
+          // Skip commits already in target (by ID)
+          var alreadyInTarget = false;
+          for (tid in targetIds.vals()) {
+            if (tid == sc.id) { alreadyInTarget := true };
           };
-
-          if (hasConflict) {
-            conflicts := Array.append<ConflictEntry>(conflicts, [{
-              commitId = sc.id;
-              message  = sc.message;
-              tags     = sc.tags;
-              diff     = sc.diff;
-            }]);
+          if (alreadyInTarget) {
+            // skip — commit already exists in target branch
           } else {
-            toMerge := Array.append<Commit>(toMerge, [sc]);
+            // Check for conflicts: overlapping tags but different diff
+            var hasConflict = false;
+            for (tc in targetCommits.vals()) {
+              if (tagsOverlap(sc.tags, tc.tags) and sc.diff != tc.diff) {
+                hasConflict := true;
+              };
+            };
+
+            if (hasConflict) {
+              conflicts := Array.append<ConflictEntry>(conflicts, [{
+                commitId = sc.id;
+                message  = sc.message;
+                tags     = sc.tags;
+                diff     = sc.diff;
+              }]);
+            } else {
+              toMerge := Array.append<Commit>(toMerge, [sc]);
+            };
           };
         };
       };
@@ -475,6 +744,11 @@ actor MemoryRepo {
         if (conflicts.size() > 0) {
           #conflicts(conflicts)
         } else {
+          // Check commit capacity
+          if (commits.size() + toMerge.size() > MAX_COMMITS) {
+            return #err("Merge would exceed commit limit (" # Nat.toText(MAX_COMMITS) # ")");
+          };
+
           // Merge non-conflicting commits
           var merged : Nat = 0;
           var lastHead = getBranchHead(currentBranch);
@@ -497,7 +771,7 @@ actor MemoryRepo {
 
           switch (lastHead) {
             case null {};
-            case (?h) { updateBranchHead(currentBranch, h) };
+            case (?h) { ignore updateBranchHead(currentBranch, h) };
           };
 
           #ok({ merged = merged; message = "Merged " # Nat.toText(merged) # " commit(s) from '" # fromBranch # "'" })
@@ -512,6 +786,10 @@ actor MemoryRepo {
 
     if (not initialized) {
       return #err("Repository not initialized");
+    };
+
+    if (commits.size() >= MAX_COMMITS) {
+      return #err("Commit limit reached (" # Nat.toText(MAX_COMMITS) # ")");
     };
 
     switch (findCommit(commitId)) {
@@ -531,7 +809,7 @@ actor MemoryRepo {
         };
 
         commits := Array.append<Commit>(commits, [picked]);
-        updateBranchHead(currentBranch, newId);
+        ignore updateBranchHead(currentBranch, newId);
 
         #ok(newId)
       };

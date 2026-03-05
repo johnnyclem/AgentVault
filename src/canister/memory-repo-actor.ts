@@ -1,21 +1,26 @@
 /**
- * MemoryRepo Canister Actor Bindings
+ * MemoryRepo Canister Actor Bindings (Hardened)
  *
  * TypeScript Actor interface for MemoryRepo canister.
  * Generated from memory-repo.did Candid interface.
+ *
+ * NOTE: Candid `int` and `nat` map to JavaScript `bigint` at runtime.
+ * Fields typed as `bigint` below reflect this runtime behavior.
  */
 
 import { Actor, HttpAgent, Identity } from '@dfinity/agent';
+import { Principal } from '@dfinity/principal';
 import { idlFactory } from './memory-repo-actor.idl.js';
 
 // ==================== Types ====================
 
 /**
- * A single commit in the memory repository
+ * A single commit in the memory repository.
+ * `timestamp` is nanoseconds since epoch (Candid `int` -> JS `bigint`).
  */
 export type Commit = {
   id: string;
-  timestamp: number;
+  timestamp: bigint;
   message: string;
   diff: string;
   tags: string[];
@@ -24,14 +29,26 @@ export type Commit = {
 };
 
 /**
- * Repository status
+ * Repository status.
+ * `totalCommits` and `totalBranches` are Candid `nat` -> JS `bigint`.
  */
 export type RepoStatus = {
   initialized: boolean;
   currentBranch: string;
-  totalCommits: number;
-  totalBranches: number;
+  totalCommits: bigint;
+  totalBranches: bigint;
   owner: string;
+};
+
+/**
+ * Security status.
+ */
+export type SecurityStatus = {
+  owner: string;
+  frozenMode: boolean;
+  canisterKilled: boolean;
+  authorizedCount: bigint;
+  heapBytes: bigint;
 };
 
 /**
@@ -40,10 +57,11 @@ export type RepoStatus = {
 export type OperationResult = { ok: string } | { err: string };
 
 /**
- * Rebase result
+ * Rebase result.
+ * `commitsReplayed` is Candid `nat` -> JS `bigint`.
  */
 export type RebaseResult =
-  | { ok: { newBranch: string; commitsReplayed: number } }
+  | { ok: { newBranch: string; commitsReplayed: bigint } }
   | { err: string };
 
 /**
@@ -62,10 +80,11 @@ export type ConflictEntry = {
 };
 
 /**
- * Merge result
+ * Merge result.
+ * `merged` is Candid `nat` -> JS `bigint`.
  */
 export type MergeResult =
-  | { ok: { merged: number; message: string } }
+  | { ok: { merged: bigint; message: string } }
   | { conflicts: ConflictEntry[] }
   | { err: string };
 
@@ -75,6 +94,15 @@ export type MergeResult =
  * MemoryRepo canister actor interface
  */
 export interface _SERVICE {
+  // Owner & Security Management
+  freeze: () => Promise<OperationResult>;
+  manualUnlock: () => Promise<OperationResult>;
+  killCanister: () => Promise<OperationResult>;
+  reviveCanister: () => Promise<OperationResult>;
+  addAuthorizedPrincipal: (p: Principal) => Promise<OperationResult>;
+  removeAuthorizedPrincipal: (p: Principal) => Promise<OperationResult>;
+  getSecurityStatus: () => Promise<SecurityStatus>;
+
   // Repository Lifecycle
   initRepo: (soulContent: string) => Promise<OperationResult>;
 
@@ -119,10 +147,11 @@ export function createMemoryRepoActor(canisterId: string, agent?: HttpAgent): _S
 }
 
 /**
- * Create anonymous agent for local canister access
+ * Create anonymous agent for local canister access.
+ * Automatically fetches root key for local replicas.
  *
  * @param host - Host URL (default: from ICP_LOCAL_URL env or http://localhost:4943)
- * @returns HTTP agent instance
+ * @returns HTTP agent instance (call fetchRootKey() before canister calls on local)
  */
 export function createAnonymousAgent(host?: string): HttpAgent {
   const defaultHost = process.env.ICP_LOCAL_URL || 'http://localhost:4943';
@@ -148,4 +177,16 @@ export function createAuthenticatedAgent(host?: string, identity?: Identity): Ht
   });
 
   return agent;
+}
+
+/**
+ * Validate a canister ID string.
+ * Throws if the string is not a valid ICP principal.
+ */
+export function validateCanisterId(canisterId: string): void {
+  try {
+    Principal.fromText(canisterId);
+  } catch {
+    throw new Error(`Invalid canister ID: "${canisterId}"`);
+  }
 }

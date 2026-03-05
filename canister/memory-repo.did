@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────────────────────────────────────
-//  MemoryRepo Canister — Candid Interface
+//  MemoryRepo Canister — Candid Interface (Hardened)
 // ──────────────────────────────────────────────────────────────────────────────
 
 // ─── Shared Types ────────────────────────────────────────────────────────────
@@ -20,6 +20,14 @@ type RepoStatus = record {
   totalCommits  : nat;
   totalBranches : nat;
   owner         : text;
+};
+
+type SecurityStatus = record {
+  owner           : text;
+  frozenMode      : bool;
+  canisterKilled  : bool;
+  authorizedCount : nat;
+  heapBytes       : nat;
 };
 
 type RebaseResult = variant {
@@ -49,32 +57,42 @@ type MergeResult = variant {
 
 service : {
 
-  // ── Repository Lifecycle ────────────────────────────────────────────────────
+  // ── Owner & Security Management ─────────────────────────────────────────
+
+  freeze                    : () -> (variant { ok : text; err : text });
+  manualUnlock              : () -> (variant { ok : text; err : text });
+  killCanister              : () -> (variant { ok : text; err : text });
+  reviveCanister            : () -> (variant { ok : text; err : text });
+  addAuthorizedPrincipal    : (principal) -> (variant { ok : text; err : text });
+  removeAuthorizedPrincipal : (principal) -> (variant { ok : text; err : text });
+  getSecurityStatus         : () -> (SecurityStatus) query;
+
+  // ── Repository Lifecycle ────────────────────────────────────────────────
 
   initRepo     : (text) -> (variant { ok : text; err : text });
 
-  // ── Commit Operations ───────────────────────────────────────────────────────
+  // ── Commit Operations ───────────────────────────────────────────────────
 
   commit       : (text, text, vec text) -> (variant { ok : text; err : text });
   getCommit    : (text) -> (opt Commit) query;
 
-  // ── Log & State Queries ─────────────────────────────────────────────────────
+  // ── Log & State Queries ─────────────────────────────────────────────────
 
   log            : (opt text) -> (vec Commit) query;
   getCurrentState: () -> (opt text) query;
   getRepoStatus  : () -> (RepoStatus) query;
 
-  // ── Branch Operations ───────────────────────────────────────────────────────
+  // ── Branch Operations ───────────────────────────────────────────────────
 
   getBranches  : () -> (vec record { text; text }) query;
   createBranch : (text) -> (variant { ok : text; err : text });
   switchBranch : (text) -> (variant { ok : text; err : text });
 
-  // ── Rebase (PRD 3) ─────────────────────────────────────────────────────────
+  // ── Rebase (PRD 3) ─────────────────────────────────────────────────────
 
   rebase : (text, opt text) -> (RebaseResult);
 
-  // ── Merge & Cherry-Pick (PRD 4) ────────────────────────────────────────────
+  // ── Merge & Cherry-Pick (PRD 4) ────────────────────────────────────────
 
   merge     : (text, MergeStrategy) -> (MergeResult);
   cherryPick: (text) -> (variant { ok : text; err : text });

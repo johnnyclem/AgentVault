@@ -7,35 +7,37 @@ import type {
   Commit,
 } from '../../src/canister/memory-repo-actor.js';
 
+// Shared mock IDL
+const mockIDL = {
+  Service: (methods: Record<string, unknown>) => methods,
+  Func: (args: unknown[], ret: unknown[], modes: string[]) => ({ args, ret, modes }),
+  Text: 'Text',
+  Int: 'Int',
+  Nat: 'Nat',
+  Bool: 'Bool',
+  Null: 'Null',
+  Principal: 'Principal',
+  Opt: (t: unknown) => ({ opt: t }),
+  Vec: (t: unknown) => ({ vec: t }),
+  Record: (fields: Record<string, unknown>) => ({ record: fields }),
+  Variant: (fields: Record<string, unknown>) => ({ variant: fields }),
+  Tuple: (...args: unknown[]) => ({ tuple: args }),
+};
+
 describe('MemoryRepo Merge & Cherry-Pick', () => {
   describe('IDL', () => {
-    const mockIDL = {
-      Service: (methods: Record<string, unknown>) => methods,
-      Func: (args: unknown[], ret: unknown[], modes: string[]) => ({ args, ret, modes }),
-      Text: 'Text',
-      Int: 'Int',
-      Nat: 'Nat',
-      Bool: 'Bool',
-      Null: 'Null',
-      Opt: (t: unknown) => ({ opt: t }),
-      Vec: (t: unknown) => ({ vec: t }),
-      Record: (fields: Record<string, unknown>) => ({ record: fields }),
-      Variant: (fields: Record<string, unknown>) => ({ variant: fields }),
-      Tuple: (...args: unknown[]) => ({ tuple: args }),
-    };
-
-    it('should include merge method in service definition', () => {
+    it('should include merge method as update call with 2 args', () => {
       const service = idlFactory({ IDL: mockIDL }) as Record<string, any>;
       expect(service).toHaveProperty('merge');
-      expect(service.merge.args).toHaveLength(2); // (fromBranch, strategy)
-      expect(service.merge.modes).toEqual([]);     // not a query
+      expect(service.merge.args).toHaveLength(2);
+      expect(service.merge.modes).toEqual([]);
     });
 
-    it('should include cherryPick method in service definition', () => {
+    it('should include cherryPick method as update call with 1 arg', () => {
       const service = idlFactory({ IDL: mockIDL }) as Record<string, any>;
       expect(service).toHaveProperty('cherryPick');
-      expect(service.cherryPick.args).toHaveLength(1); // (commitId)
-      expect(service.cherryPick.modes).toEqual([]);     // not a query
+      expect(service.cherryPick.args).toHaveLength(1);
+      expect(service.cherryPick.modes).toEqual([]);
     });
   });
 
@@ -52,13 +54,13 @@ describe('MemoryRepo Merge & Cherry-Pick', () => {
   });
 
   describe('MergeResult Type', () => {
-    it('should support ok variant with merge count and message', () => {
+    it('should support ok variant with bigint merged count', () => {
       const result: MergeResult = {
-        ok: { merged: 3, message: "Merged 3 commit(s) from 'feature'" },
+        ok: { merged: BigInt(3), message: "Merged 3 commit(s) from 'feature'" },
       };
       expect('ok' in result).toBe(true);
       if ('ok' in result) {
-        expect(result.ok.merged).toBe(3);
+        expect(typeof result.ok.merged).toBe('bigint');
         expect(result.ok.message).toContain('3 commit');
       }
     });
@@ -106,7 +108,7 @@ describe('MemoryRepo Merge & Cherry-Pick', () => {
     it('should identify conflicts when commits share tags but differ in diff', () => {
       const sourceCommit: Commit = {
         id: 'c_src_1',
-        timestamp: 1700000000,
+        timestamp: BigInt(1700000000),
         message: 'Update config',
         diff: 'theme=dark',
         tags: ['config'],
@@ -116,7 +118,7 @@ describe('MemoryRepo Merge & Cherry-Pick', () => {
 
       const targetCommit: Commit = {
         id: 'c_tgt_1',
-        timestamp: 1700000001,
+        timestamp: BigInt(1700000001),
         message: 'Set config',
         diff: 'theme=light',
         tags: ['config'],
@@ -124,7 +126,6 @@ describe('MemoryRepo Merge & Cherry-Pick', () => {
         branch: 'main',
       };
 
-      // Tags overlap + different diffs = conflict
       const tagsOverlap = sourceCommit.tags.some(t => targetCommit.tags.includes(t));
       const diffsDiffer = sourceCommit.diff !== targetCommit.diff;
       expect(tagsOverlap && diffsDiffer).toBe(true);
@@ -133,7 +134,7 @@ describe('MemoryRepo Merge & Cherry-Pick', () => {
     it('should not flag conflict when diffs are identical', () => {
       const source: Commit = {
         id: 'c_1',
-        timestamp: 1700000000,
+        timestamp: BigInt(1700000000),
         message: 'Update',
         diff: 'same content',
         tags: ['config'],
@@ -143,7 +144,7 @@ describe('MemoryRepo Merge & Cherry-Pick', () => {
 
       const target: Commit = {
         id: 'c_2',
-        timestamp: 1700000001,
+        timestamp: BigInt(1700000001),
         message: 'Update',
         diff: 'same content',
         tags: ['config'],
@@ -159,7 +160,7 @@ describe('MemoryRepo Merge & Cherry-Pick', () => {
     it('should not flag conflict when tags do not overlap', () => {
       const source: Commit = {
         id: 'c_1',
-        timestamp: 1700000000,
+        timestamp: BigInt(1700000000),
         message: 'Update',
         diff: 'different content',
         tags: ['chat'],
@@ -169,7 +170,7 @@ describe('MemoryRepo Merge & Cherry-Pick', () => {
 
       const target: Commit = {
         id: 'c_2',
-        timestamp: 1700000001,
+        timestamp: BigInt(1700000001),
         message: 'Update',
         diff: 'other content',
         tags: ['config'],
@@ -186,7 +187,7 @@ describe('MemoryRepo Merge & Cherry-Pick', () => {
     it('should model cherry-picked commits with cherry-picked tag', () => {
       const original: Commit = {
         id: 'c_old_5',
-        timestamp: 1700000000,
+        timestamp: BigInt(1700000000),
         message: 'Important fix',
         diff: 'fix content',
         tags: ['bugfix'],
@@ -196,7 +197,7 @@ describe('MemoryRepo Merge & Cherry-Pick', () => {
 
       const picked: Commit = {
         id: 'c_new_3',
-        timestamp: 1700000005,
+        timestamp: BigInt(1700000005),
         message: 'cherry-pick: ' + original.message,
         diff: original.diff,
         tags: [...original.tags, 'cherry-picked'],

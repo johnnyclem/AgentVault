@@ -4,10 +4,12 @@ import {
   createMemoryRepoActor,
   createAnonymousAgent,
   createAuthenticatedAgent,
+  validateCanisterId,
 } from '../../src/canister/memory-repo-actor.js';
 import type {
   Commit,
   RepoStatus,
+  SecurityStatus,
   OperationResult,
   RebaseResult,
   MergeStrategy,
@@ -16,56 +18,94 @@ import type {
   _SERVICE,
 } from '../../src/canister/memory-repo-actor.js';
 
+// Shared mock IDL for structural tests
+const mockIDL = {
+  Service: (methods: Record<string, unknown>) => methods,
+  Func: (args: unknown[], ret: unknown[], modes: string[]) => ({ args, ret, modes }),
+  Text: 'Text',
+  Int: 'Int',
+  Nat: 'Nat',
+  Bool: 'Bool',
+  Null: 'Null',
+  Principal: 'Principal',
+  Opt: (t: unknown) => ({ opt: t }),
+  Vec: (t: unknown) => ({ vec: t }),
+  Record: (fields: Record<string, unknown>) => ({ record: fields }),
+  Variant: (fields: Record<string, unknown>) => ({ variant: fields }),
+  Tuple: (...args: unknown[]) => ({ tuple: args }),
+};
+
 describe('MemoryRepo Actor Types', () => {
   describe('IDL Factory', () => {
     it('should export an idlFactory function', () => {
       expect(typeof idlFactory).toBe('function');
     });
 
-    it('should produce a valid service when called with IDL mock', () => {
-      // Minimal IDL mock to verify structure
-      const mockIDL = {
-        Service: (methods: Record<string, unknown>) => methods,
-        Func: (args: unknown[], ret: unknown[], modes: string[]) => ({ args, ret, modes }),
-        Text: 'Text',
-        Int: 'Int',
-        Nat: 'Nat',
-        Bool: 'Bool',
-        Null: 'Null',
-        Opt: (t: unknown) => ({ opt: t }),
-        Vec: (t: unknown) => ({ vec: t }),
-        Record: (fields: Record<string, unknown>) => ({ record: fields }),
-        Variant: (fields: Record<string, unknown>) => ({ variant: fields }),
-        Tuple: (...args: unknown[]) => ({ tuple: args }),
-      };
-
+    it('should produce a service with all 19 methods', () => {
       const service = idlFactory({ IDL: mockIDL }) as Record<string, unknown>;
+      const expectedMethods = [
+        // Security (7)
+        'freeze', 'manualUnlock', 'killCanister', 'reviveCanister',
+        'addAuthorizedPrincipal', 'removeAuthorizedPrincipal', 'getSecurityStatus',
+        // Core (9)
+        'initRepo', 'commit', 'getCommit', 'log', 'getCurrentState',
+        'getRepoStatus', 'getBranches', 'createBranch', 'switchBranch',
+        // Rebase + Merge (3)
+        'rebase', 'merge', 'cherryPick',
+      ];
 
-      // PRD 1: Core methods
-      expect(service).toHaveProperty('initRepo');
-      expect(service).toHaveProperty('commit');
-      expect(service).toHaveProperty('log');
-      expect(service).toHaveProperty('getCurrentState');
-      expect(service).toHaveProperty('getBranches');
-      expect(service).toHaveProperty('createBranch');
-      expect(service).toHaveProperty('switchBranch');
-      expect(service).toHaveProperty('getCommit');
-      expect(service).toHaveProperty('getRepoStatus');
+      for (const method of expectedMethods) {
+        expect(service).toHaveProperty(method);
+      }
+      expect(Object.keys(service)).toHaveLength(19);
+    });
 
-      // PRD 3: Rebase
-      expect(service).toHaveProperty('rebase');
+    it('should mark query methods correctly', () => {
+      const service = idlFactory({ IDL: mockIDL }) as Record<string, any>;
 
-      // PRD 4: Merge & Cherry-Pick
-      expect(service).toHaveProperty('merge');
-      expect(service).toHaveProperty('cherryPick');
+      const queryMethods = ['getSecurityStatus', 'getCommit', 'log', 'getCurrentState', 'getRepoStatus', 'getBranches'];
+      for (const m of queryMethods) {
+        expect(service[m].modes).toEqual(['query']);
+      }
+
+      const updateMethods = [
+        'freeze', 'manualUnlock', 'killCanister', 'reviveCanister',
+        'addAuthorizedPrincipal', 'removeAuthorizedPrincipal',
+        'initRepo', 'commit', 'createBranch', 'switchBranch',
+        'rebase', 'merge', 'cherryPick',
+      ];
+      for (const m of updateMethods) {
+        expect(service[m].modes).toEqual([]);
+      }
+    });
+
+    it('should have correct arg counts for each method', () => {
+      const service = idlFactory({ IDL: mockIDL }) as Record<string, any>;
+
+      expect(service.initRepo.args).toHaveLength(1);
+      expect(service.commit.args).toHaveLength(3);
+      expect(service.getCommit.args).toHaveLength(1);
+      expect(service.log.args).toHaveLength(1);
+      expect(service.getCurrentState.args).toHaveLength(0);
+      expect(service.getRepoStatus.args).toHaveLength(0);
+      expect(service.getBranches.args).toHaveLength(0);
+      expect(service.createBranch.args).toHaveLength(1);
+      expect(service.switchBranch.args).toHaveLength(1);
+      expect(service.rebase.args).toHaveLength(2);
+      expect(service.merge.args).toHaveLength(2);
+      expect(service.cherryPick.args).toHaveLength(1);
+      expect(service.addAuthorizedPrincipal.args).toHaveLength(1);
+      expect(service.removeAuthorizedPrincipal.args).toHaveLength(1);
+      expect(service.freeze.args).toHaveLength(0);
+      expect(service.getSecurityStatus.args).toHaveLength(0);
     });
   });
 
-  describe('TypeScript Types', () => {
-    it('should have correct Commit type shape', () => {
+  describe('TypeScript Types (bigint correctness)', () => {
+    it('should have bigint timestamp in Commit', () => {
       const commit: Commit = {
         id: 'c_123_0',
-        timestamp: 1700000000,
+        timestamp: BigInt('1700000000000000000'),
         message: 'test commit',
         diff: 'some diff content',
         tags: ['tag1', 'tag2'],
@@ -73,15 +113,14 @@ describe('MemoryRepo Actor Types', () => {
         branch: 'main',
       };
 
-      expect(commit.id).toBe('c_123_0');
+      expect(typeof commit.timestamp).toBe('bigint');
       expect(commit.tags).toHaveLength(2);
-      expect(commit.parent).toHaveLength(1);
     });
 
     it('should support empty parent for genesis commits', () => {
       const genesis: Commit = {
         id: 'c_100_0',
-        timestamp: 1700000000,
+        timestamp: BigInt(1700000000),
         message: 'Genesis',
         diff: 'soul content',
         tags: ['genesis'],
@@ -92,17 +131,31 @@ describe('MemoryRepo Actor Types', () => {
       expect(genesis.parent).toHaveLength(0);
     });
 
-    it('should have correct RepoStatus type shape', () => {
+    it('should have bigint totalCommits/totalBranches in RepoStatus', () => {
       const status: RepoStatus = {
         initialized: true,
         currentBranch: 'main',
-        totalCommits: 5,
-        totalBranches: 2,
+        totalCommits: BigInt(5),
+        totalBranches: BigInt(2),
         owner: 'abc-123',
       };
 
-      expect(status.initialized).toBe(true);
-      expect(status.totalCommits).toBe(5);
+      expect(typeof status.totalCommits).toBe('bigint');
+      expect(typeof status.totalBranches).toBe('bigint');
+    });
+
+    it('should have correct SecurityStatus type shape', () => {
+      const sec: SecurityStatus = {
+        owner: 'abc-123',
+        frozenMode: false,
+        canisterKilled: false,
+        authorizedCount: BigInt(3),
+        heapBytes: BigInt(1024),
+      };
+
+      expect(typeof sec.authorizedCount).toBe('bigint');
+      expect(typeof sec.heapBytes).toBe('bigint');
+      expect(sec.frozenMode).toBe(false);
     });
 
     it('should support OperationResult ok variant', () => {
@@ -115,13 +168,12 @@ describe('MemoryRepo Actor Types', () => {
       expect('err' in result).toBe(true);
     });
 
-    it('should have correct RebaseResult type with ok variant', () => {
+    it('should have bigint commitsReplayed in RebaseResult', () => {
       const result: RebaseResult = {
-        ok: { newBranch: 'rebase/123', commitsReplayed: 3 },
+        ok: { newBranch: 'rebase/123', commitsReplayed: BigInt(3) },
       };
-      expect('ok' in result).toBe(true);
       if ('ok' in result) {
-        expect(result.ok.commitsReplayed).toBe(3);
+        expect(typeof result.ok.commitsReplayed).toBe('bigint');
       }
     });
 
@@ -142,12 +194,15 @@ describe('MemoryRepo Actor Types', () => {
       expect(conflict.commitId).toBe('c_456_1');
     });
 
-    it('should have correct MergeResult type variants', () => {
-      const ok: MergeResult = { ok: { merged: 2, message: 'Merged 2 commits' } };
+    it('should have bigint merged in MergeResult ok variant', () => {
+      const ok: MergeResult = { ok: { merged: BigInt(2), message: 'Merged 2 commits' } };
       const conflicts: MergeResult = { conflicts: [] };
       const err: MergeResult = { err: 'Branch not found' };
 
       expect('ok' in ok).toBe(true);
+      if ('ok' in ok) {
+        expect(typeof ok.ok.merged).toBe('bigint');
+      }
       expect('conflicts' in conflicts).toBe(true);
       expect('err' in err).toBe(true);
     });
@@ -165,27 +220,30 @@ describe('MemoryRepo Actor Types', () => {
     it('should export createAuthenticatedAgent function', () => {
       expect(typeof createAuthenticatedAgent).toBe('function');
     });
+
+    it('should export validateCanisterId function', () => {
+      expect(typeof validateCanisterId).toBe('function');
+    });
+
+    it('should throw on invalid canister ID', () => {
+      expect(() => validateCanisterId('not-a-valid-principal')).toThrow('Invalid canister ID');
+    });
   });
 
   describe('_SERVICE Interface', () => {
-    it('should define all expected methods', () => {
-      // Type-level check: ensure _SERVICE has all required methods
+    it('should define all 19 expected methods', () => {
       const methodNames: (keyof _SERVICE)[] = [
-        'initRepo',
-        'commit',
-        'getCommit',
-        'log',
-        'getCurrentState',
-        'getRepoStatus',
-        'getBranches',
-        'createBranch',
-        'switchBranch',
-        'rebase',
-        'merge',
-        'cherryPick',
+        // Security
+        'freeze', 'manualUnlock', 'killCanister', 'reviveCanister',
+        'addAuthorizedPrincipal', 'removeAuthorizedPrincipal', 'getSecurityStatus',
+        // Core
+        'initRepo', 'commit', 'getCommit', 'log', 'getCurrentState',
+        'getRepoStatus', 'getBranches', 'createBranch', 'switchBranch',
+        // Rebase + Merge
+        'rebase', 'merge', 'cherryPick',
       ];
 
-      expect(methodNames).toHaveLength(12);
+      expect(methodNames).toHaveLength(19);
     });
   });
 });
