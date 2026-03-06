@@ -65,6 +65,9 @@ import { repoCmd } from './commands/repo.js';
 // MemoryRepo commands
 import { memoryCmd } from './commands/memory.js';
 
+// Rebase command
+import { rebaseCommand } from './commands/rebase.js';
+
 export function createProgram(): Command {
   const program = new Command();
 
@@ -133,6 +136,9 @@ export function createProgram(): Command {
 
   // MemoryRepo commands
   program.addCommand(memoryCmd);
+
+  // Rebase command
+  program.addCommand(rebaseCommand());
 
   return program;
 }
