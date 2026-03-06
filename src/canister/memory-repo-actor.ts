@@ -88,6 +88,16 @@ export type MergeResult =
   | { conflicts: ConflictEntry[] }
   | { err: string };
 
+/**
+ * A ThoughtForm memory entry.
+ * `timestamp` is Candid `nat64` -> JS `bigint`.
+ */
+export type ThoughtFormStore = {
+  json: string;
+  timestamp: bigint;
+  hash: string;
+};
+
 // ==================== Service Interface ====================
 
 /**
@@ -126,6 +136,11 @@ export interface _SERVICE {
   // Merge & Cherry-Pick (PRD 4)
   merge: (fromBranch: string, strategy: MergeStrategy) => Promise<MergeResult>;
   cherryPick: (commitId: string) => Promise<OperationResult>;
+
+  // ThoughtForm Memory (PRD 5)
+  storeThoughtForm: (json: string, timestamp: bigint, hash: string) => Promise<OperationResult>;
+  getThoughtForms: () => Promise<ThoughtFormStore[]>;
+  getThoughtFormByHash: (hash: string) => Promise<[ThoughtFormStore] | []>;
 }
 
 // ==================== Actor Creation ====================

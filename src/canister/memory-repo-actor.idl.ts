@@ -59,6 +59,12 @@ const MergeResultVariant = (IDL: any) => IDL.Variant({
   err: IDL.Text,
 });
 
+const ThoughtFormStoreRecord = (IDL: any) => IDL.Record({
+  json: IDL.Text,
+  timestamp: IDL.Nat64,
+  hash: IDL.Text,
+});
+
 export const idlFactory = ({ IDL }: any) => IDL.Service({
   // ── Owner & Security Management ───────────────────────────────────────
   freeze: IDL.Func([], [OperationResultVariant(IDL)], []),
@@ -114,4 +120,13 @@ export const idlFactory = ({ IDL }: any) => IDL.Service({
   ),
 
   cherryPick: IDL.Func([IDL.Text], [OperationResultVariant(IDL)], []),
+
+  // ── ThoughtForm Memory (PRD 5) ───────────────────────────────────────
+  storeThoughtForm: IDL.Func(
+    [IDL.Text, IDL.Nat64, IDL.Text],
+    [OperationResultVariant(IDL)],
+    [],
+  ),
+  getThoughtForms: IDL.Func([], [IDL.Vec(ThoughtFormStoreRecord(IDL))], ['query']),
+  getThoughtFormByHash: IDL.Func([IDL.Text], [IDL.Opt(ThoughtFormStoreRecord(IDL))], ['query']),
 });
