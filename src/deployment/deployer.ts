@@ -19,6 +19,7 @@ import { createICPClient } from './icpClient.js';
 import { detectToolchain } from '../icp/tool-detector.js';
 import * as icpcli from '../icp/icpcli.js';
 import { getEnvironment } from '../icp/environment.js';
+import { loadPilotConfig, buildReplicaUrl, listPilotCompanies } from '../pilot/private-replica.js';
 
 /**
  * Extract agent name from WASM file path
@@ -51,7 +52,7 @@ export function validateDeployOptions(options: DeployOptions): {
   }
 
   // Validate network - requires standard network name or an explicit environment config
-  const knownNetworks = ['local', 'ic', 'mainnet', 'dev', 'staging', 'production'];
+  const knownNetworks = ['local', 'ic', 'mainnet', 'dev', 'staging', 'production', 'private'];
   if (!knownNetworks.includes(options.network)) {
     errors.push({
       code: 'INVALID_NETWORK',
@@ -139,6 +140,11 @@ export async function deployAgent(options: DeployOptions): Promise<DeployResult>
     throw new Error(`Deployment validation failed: ${errorMessages}`);
   }
 
+  // Private network: resolve replica URL from pilot config (PRD-004)
+  if (options.network === 'private') {
+    return deployToPrivateReplica(options, validation.warnings);
+  }
+
   // Detect available toolchain
   const toolchain = await detectToolchain();
 
@@ -153,6 +159,103 @@ export async function deployAgent(options: DeployOptions): Promise<DeployResult>
     // Fall back to @dfinity/agent SDK
     return deployWithSdk(options, validation.warnings);
   }
+}
+
+/**
+ * Deploy to a company's private ICP replica (PRD-004).
+ *
+ * Resolves the replica URL from the pilot config and delegates to
+ * the dfx / icp-cli toolchain with --network private.
+ */
+async function deployToPrivateReplica(
+  options: DeployOptions,
+  warnings: string[],
+): Promise<DeployResult> {
+  // Find a pilot config – use environment name as company hint, or the first available
+  const company = options.environment ?? listPilotCompanies()[0];
+  if (!company) {
+    throw new Error(
+      'No pilot configuration found. Run `agentvault pilot init --company <name>` first.'
+    );
+  }
+
+  const pilotConfig = loadPilotConfig(company);
+  if (!pilotConfig) {
+    throw new Error(
+      `No pilot config found for company "${company}". Run \`agentvault pilot init --company "${company}"\` first.`
+    );
+  }
+
+  const replicaUrl = buildReplicaUrl(pilotConfig.bindAddress, pilotConfig.port);
+  warnings.push(`Deploying to private replica for "${company}" at ${replicaUrl}`);
+
+  // Apply proxy env vars from pilot config
+  const proxyEnv: Record<string, string> = {};
+  if (pilotConfig.proxy.anthropicProxy) {
+    proxyEnv['ANTHROPIC_BASE_URL'] = pilotConfig.proxy.anthropicProxy;
+  }
+
+  // Inject air-gap env if enabled
+  if (pilotConfig.airGap.enabled) {
+    proxyEnv['AGENTVAULT_AIR_GAP'] = '1';
+    if (pilotConfig.airGap.allowedEndpoints.length > 0) {
+      proxyEnv['AGENTVAULT_ALLOWED_ENDPOINTS'] = pilotConfig.airGap.allowedEndpoints.join(',');
+    }
+    warnings.push('Air-gap mode active: external internet access restricted.');
+  }
+
+  const toolchain = await detectToolchain();
+
+  if (toolchain.preferredDeployTool === 'icp' || toolchain.icp.available) {
+    const result = await icpcli.deploy({
+      environment: 'private',
+      identity: options.identity ?? pilotConfig.identityPath,
+      mode: options.mode ?? (options.canisterId ? 'upgrade' : 'auto'),
+      projectRoot: options.projectRoot,
+    });
+
+    if (!result.success) {
+      throw new Error(`icp-cli deploy to private replica failed: ${result.stderr || result.stdout}`);
+    }
+
+    const canisterIdMatch = result.stdout.match(/([a-z0-9]{5}-[a-z0-9]{5}-[a-z0-9]{5}-[a-z0-9]{5}-[a-z0-9]{3})/);
+    const canisterId = canisterIdMatch?.[1] ?? options.canisterId ?? 'unknown';
+
+    return {
+      canister: {
+        canisterId,
+        network: 'private',
+        agentName: path.basename(options.wasmPath).replace(/\.wasm$/, ''),
+        deployedAt: new Date(),
+      },
+      isUpgrade: !!options.canisterId,
+      warnings,
+      deployTool: 'icp',
+    };
+  }
+
+  // Fall back to SDK with overridden host
+  const client = createICPClient({
+    network: 'private',
+    host: replicaUrl,
+    identity: options.identityPath,
+  });
+
+  const deployResult = await client.deploy(options.wasmPath, options.canisterId);
+
+  return {
+    canister: {
+      canisterId: deployResult.canisterId,
+      network: 'private',
+      agentName: path.basename(options.wasmPath).replace(/\.wasm$/, ''),
+      deployedAt: new Date(),
+      wasmHash: deployResult.wasmHash,
+    },
+    isUpgrade: deployResult.isUpgrade,
+    cyclesUsed: deployResult.cyclesUsed,
+    warnings,
+    deployTool: 'sdk',
+  };
 }
 
 /**

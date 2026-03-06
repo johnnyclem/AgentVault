@@ -15,10 +15,12 @@ import {
   importWalletFromPrivateKey,
   importWalletFromMnemonic,
   importWalletFromSeed,
+  createWalletWithHsm,
   getWallet,
   listAgentWallets,
   normalizeWalletChain,
   removeWallet,
+  isHsmAvailable,
 } from '../../src/wallet/index.js';
 
 /**
@@ -70,6 +72,12 @@ export function walletCommand(): Command {
     .option('--password <password>', '[INSECURE] password (prefer AGENTVAULT_PASSWORD env var)')
     .option('--pem-file <path>', 'PEM file path (not yet supported in wallet import)')
     .option('--jwk-file <path>', 'JWK file path (not yet supported in wallet import)')
+    .option(
+      '--hsm <backend>',
+      'hardware secure module backend: "ledger" (Ledger device) or "sgx" (Intel SGX TEE). ' +
+        'Private key never enters host memory.',
+    )
+    .option('--hsm-path <derivation>', 'BIP32/SLIP10 derivation path override for HSM keygen')
     .action(async (subcommand, options) => {
       // Show security warning if sensitive options are used
       warnIfSensitiveOptions(options);
@@ -92,6 +100,8 @@ type WalletCommandOptions = {
   password?: string;
   pemFile?: string;
   jwkFile?: string;
+  hsm?: string;
+  hsmPath?: string;
 };
 
 function isNonInteractiveImport(options: WalletCommandOptions): boolean {
@@ -158,6 +168,9 @@ async function executeWalletCommand(
   }
 
   switch (subcommand) {
+    case 'create':
+      await handleCreate(options);
+      break;
     case 'generate':
       await handleGenerateNonInteractive(options);
       break;
@@ -212,7 +225,8 @@ async function executeWalletCommand(
       console.error(chalk.red(`Unknown subcommand: ${subcommand}`));
       console.log();
       console.log(chalk.cyan('Available subcommands:'));
-      console.log('  connect    - Connect or create a wallet');
+      console.log('  create     - Create a wallet (supports --hsm ledger|sgx for air-gapped keygen)');
+      console.log('  connect    - Connect or create a wallet (interactive)');
       console.log('  disconnect - Disconnect wallet');
       console.log('  balance   - Check wallet balance');
       console.log('  send      - Send transaction');
@@ -227,6 +241,115 @@ async function executeWalletCommand(
       console.log('  queue     - Transaction queue operations (Phase 5)');
       process.exit(1);
   }
+}
+
+/**
+ * Create wallet – supports both software keygen and HSM/TEE keygen.
+ *
+ * Examples:
+ *   # Software keygen (default)
+ *   agentvault wallet create --chain cketh --agent-id my-agent
+ *
+ *   # Ledger hardware wallet (private key never leaves the device)
+ *   agentvault wallet create --chain cketh --agent-id my-agent --hsm ledger
+ *
+ *   # Intel SGX TEE (private key sealed inside enclave)
+ *   agentvault wallet create --chain cketh --agent-id my-agent --hsm sgx
+ *
+ *   # Custom derivation path on Ledger
+ *   agentvault wallet create --chain solana --agent-id my-agent \
+ *     --hsm ledger --hsm-path "m/44'/501'/0'/0'/0'"
+ */
+export async function handleCreate(options: WalletCommandOptions): Promise<void> {
+  const chain = normalizeChain(options.chain);
+  const agentId = getAgentId(options);
+
+  // ── HSM / TEE path ────────────────────────────────────────────────────────
+  if (options.hsm) {
+    const backend = options.hsm.toLowerCase();
+    if (backend !== 'ledger' && backend !== 'sgx') {
+      console.error(chalk.red(`Error: --hsm must be "ledger" or "sgx", got "${options.hsm}"`));
+      process.exit(1);
+    }
+
+    const spinner = ora(
+      backend === 'ledger'
+        ? 'Connecting to Ledger device… (unlock device and open the correct app)'
+        : 'Connecting to Intel SGX enclave…',
+    ).start();
+
+    // Probe availability before committing
+    const available = await isHsmAvailable(backend as 'ledger' | 'sgx');
+    if (!available) {
+      spinner.fail(
+        backend === 'ledger'
+          ? 'No Ledger device detected. Connect your Ledger, unlock it, and open the relevant app.'
+          : 'Intel SGX AESM daemon not found at /var/run/aesmd/aesm.socket. ' +
+              'Ensure the SGX driver and platform software are installed.',
+      );
+      process.exit(1);
+    }
+
+    spinner.text =
+      backend === 'ledger'
+        ? 'Deriving public key on Ledger (key never leaves device)…'
+        : 'Requesting public key from SGX enclave (key sealed inside TEE)…';
+
+    let wallet;
+    try {
+      wallet = await createWalletWithHsm({
+        agentId,
+        chain: chain as any,
+        hsmBackend: backend as 'ledger' | 'sgx',
+        derivationPath: options.hsmPath,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      spinner.fail(`HSM keygen failed: ${message}`);
+      process.exit(1);
+    }
+
+    spinner.succeed(
+      backend === 'ledger'
+        ? 'Public key received from Ledger — private key is air-gapped on device'
+        : 'Public key received from SGX enclave — private key is sealed in TEE',
+    );
+
+    const hsmMeta = wallet.chainMetadata?.hsm;
+    if (options.json) {
+      console.log(
+        JSON.stringify({
+          id: wallet.id,
+          chain: wallet.chain,
+          address: wallet.address,
+          publicKey: hsmMeta?.publicKeyHex ?? null,
+          privateKey: null,
+          mnemonic: null,
+          hsmBackend: backend,
+          hsmDeviceId: hsmMeta?.deviceId ?? null,
+          derivationPath: wallet.seedDerivationPath,
+        }),
+      );
+      return;
+    }
+
+    console.log();
+    console.log(chalk.green('✓ HSM wallet created'));
+    console.log(`  ID:              ${wallet.id}`);
+    console.log(`  Chain:           ${wallet.chain}`);
+    console.log(`  Address:         ${wallet.address}`);
+    console.log(`  Public key:      ${hsmMeta?.publicKeyHex ?? '(unavailable)'}`);
+    console.log(`  Backend:         ${backend}`);
+    console.log(`  Device ID:       ${hsmMeta?.deviceId ?? '(unavailable)'}`);
+    console.log(`  Derivation path: ${wallet.seedDerivationPath}`);
+    console.log();
+    console.log(chalk.dim('  Private key and mnemonic were never present in this process.'));
+    return;
+  }
+
+  // ── Software keygen (fallback) ─────────────────────────────────────────────
+  const wallet = generateWallet(agentId, chain);
+  printWalletResult(wallet, options.json);
 }
 
 /**

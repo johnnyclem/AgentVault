@@ -1,72 +1,231 @@
+// ──────────────────────────────────────────────────────────────────────────────
+//  AgentVault Canister – Candid Interface (Hardened)
+// ──────────────────────────────────────────────────────────────────────────────
+
+// ─── Shared Types ────────────────────────────────────────────────────────────
+
+type AgentConfig = record {
+  name      : text;
+  agentType : text;
+  version   : text;
+  createdAt : int;
+};
+
+type WasmMetadata = record {
+  hash              : vec nat8;
+  size              : nat;
+  loadedAt          : int;
+  functionNameCount : nat;
+};
+
+type Memory = record {
+  id         : text;
+  memoryType : variant { fact : null; user_preference : null; task_result : null };
+  content    : text;
+  timestamp  : int;
+  importance : nat8;
+};
+
+type Task = record {
+  id          : text;
+  description : text;
+  status      : variant { pending : null; running : null; completed : null; failed : null };
+  result      : opt text;
+  timestamp   : int;
+};
+
+type WalletInfo = record {
+  id           : text;
+  agentId      : text;
+  chain        : text;
+  address      : text;
+  registeredAt : int;
+  status       : variant { active : null; inactive : null; revoked : null };
+};
+
+type TransactionAction = record {
+  walletId   : text;
+  action     : variant { send_funds : null; sign_message : null; deploy_contract : null };
+  parameters : vec record { text; text };
+  priority   : variant { low : null; normal : null; high : null };
+  threshold  : opt nat;
+};
+
+type TransactionStatus = variant {
+  pending   : null;
+  queued    : null;
+  signed    : null;
+  completed : null;
+  failed    : null;
+};
+
+type QueuedTransaction = record {
+  id           : text;
+  action       : TransactionAction;
+  status       : TransactionStatus;
+  result       : opt text;
+  retryCount   : nat;
+  scheduledAt  : opt int;
+  createdAt    : int;
+  signedAt     : opt int;
+  completedAt  : opt int;
+  errorMessage : opt text;
+};
+
+type EncryptedSecret = record {
+  id         : text;
+  ciphertext : vec nat8;
+  iv         : vec nat8;
+  tag        : vec nat8;
+  algorithm  : variant { aes_256_gcm : null; chacha20_poly1305 : null };
+  createdAt  : int;
+};
+
+// ─── BLS Threshold Share Types (Production VetKeys) ──────────────────────────
+
+/// Public commitment record for one BLS12-381 key share.
+/// Private share scalars are never stored on-chain.
+type ThresholdShareCommitment = record {
+  /// 1-based participant index
+  index      : nat;
+  /// Compressed G1 hex of shareScalar · G1.BASE
+  publicKey  : text;
+  /// SHA-256 integrity tag: H(index_bytes ‖ shareScalar_bytes)
+  commitment : text;
+};
+
+/// Per-share health status from the heartbeat integrity check.
+type ShareHealthStatus = record {
+  index   : nat;
+  healthy : bool;
+  /// "ok" | "missing_pubkey" | "pubkey_too_short" | "commitment_too_short"
+  reason  : text;
+};
+
+// ─── Service ─────────────────────────────────────────────────────────────────
+
 service : {
-  // Agent Configuration
-  getAgentConfig : () -> (opt AgentConfig) query;
-  getAgentStatus : () -> (record { initialized : bool; version : text; totalMemories : nat; totalTasks : nat; wasmLoaded : bool; executionCount : nat; lastExecuted : int }) query;
-  setAgentConfig : (AgentConfig) -> (variant { ok : text; err : text });
 
-  // WASM Module Management
-  loadAgentWasm : (vec nat8, vec nat8) -> (variant { ok : text; err : text });
-  getWasmInfo : () -> (opt WasmMetadata) query;
-  isWasmLoaded : () -> (bool) query;
+  // ── Bootstrap & Owner Management ─────────────────────────────────────────
+  //
+  //  Lifecycle:
+  //    1. Call bootstrap()         – sets owner, initialises agent config.
+  //    2. Call completeBootstrap() – freezes canister (no writes without unlock).
+  //    3. Call manualUnlock()      – re-enable writes (owner only).
+  //    4. Call freeze()            – re-freeze (owner only).
+  //
+  //  Principal allowlist:
+  //    addAuthorizedPrincipal / removeAuthorizedPrincipal — owner only.
+  //
+  //  Kill-switch recovery:
+  //    reviveCanister()            – resets health-check counters (owner only).
 
-  // Agent Interface: State Functions
-  agent_init : (vec nat8) -> (variant { ok : vec nat8; err : text });
-  agent_step : (vec nat8) -> (variant { ok : vec nat8; err : text });
-  agent_get_state : () -> (vec nat8) query;
-  agent_get_state_size : () -> (nat) query;
+  bootstrap                : (AgentConfig) -> (variant { ok : text; err : text });
+  completeBootstrap        : ()            -> (variant { ok : text; err : text });
+  manualUnlock             : ()            -> (variant { ok : text; err : text });
+  freeze                   : ()            -> (variant { ok : text; err : text });
+  addAuthorizedPrincipal   : (principal)  -> (variant { ok : text; err : text });
+  removeAuthorizedPrincipal: (principal)  -> (variant { ok : text; err : text });
+  reviveCanister           : ()            -> (variant { ok : text; err : text });
 
-  // Agent Interface: Memory Functions
-  agent_add_memory : (nat, vec nat8) -> (variant { ok : vec nat8; err : text });
-  agent_get_memories : () -> (vec nat8) query;
-  agent_get_memories_by_type : (nat) -> (vec nat8) query;
-  agent_clear_memories : () -> (variant { ok : vec nat8; err : text });
+  // ── Security & Health Queries ─────────────────────────────────────────────
 
-  // Agent Interface: Task Functions
-  agent_add_task : (vec nat8, vec nat8) -> (variant { ok : vec nat8; err : text });
-  agent_get_tasks : () -> (vec nat8) query;
-  agent_get_pending_tasks : () -> (vec nat8) query;
-  agent_update_task_status : (vec nat8, nat, vec nat8) -> (variant { ok : vec nat8; err : text });
-  agent_clear_tasks : () -> (variant { ok : vec nat8; err : text });
+  getSecurityStatus : () -> (record {
+    owner             : text;
+    frozenMode        : bool;
+    bootstrapComplete : bool;
+    canisterKilled    : bool;
+    authorizedCount   : nat;
+    heapBytes         : nat;
+  }) query;
 
-  // Agent Interface: Info Function
-  agent_get_info : () -> (vec nat8) query;
+  getHealthStatus : () -> (record {
+    alive               : bool;
+    killed              : bool;
+    lastCheckNs         : int;
+    consecutiveTimeouts : nat;
+    totalChecks         : nat;
+    lastStatus          : text;
+  }) query;
 
-  // Legacy Functions
-  execute : (text) -> (variant { ok : text; err : text });
-  addMemory : (Memory) -> (variant { ok : text; err : text });
-  getMemories : () -> (vec Memory) query;
-  getMemoriesByType : (variant { fact : null; user_preference : null; task_result : null }) -> (vec Memory) query;
-  clearMemories : () -> (text);
-  addTask : (Task) -> (variant { ok : text; err : text });
-  getTasks : () -> (vec Task) query;
-  getPendingTasks : () -> (vec Task) query;
-  getRunningTasks : () -> (vec Task) query;
-  updateTaskStatus : (text, variant { pending : null; running : null; completed : null; failed : null }, opt text) -> (variant { ok : text; err : text });
-  clearTasks : () -> (text);
-  setContext : (text, text) -> (text);
-  getContext : (text) -> (opt text) query;
-  getAllContext : () -> (vec (text, text)) query;
-  clearContext : () -> (text);
+  // ── Transaction Queue (Phase 5B) ─────────────────────────────────────────
 
-  // Wallet Registry Functions (Phase 5A)
-  registerWallet : (WalletInfo) -> (variant { ok : text; err : text });
-  getWallet : (text) -> (opt WalletInfo) query;
-  listWallets : (text) -> (vec WalletInfo) query;
-  deregisterWallet : (text) -> (variant { ok : text; err : text });
-  updateWalletStatus : (text, variant { active : null; inactive : null; revoked : null }) -> (variant { ok : text; err : text });
+  queueTransaction             : (TransactionAction) -> (variant { ok : text; err : text });
+  getQueuedTransactions        : ()                  -> (vec QueuedTransaction) query;
+  getPendingTransactions       : ()                  -> (vec QueuedTransaction) query;
+  getQueuedTransactionsByWallet: (text)              -> (vec QueuedTransaction) query;
+  getQueuedTransaction         : (text)              -> (opt QueuedTransaction) query;
+  markTransactionSigned        : (text, text)        -> (variant { ok : text; err : text });
+  markTransactionCompleted     : (text, text)        -> (variant { ok : text; err : text });
+  markTransactionFailed        : (text, text)        -> (variant { ok : text; err : text });
+  retryTransaction             : (text)              -> (variant { ok : text; err : text });
+  scheduleTransaction          : (text, int)         -> (variant { ok : text; err : text });
+  clearCompletedTransactions   : ()                  -> (text);
+  getTransactionQueueStats     : () -> (record {
+    total : nat; pending : nat; queued : nat; signed : nat; completed : nat; failed : nat;
+  }) query;
 
-  // System Functions
-  getCanisterStatus : () -> (record { status : variant { running : null; stopping : null; stopped : null }; memorySize : nat; cycles : nat }) query;
-  getMetrics : () -> (record { uptime : int; operations : nat; lastActivity : int }) query;
-  heartbeat : () -> (bool);
+  // ── Wallet Registry (Phase 5A) ────────────────────────────────────────────
+
+  registerWallet    : (WalletInfo) -> (variant { ok : text; err : text });
+  getWallet         : (text)       -> (opt WalletInfo) query;
+  listWallets       : (text)       -> (vec WalletInfo) query;
+  deregisterWallet  : (text)       -> (variant { ok : text; err : text });
+  updateWalletStatus: (text, variant { active : null; inactive : null; revoked : null })
+                                   -> (variant { ok : text; err : text });
+
+  // ── VetKeys Encrypted Secrets (Phase 5D) ─────────────────────────────────
+
+  storeEncryptedSecret     : (EncryptedSecret) -> (variant { ok : text; err : text });
+  getEncryptedSecret       : (text)            -> (opt EncryptedSecret) query;
+  listEncryptedSecrets     : ()                -> (vec EncryptedSecret) query;
+  deleteEncryptedSecret    : (text)            -> (variant { ok : text; err : text });
+
+  // Production threshold signature verification (checks registry + signature length).
+  verifyThresholdSignature : (text, text)      -> (variant { ok : text; err : text }) query;
+  deriveVetKeysKey         : (text, nat)       -> (variant { ok : text; err : text });
+
+  // Returns #production once initializeThresholdShares has been called.
+  getVetKeysStatus         : () -> (record {
+    enabled : bool; thresholdSupported : bool;
+    mode    : variant { mock : null; production : null };
+  }) query;
+
+  // ── Production VetKeys: BLS Threshold Share Registration ─────────────────
+  //
+  // Call after bootstrap() to register public BLS share commitments.
+  // Private share scalars MUST NOT be included — they remain off-chain.
+
+  initializeThresholdShares : (
+    masterPublicKey  : text,
+    vssCommitments   : vec text,
+    shareCommitments : vec ThresholdShareCommitment,
+    groupCommitment  : text,
+    threshold        : nat,
+    totalParties     : nat
+  ) -> (variant { ok : text; err : text });
+
+  // Returns share health reports produced by the heartbeat integrity check.
+  getShareHealthStatus : () -> (record {
+    initialized     : bool;
+    threshold       : nat;
+    totalParties    : nat;
+    allHealthy      : bool;
+    reports         : vec ShareHealthStatus;
+    masterPublicKey : text;
+    groupCommitment : text;
+    lastCheckNs     : int;
+  }) query;
+
+  // ── System ────────────────────────────────────────────────────────────────
+
+  getCanisterStatus : () -> (record {
+    status     : variant { running : null; stopping : null; stopped : null };
+    memorySize : nat;
+    cycles     : nat;
+  }) query;
+
+  getMetrics : () -> (record {
+    uptime : int; operations : nat; lastActivity : int;
+  }) query;
 }
-
-type AgentConfig = record { name : text; agentType : text; version : text; createdAt : int };
-
-type WasmMetadata = record { hash : vec nat8; size : nat; loadedAt : int; functionNameCount : nat };
-
-type Memory = record { id : text; memoryType : variant { fact : null; user_preference : null; task_result : null }; content : text; timestamp : int; importance : nat8 };
-
-type Task = record { id : text; description : text; status : variant { pending : null; running : null; completed : null; failed : null }; result : opt text; timestamp : int };
-
-type WalletInfo = record { id : text; agentId : text; chain : text; address : text; registeredAt : int; status : variant { active : null; inactive : null; revoked : null } };

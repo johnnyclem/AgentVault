@@ -3,12 +3,17 @@ import chalk from 'chalk';
 import ora from 'ora';
 import {
   exportBackup,
+  fullBackup,
   previewBackup,
   importBackup,
   listBackups,
   deleteBackup,
   formatBackupSize,
 } from '../../src/backup/index.js';
+import {
+  serializeThoughtformBundle,
+  deserializeThoughtformBundle,
+} from '../../src/backup/thoughtform-bundle.js';
 
 const backupCmd = new Command('backup');
 
@@ -28,37 +33,119 @@ backupCmd
   .command('export')
   .description('Export agent configuration and data to a backup file')
   .argument('<agent-name>', 'Agent name to backup')
-  .option('-o, --output <path>', 'Output file path', './backup.json')
+  .option('-o, --output <path>', 'Output file path (default: ./backup.json or ./backup.zip for --full)')
   .option('-c, --canister-id <id>', 'Canister ID to include live canister state')
   .option('--no-canister-state', 'Skip fetching canister state even if canister ID provided')
+  .option(
+    '--full',
+    'Create a full encrypted backup: Merkle-root manifest + AES-256-GCM payload + ed25519-signed key'
+  )
+  .option('--signing-key <path>', 'Path to ed25519 signing key file (auto-created if absent)')
+  .option('-t, --type <type>', 'Backup type (default, thoughtform-bundle)', 'default')
   .action(async (agentName, options) => {
-    const outputPath = options.output.endsWith('.json') ? options.output : `${options.output}.json`;
+    const backupType = options.type as 'default' | 'thoughtform-bundle';
+    const isFull: boolean = Boolean(options.full);
     const includeCanisterState = options.canisterId ? options.canisterState !== false : false;
-    const spinner = ora(`Exporting backup for ${agentName}...`).start();
 
-    try {
-      const result = await exportBackup({
-        agentName,
-        outputPath,
-        includeConfig: true,
-        canisterId: options.canisterId,
-        includeCanisterState,
-      });
+    if (backupType === 'thoughtform-bundle') {
+      // Thoughtform-bundle: gzipped JSON bundle
+      const defaultOut = `${agentName}.thoughtform-bundle.json.gz`;
+      const outputPath = options.output ?? defaultOut;
+      const spinner = ora(`Creating thoughtform-bundle backup for ${agentName}...`).start();
 
-      if (result.success && result.path && result.manifest) {
-        spinner.succeed(chalk.green(`Backup exported to ${result.path}`));
-        const sizeBytes = result.sizeBytes || result.manifest.size;
-        console.log(chalk.gray(`Size: ${formatBackupSize(sizeBytes)}`));
-        console.log(chalk.gray(`Components: ${result.manifest.components.join(', ')}`));
-      } else {
-        spinner.fail(chalk.red('Backup export failed'));
+      try {
+        const result = await serializeThoughtformBundle({
+          agentName,
+          outputPath,
+          includeConfig: true,
+          canisterId: options.canisterId,
+          includeCanisterState,
+        });
+
+        if (result.success && result.path && result.manifest) {
+          spinner.succeed(chalk.green(`Thoughtform-bundle written to ${result.path}`));
+          const sizeBytes = result.sizeBytes ?? result.manifest.size;
+          console.log(chalk.gray(`Size:       ${formatBackupSize(sizeBytes)}`));
+          console.log(chalk.gray(`Components: ${result.manifest.components.join(', ')}`));
+          console.log(chalk.gray(`Format:     thoughtform-bundle (gzipped JSON)`));
+        } else {
+          spinner.fail(chalk.red(`Thoughtform-bundle backup failed: ${result.error ?? 'unknown error'}`));
+          process.exit(1);
+        }
+      } catch (error) {
+        spinner.fail(chalk.red('Thoughtform-bundle backup failed'));
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error(chalk.red(message));
         process.exit(1);
       }
-    } catch (error) {
-      spinner.fail(chalk.red('Backup export failed'));
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      console.error(chalk.red(message));
-      process.exit(1);
+      return;
+    }
+
+    if (isFull) {
+      // Full encrypted backup
+      const defaultOut = `./backup-${agentName}.zip`;
+      const outputPath = options.output ?? defaultOut;
+      const spinner = ora(`Creating full encrypted backup for ${agentName}...`).start();
+
+      try {
+        const result = await fullBackup({
+          agentName,
+          outputPath,
+          includeConfig: true,
+          canisterId: options.canisterId,
+          includeCanisterState,
+          signingKeyPath: options.signingKey,
+        });
+
+        if (result.success && result.path && result.manifest) {
+          spinner.succeed(chalk.green(`Full backup written to ${result.path}`));
+          const sizeBytes = result.sizeBytes ?? result.manifest.size;
+          console.log(chalk.gray(`Size:             ${formatBackupSize(sizeBytes)}`));
+          console.log(chalk.gray(`Components:       ${result.manifest.components.join(', ')}`));
+          console.log(chalk.cyan(`Merkle root:      ${result.merkleRoot}`));
+          console.log(chalk.cyan(`ed25519 pubkey:   ${result.ed25519PublicKey}`));
+          console.log(chalk.cyan(`Key signature:    ${result.manifest.keySignature?.slice(0, 32)}...`));
+        } else {
+          spinner.fail(chalk.red(`Full backup failed: ${result.error ?? 'unknown error'}`));
+          process.exit(1);
+        }
+      } catch (error) {
+        spinner.fail(chalk.red('Full backup export failed'));
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error(chalk.red(message));
+        process.exit(1);
+      }
+    } else {
+      // Standard JSON backup (existing behaviour)
+      const defaultOut = './backup.json';
+      const rawOut = options.output ?? defaultOut;
+      const outputPath = rawOut.endsWith('.json') ? rawOut : `${rawOut}.json`;
+      const spinner = ora(`Exporting backup for ${agentName}...`).start();
+
+      try {
+        const result = await exportBackup({
+          agentName,
+          outputPath,
+          includeConfig: true,
+          canisterId: options.canisterId,
+          includeCanisterState,
+        });
+
+        if (result.success && result.path && result.manifest) {
+          spinner.succeed(chalk.green(`Backup exported to ${result.path}`));
+          const sizeBytes = result.sizeBytes ?? result.manifest.size;
+          console.log(chalk.gray(`Size: ${formatBackupSize(sizeBytes)}`));
+          console.log(chalk.gray(`Components: ${result.manifest.components.join(', ')}`));
+        } else {
+          spinner.fail(chalk.red('Backup export failed'));
+          process.exit(1);
+        }
+      } catch (error) {
+        spinner.fail(chalk.red('Backup export failed'));
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error(chalk.red(message));
+        process.exit(1);
+      }
     }
   });
 
@@ -68,7 +155,32 @@ backupCmd
   .argument('<file>', 'Backup file path to import')
   .option('--name <name>', 'New agent name (defaults to original)')
   .option('--overwrite', 'Overwrite existing agent configuration')
+  .option('-t, --type <type>', 'Backup type (default, thoughtform-bundle)', 'default')
   .action(async (filePath, options) => {
+    const importType = options.type as 'default' | 'thoughtform-bundle';
+
+    // Auto-detect thoughtform-bundle from file extension
+    const isThoughtformBundle =
+      importType === 'thoughtform-bundle' || filePath.endsWith('.thoughtform-bundle.json.gz');
+
+    if (isThoughtformBundle) {
+      const spinner = ora(`Importing thoughtform-bundle from ${filePath}...`).start();
+      try {
+        const bundle = await deserializeThoughtformBundle(filePath);
+        const targetName = options.name || bundle.manifest.agentName;
+        spinner.succeed(chalk.green(`Thoughtform-bundle imported for ${targetName}`));
+        console.log(chalk.gray(`Components: ${bundle.manifest.components.join(', ')}`));
+        console.log(chalk.gray(`Created:    ${bundle.createdAt}`));
+        console.log(chalk.gray(`Entries:    ${Object.keys(bundle.entries).length}`));
+      } catch (error) {
+        spinner.fail(chalk.red('Thoughtform-bundle import failed'));
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error(chalk.red(message));
+        process.exit(1);
+      }
+      return;
+    }
+
     const spinner = ora(`Importing backup from ${filePath}...`).start();
 
     try {

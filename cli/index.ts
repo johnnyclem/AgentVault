@@ -46,6 +46,25 @@ import { cloudBackupCmd } from './commands/cloud-backup.js';
 // Phase 5 commands
 import { vaultCmd } from './commands/vault.js';
 
+// Phase 6 commands (PRD-004: Private ICP Replica)
+import { pilotCmd } from './commands/pilot.js';
+// iOS skills command
+import { skillsCmd } from './commands/skills.js';
+// Phase 6 commands
+import { orchestrateCmd } from './commands/orchestrate.js';
+// Google ADK / A2A agent minting
+import { mintCmd } from './commands/mint.js';
+
+// Fault Tolerance commands
+import { cronCmd } from './commands/cron.js';
+import { mirrorCmd } from './commands/mirror.js';
+
+// Security & audit commands
+import { repoCmd } from './commands/repo.js';
+
+// MemoryRepo commands
+import { memoryCmd } from './commands/memory.js';
+
 export function createProgram(): Command {
   const program = new Command();
 
@@ -95,6 +114,25 @@ export function createProgram(): Command {
 
   // Phase 5 commands
   program.addCommand(vaultCmd);
+
+  // Phase 6 commands (PRD-004: Private ICP Replica)
+  program.addCommand(pilotCmd);
+  // iOS skills command
+  program.addCommand(skillsCmd);
+  // Phase 6 commands
+  program.addCommand(orchestrateCmd());
+  // Google ADK / A2A agent minting
+  program.addCommand(mintCmd());
+
+  // Fault Tolerance commands
+  program.addCommand(cronCmd());
+  program.addCommand(mirrorCmd());
+
+  // Security & audit commands
+  program.addCommand(repoCmd);
+
+  // MemoryRepo commands
+  program.addCommand(memoryCmd);
 
   return program;
 }

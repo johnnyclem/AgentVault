@@ -2,15 +2,48 @@
  * Bittensor Client
  *
  * Handles interaction with Bittensor network for AI inference queries.
- * Supports subnet discovery, module queries, and response handling.
+ * Supports subnet discovery, module queries, neuron queries, and response handling.
+ * Supports wallet hotkey authentication for authenticated inference requests.
  */
 
+import crypto from 'node:crypto';
 
+export interface WalletConfig {
+  /** ss58-encoded hotkey address (public key) */
+  hotkey: string;
+  /** ss58-encoded coldkey address (public key, optional) */
+  coldkey?: string;
+  /** Hotkey private key hex for signing requests (32 bytes hex) */
+  hotkeySecret?: string;
+}
 
 export interface BittensorConfig {
   apiEndpoint?: string;
   timeout?: number;
   apiKey?: string;
+  /** Wallet for authenticated requests */
+  wallet?: WalletConfig;
+}
+
+export interface NeuronInfo {
+  uid: number;
+  hotkey: string;
+  coldkey: string;
+  stake: number;
+  trust: number;
+  consensus: number;
+  incentive: number;
+  dividends: number;
+  emission: number;
+  rank: number;
+  validator_permit: boolean;
+  active: boolean;
+  axon_info?: {
+    ip: string;
+    port: number;
+    version: number;
+    protocol: number;
+  };
 }
 
 export interface SubnetInfo {
@@ -57,7 +90,7 @@ export interface InferenceResponse {
 }
 
 export class BittensorClient {
-  private config: Required<BittensorConfig>;
+  private config: Required<Omit<BittensorConfig, 'wallet'>> & { wallet?: WalletConfig };
   private axiosInstance: any = null;
 
   constructor(config: BittensorConfig = {}) {
@@ -65,6 +98,7 @@ export class BittensorClient {
       apiEndpoint: config.apiEndpoint || 'https://api.bittensor.com',
       timeout: config.timeout || 30000,
       apiKey: config.apiKey || '',
+      wallet: config.wallet,
     };
   }
 
@@ -80,10 +114,35 @@ export class BittensorClient {
         headers: {
           'Content-Type': 'application/json',
           ...(this.config.apiKey && { 'X-API-Key': this.config.apiKey }),
+          ...(this.config.wallet?.hotkey && { 'X-Hotkey': this.config.wallet.hotkey }),
         },
       });
     }
     return this.axiosInstance;
+  }
+
+  /**
+   * Sign a request payload with the wallet hotkey secret (HMAC-SHA256).
+   * In production this would use sr25519 or ed25519 signing.
+   */
+  private signPayload(payload: string): string | undefined {
+    const secret = this.config.wallet?.hotkeySecret;
+    if (!secret) return undefined;
+    return crypto.createHmac('sha256', secret).update(payload).digest('hex');
+  }
+
+  /**
+   * Build authentication headers for a request
+   */
+  private buildAuthHeaders(payload?: string): Record<string, string> {
+    const headers: Record<string, string> = {};
+    if (!this.config.wallet?.hotkey) return headers;
+    headers['X-Hotkey'] = this.config.wallet.hotkey;
+    if (payload) {
+      const sig = this.signPayload(payload);
+      if (sig) headers['X-Signature'] = sig;
+    }
+    return headers;
   }
 
   /**
@@ -157,6 +216,73 @@ export class BittensorClient {
     } catch (error) {
       console.error(`Failed to fetch module ${netuid}/${uid}:`, error);
       return null;
+    }
+  }
+
+  /**
+   * Get all neurons for a subnet via the /neurons endpoint.
+   * Requires a wallet hotkey for authenticated access.
+   */
+  async getNeurons(netuid: number): Promise<NeuronInfo[]> {
+    try {
+      const client = await this.getClient();
+      const authHeaders = this.buildAuthHeaders(String(netuid));
+      const response = await client.get(`/neurons/${netuid}`, {
+        headers: authHeaders,
+      });
+      return response.data.neurons || response.data || [];
+    } catch (error) {
+      console.error(`Failed to fetch neurons for subnet ${netuid}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Perform an inference request authenticated with wallet hotkey.
+   * Returns the result and whether the response time is under 1 second.
+   */
+  async inferWithWallet(request: InferenceRequest): Promise<InferenceResponse & { subSecond?: boolean }> {
+    const startTime = Date.now();
+    const body = JSON.stringify({
+      uid: request.uid,
+      inputs: request.inputs,
+      timeout: request.timeout || this.config.timeout,
+    });
+
+    try {
+      const client = await this.getClient();
+      const authHeaders = this.buildAuthHeaders(body);
+      const response = await client.post(
+        `/neurons/${request.netuid}/infer`,
+        JSON.parse(body),
+        { headers: authHeaders },
+      );
+
+      const responseTime = Date.now() - startTime;
+
+      if (response.data.success) {
+        return {
+          success: true,
+          data: response.data.output,
+          metadata: {
+            uid: response.data.uid,
+            name: response.data.name,
+            netuid: request.netuid,
+            responseTime,
+          },
+          subSecond: responseTime < 1000,
+        };
+      } else {
+        return {
+          success: false,
+          error: response.data.error || 'Inference failed',
+        };
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
     }
   }
 

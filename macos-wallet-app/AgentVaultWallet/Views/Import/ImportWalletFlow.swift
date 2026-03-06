@@ -380,9 +380,9 @@ struct ImportCompleteView: View {
 
             if let wallet = wallet {
                 VStack(spacing: 12) {
-                    InfoRow(label: "Network", value: chain.displayName)
-                    InfoRow(label: "Name", value: wallet.name)
-                    InfoRow(label: "Address", value: wallet.shortAddress)
+                    WalletInfoRow(label: "Network", value: chain.displayName)
+                    WalletInfoRow(label: "Name", value: wallet.name)
+                    WalletInfoRow(label: "Address", value: wallet.shortAddress)
                 }
                 .padding()
                 .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))

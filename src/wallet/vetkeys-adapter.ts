@@ -6,6 +6,7 @@
  */
 
 import type { WalletData, TransactionRequest } from './types.js';
+import { debugLog } from '../debugging/debug-logger.js';
 
 /**
  * Threshold signature result
@@ -154,7 +155,7 @@ export class VetKeysAdapter {
     wallet: WalletData,
     request: TransactionRequest
   ): Promise<ThresholdSignatureResult> {
-    console.log(`Initiating threshold signature for ${transactionId}...`);
+    debugLog(`Initiating threshold signature for ${transactionId}...`);
 
     if (this.options.threshold && this.options.threshold > 1) {
       const { VetKeysImplementation } = await import('../security/vetkeys.js');
@@ -174,7 +175,7 @@ export class VetKeysAdapter {
       try {
         const derived = await client.deriveThresholdKey(mnemonic);
 
-        console.log('Threshold key derived successfully');
+        debugLog('Threshold key derived successfully');
 
         return {
           transactionId,
@@ -191,7 +192,7 @@ export class VetKeysAdapter {
         };
       }
     } else {
-      console.log('Threshold is 1, using direct signing');
+      debugLog('Threshold is 1, using direct signing');
 
       const { createWalletProvider } = await import('./index.js');
       const provider = createWalletProvider(wallet.chain, { isTestnet: false });
@@ -228,7 +229,7 @@ export class VetKeysAdapter {
     partialSignatures: string[],
     canisterConnected: boolean = false
   ): Promise<{ success: boolean; combinedSignature?: string; error?: string }> {
-    console.log(`Combining ${partialSignatures.length} partial signatures...`);
+    debugLog(`Combining ${partialSignatures.length} partial signatures...`);
 
     const threshold = this.options.threshold ?? 2;
 
@@ -272,7 +273,7 @@ export class VetKeysAdapter {
 
       const combined = crypto.createHash('sha256').update(combinedData).digest('hex');
 
-      console.log('Signatures combined successfully ( VetKeys canister mode)');
+      debugLog('Signatures combined successfully (VetKeys canister mode)');
 
       return {
         success: true,
@@ -302,7 +303,7 @@ export class VetKeysAdapter {
     transaction: TransactionRequest,
     canisterConnected: boolean = false
   ): Promise<{ valid: boolean; error?: string }> {
-    console.log('Verifying signature...');
+    debugLog('Verifying signature...');
 
     if (!signature || typeof signature !== 'string') {
       return { valid: false, error: 'Signature must be a non-empty string' };
@@ -321,7 +322,7 @@ export class VetKeysAdapter {
     }
 
     if (!canisterConnected) {
-      console.log('Warning: VetKeys canister not connected, signature format validated only');
+      debugLog('Warning: VetKeys canister not connected, signature format validated only');
       return {
         valid: false,
         error: 'VetKeys canister not connected: threshold signature verification requires deployed VetKeys canister. Use single-party verification or deploy the VetKeys canister.',
@@ -344,9 +345,9 @@ export class VetKeysAdapter {
       const isValid = signature.includes(expectedHash.slice(0, 32));
 
       if (isValid) {
-        console.log('Signature verified successfully (VetKeys canister mode)');
+        debugLog('Signature verified successfully (VetKeys canister mode)');
       } else {
-        console.log('Signature verification failed');
+        debugLog('Signature verification failed');
       }
 
       return { valid: isValid };
@@ -401,7 +402,7 @@ export class VetKeysAdapter {
       return status && typeof status === 'object' && 'enabled' in status;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      console.warn(`VetKeys canister not accessible: ${message}`);
+      debugLog(`VetKeys canister not accessible: ${message}`);
       return false;
     }
   }
