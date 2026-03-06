@@ -53,6 +53,22 @@ type MergeResult = variant {
   err       : text;
 };
 
+type ThoughtFormStore = record {
+  id        : text;
+  content   : text;
+  tags      : vec text;
+  timestamp : int;
+};
+
+type ThoughtFormCommit = record {
+  hash         : text;
+  parentHash   : opt text;
+  branch       : text;
+  thoughtforms : vec ThoughtFormStore;
+  timestamp    : int;
+  message      : text;
+};
+
 // ─── Service ─────────────────────────────────────────────────────────────────
 
 service : {
@@ -87,6 +103,13 @@ service : {
   getBranches  : () -> (vec record { text; text }) query;
   createBranch : (text) -> (variant { ok : text; err : text });
   switchBranch : (text) -> (variant { ok : text; err : text });
+
+  // ── ThoughtForm Commits ────────────────────────────────────────────────
+
+  store_thoughtform : (ThoughtFormStore, opt text, text) -> (variant { ok : text; err : text });
+  get_latest_commit : (text) -> (opt ThoughtFormCommit) query;
+  get_tf_commit     : (text) -> (opt ThoughtFormCommit) query;
+  get_tf_branches   : () -> (vec record { text; text }) query;
 
   // ── Rebase (PRD 3) ─────────────────────────────────────────────────────
 

@@ -94,6 +94,24 @@ actor MemoryRepo {
     heapBytes         : Nat;
   };
 
+  /// A stored ThoughtForm entry.
+  public type ThoughtFormStore = {
+    id        : Text;
+    content   : Text;
+    tags      : [Text];
+    timestamp : Int;
+  };
+
+  /// A commit that snapshots one or more ThoughtForms.
+  public type ThoughtFormCommit = {
+    hash         : Text;
+    parentHash   : ?Text;
+    branch       : Text;
+    thoughtforms : [ThoughtFormStore];
+    timestamp    : Int;
+    message      : Text;
+  };
+
   // ==================== Stable State ====================
 
   stable var owner             : Principal      = ANON;
@@ -105,6 +123,12 @@ actor MemoryRepo {
   stable var branches          : [(Text, Text)] = []; // (name, headCommitId)
   stable var currentBranch     : Text           = "main";
   stable var nextCommitSeq     : Nat            = 0;
+
+  // ThoughtForm commit storage: flat list + per-branch HEAD pointers
+  stable var tfCommits         : [ThoughtFormCommit] = [];
+  stable var tfBranches        : [(Text, Text)]      = []; // (branch, headHash)
+  let MAX_TF_COMMITS : Nat     = 10_000;
+  let MAX_TF_CONTENT : Nat     = 1_048_576; // 1 MB per thoughtform content
 
   // ==================== Upgrade Guards ====================
 
@@ -779,6 +803,130 @@ actor MemoryRepo {
       };
     };
   };
+
+  // ==================== ThoughtForm Commits ====================
+
+  /// Get the HEAD hash of a ThoughtForm branch, or null if not found.
+  private func getTfBranchHead(branchName : Text) : ?Text {
+    for ((name, head) in tfBranches.vals()) {
+      if (name == branchName) { return ?head };
+    };
+    null
+  };
+
+  /// Update (or insert) the HEAD of a ThoughtForm branch.
+  private func updateTfBranchHead(branchName : Text, hash : Text) {
+    var found = false;
+    tfBranches := Array.map<(Text, Text), (Text, Text)>(
+      tfBranches,
+      func (entry : (Text, Text)) : (Text, Text) {
+        if (entry.0 == branchName) {
+          found := true;
+          (branchName, hash)
+        } else { entry }
+      }
+    );
+    if (not found) {
+      tfBranches := Array.append<(Text, Text)>(tfBranches, [(branchName, hash)]);
+    };
+  };
+
+  /// Find a ThoughtForm commit by hash.
+  private func findTfCommit(hash : Text) : ?ThoughtFormCommit {
+    for (c in tfCommits.vals()) {
+      if (c.hash == hash) { return ?c };
+    };
+    null
+  };
+
+  /// Generate a unique hash for a ThoughtForm commit.
+  private func generateTfHash() : Text {
+    let h = "tf_" # Int.toText(Time.now()) # "_" # Nat.toText(nextCommitSeq);
+    nextCommitSeq += 1;
+    h
+  };
+
+  /// Store a ThoughtForm as a new commit on the given branch (defaults to "main").
+  /// Each call creates a commit linked to the previous HEAD of that branch.
+  public shared(msg) func store_thoughtform(
+    thoughtform : ThoughtFormStore,
+    branchOpt   : ?Text,
+    message     : Text
+  ) : async { #ok : Text; #err : Text } {
+    assertWriteAllowed(msg.caller);
+
+    if (not initialized) {
+      return #err("Repository not initialized — call initRepo first");
+    };
+
+    if (tfCommits.size() >= MAX_TF_COMMITS) {
+      return #err("ThoughtForm commit limit reached (" # Nat.toText(MAX_TF_COMMITS) # ")");
+    };
+
+    if (Text.size(thoughtform.content) > MAX_TF_CONTENT) {
+      return #err("ThoughtForm content exceeds maximum size of 1 MB");
+    };
+
+    switch (validateMessage(message)) {
+      case (?e) { return #err(e) };
+      case null {};
+    };
+
+    let branch = switch (branchOpt) {
+      case null { "main" };
+      case (?b) { b };
+    };
+
+    let parentHash = getTfBranchHead(branch);
+
+    // Collect parent's thoughtforms and append the new one for a full snapshot
+    let existingForms : [ThoughtFormStore] = switch (parentHash) {
+      case null { [] };
+      case (?ph) {
+        switch (findTfCommit(ph)) {
+          case null { [] };
+          case (?pc) { pc.thoughtforms };
+        };
+      };
+    };
+
+    let updatedForms = Array.append<ThoughtFormStore>(existingForms, [thoughtform]);
+
+    let hash = generateTfHash();
+    let newCommit : ThoughtFormCommit = {
+      hash         = hash;
+      parentHash   = parentHash;
+      branch       = branch;
+      thoughtforms = updatedForms;
+      timestamp    = Time.now();
+      message      = message;
+    };
+
+    tfCommits := Array.append<ThoughtFormCommit>(tfCommits, [newCommit]);
+    updateTfBranchHead(branch, hash);
+
+    #ok(hash)
+  };
+
+  /// Query the latest ThoughtForm commit on a branch.
+  public query func get_latest_commit(branchName : Text) : async ?ThoughtFormCommit {
+    switch (getTfBranchHead(branchName)) {
+      case null { null };
+      case (?hash) { findTfCommit(hash) };
+    };
+  };
+
+  /// Query a specific ThoughtForm commit by hash.
+  public query func get_tf_commit(hash : Text) : async ?ThoughtFormCommit {
+    findTfCommit(hash)
+  };
+
+  /// Query all ThoughtForm branch names and their HEAD hashes.
+  public query func get_tf_branches() : async [(Text, Text)] {
+    tfBranches
+  };
+
+  // ==================== Merge & Cherry-Pick ====================
 
   /// Cherry-pick a single commit by ID onto the current branch.
   public shared(msg) func cherryPick(commitId : Text) : async { #ok : Text; #err : Text } {
