@@ -27,6 +27,7 @@ import Array     "mo:base/Array";
 import Principal "mo:base/Principal";
 import Prim      "mo:prim";
 import Debug     "mo:base/Debug";
+import Order     "mo:base/Order";
 
 actor MemoryRepo {
 
@@ -555,6 +556,36 @@ actor MemoryRepo {
       totalBranches = branches.size();
       owner         = Principal.toText(owner);
     }
+  };
+
+  // ==================== ThoughtForm Queries ====================
+
+  /// Fetch thoughtform entries as JSON text strings.
+  /// Filters commits tagged "thoughtform" with timestamp > since (or all if null).
+  /// Returns diff (JSON) payloads sorted by timestamp descending.
+  /// Decryption is stubbed — encrypted payloads returned as-is for now.
+  public query func fetch_thoughtforms(since : ?Int) : async [Text] {
+    // Filter commits that carry the "thoughtform" tag
+    let thoughtforms = Array.filter<Commit>(commits, func (c : Commit) : Bool {
+      let hasTag = Array.find<Text>(c.tags, func (t : Text) : Bool { t == "thoughtform" });
+      switch (hasTag) {
+        case null { return false };
+        case (?_) {};
+      };
+      // Apply timestamp filter
+      switch (since) {
+        case null { true };
+        case (?s) { c.timestamp > s };
+      };
+    });
+
+    // Sort by timestamp descending
+    let sorted = Array.sort<Commit>(thoughtforms, func (a : Commit, b : Commit) : Order.Order {
+      Int.compare(b.timestamp, a.timestamp)
+    });
+
+    // Map to JSON text (diff field) — decrypt stub: return as-is
+    Array.map<Commit, Text>(sorted, func (c : Commit) : Text { c.diff })
   };
 
   // ==================== PRD 3: Rebase ====================

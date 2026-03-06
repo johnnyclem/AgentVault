@@ -88,6 +88,10 @@ service : {
   createBranch : (text) -> (variant { ok : text; err : text });
   switchBranch : (text) -> (variant { ok : text; err : text });
 
+  // ── ThoughtForm Queries ────────────────────────────────────────────────
+
+  fetch_thoughtforms : (opt int) -> (vec text) query;
+
   // ── Rebase (PRD 3) ─────────────────────────────────────────────────────
 
   rebase : (text, opt text) -> (RebaseResult);
