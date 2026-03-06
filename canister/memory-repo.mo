@@ -25,6 +25,7 @@ import Time      "mo:base/Time";
 import Text      "mo:base/Text";
 import Array     "mo:base/Array";
 import Principal "mo:base/Principal";
+import Nat64     "mo:base/Nat64";
 import Prim      "mo:prim";
 import Debug     "mo:base/Debug";
 import Order     "mo:base/Order";
@@ -43,6 +44,9 @@ actor MemoryRepo {
   let MAX_TAGS         : Nat  = 20;
   let MAX_BRANCH_NAME  : Nat  = 64;
   let MAX_CHAIN_DEPTH  : Nat  = 10_000;
+  let MAX_THOUGHT_FORMS: Nat  = 10_000;
+  let MAX_THOUGHT_JSON : Nat  = 1_048_576;  // 1 MB
+  let MAX_THOUGHT_HASH : Nat  = 128;
 
   // ==================== Types ====================
 
@@ -95,6 +99,12 @@ actor MemoryRepo {
     heapBytes         : Nat;
   };
 
+  public type ThoughtFormStore = {
+    json      : Text;
+    timestamp : Nat64;
+    hash      : Text;
+  };
+
   // ==================== Stable State ====================
 
   stable var owner             : Principal      = ANON;
@@ -106,6 +116,7 @@ actor MemoryRepo {
   stable var branches          : [(Text, Text)] = []; // (name, headCommitId)
   stable var currentBranch     : Text           = "main";
   stable var nextCommitSeq     : Nat            = 0;
+  stable var thoughtForms      : [ThoughtFormStore] = [];
 
   // ==================== Upgrade Guards ====================
 
@@ -845,5 +856,62 @@ actor MemoryRepo {
         #ok(newId)
       };
     };
+  };
+
+  // ==================== PRD 5: ThoughtForm Memory ====================
+
+  /// Store a new ThoughtForm entry.
+  public shared(msg) func storeThoughtForm(json : Text, timestamp : Nat64, hash : Text) : async { #ok : Text; #err : Text } {
+    assertWriteAllowed(msg.caller);
+
+    if (not initialized) {
+      return #err("Repository not initialized — call initRepo first");
+    };
+
+    if (thoughtForms.size() >= MAX_THOUGHT_FORMS) {
+      return #err("ThoughtForm limit reached (" # Nat.toText(MAX_THOUGHT_FORMS) # ")");
+    };
+
+    if (Text.size(json) == 0) {
+      return #err("ThoughtForm json cannot be empty");
+    };
+    if (Text.size(json) > MAX_THOUGHT_JSON) {
+      return #err("ThoughtForm json exceeds maximum size of 1 MB");
+    };
+    if (Text.size(hash) == 0) {
+      return #err("ThoughtForm hash cannot be empty");
+    };
+    if (Text.size(hash) > MAX_THOUGHT_HASH) {
+      return #err("ThoughtForm hash exceeds maximum size of 128 characters");
+    };
+
+    // Reject duplicate hashes
+    for (tf in thoughtForms.vals()) {
+      if (tf.hash == hash) {
+        return #err("ThoughtForm with hash '" # hash # "' already exists");
+      };
+    };
+
+    let entry : ThoughtFormStore = {
+      json      = json;
+      timestamp = timestamp;
+      hash      = hash;
+    };
+
+    thoughtForms := Array.append<ThoughtFormStore>(thoughtForms, [entry]);
+    #ok(hash)
+  };
+
+  /// Query all stored ThoughtForm entries.
+  public query func getThoughtForms() : async [ThoughtFormStore] {
+    thoughtForms
+  };
+
+  /// Query a single ThoughtForm by hash.
+  public query func getThoughtFormByHash(hash : Text) : async ?ThoughtFormStore {
+    for (tf in thoughtForms.vals()) {
+      if (tf.hash == hash) { return ?tf };
+    };
+    null
   };
 };

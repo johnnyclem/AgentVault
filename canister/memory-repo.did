@@ -53,6 +53,12 @@ type MergeResult = variant {
   err       : text;
 };
 
+type ThoughtFormStore = record {
+  json      : text;
+  timestamp : nat64;
+  hash      : text;
+};
+
 // ─── Service ─────────────────────────────────────────────────────────────────
 
 service : {
@@ -100,4 +106,10 @@ service : {
 
   merge     : (text, MergeStrategy) -> (MergeResult);
   cherryPick: (text) -> (variant { ok : text; err : text });
+
+  // ── ThoughtForm Memory (PRD 5) ──────────────────────────────────────
+
+  storeThoughtForm    : (text, nat64, text) -> (variant { ok : text; err : text });
+  getThoughtForms     : () -> (vec ThoughtFormStore) query;
+  getThoughtFormByHash: (text) -> (opt ThoughtFormStore) query;
 };
