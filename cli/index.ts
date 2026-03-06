@@ -65,6 +65,9 @@ import { repoCmd } from './commands/repo.js';
 // MemoryRepo commands
 import { memoryCmd } from './commands/memory.js';
 
+// Merge command
+import { mergeCommand } from './merge.js';
+
 export function createProgram(): Command {
   const program = new Command();
 
@@ -133,6 +136,9 @@ export function createProgram(): Command {
 
   // MemoryRepo commands
   program.addCommand(memoryCmd);
+
+  // Merge command
+  program.addCommand(mergeCommand());
 
   return program;
 }
