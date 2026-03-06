@@ -62,6 +62,9 @@ import { mirrorCmd } from './commands/mirror.js';
 // Security & audit commands
 import { repoCmd } from './commands/repo.js';
 
+// MemoryRepo commands
+import { memoryCmd } from './commands/memory.js';
+
 export function createProgram(): Command {
   const program = new Command();
 
@@ -127,6 +130,9 @@ export function createProgram(): Command {
 
   // Security & audit commands
   program.addCommand(repoCmd);
+
+  // MemoryRepo commands
+  program.addCommand(memoryCmd);
 
   return program;
 }

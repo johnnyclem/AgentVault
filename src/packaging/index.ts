@@ -88,3 +88,18 @@ export type {
   SerializedAgentState,
   SerializationOptions,
 } from './serializer.js';
+
+// ThoughtForm serializers
+export {
+  ThoughtStepSchema,
+  ThoughtFormManifestSchema,
+  ThoughtFormBundleSchema,
+  deserializeThoughtFormBundle,
+  THOUGHTFORM_SCHEMA_VERSION,
+} from './serializers/index.js';
+
+export type {
+  ThoughtStep,
+  ThoughtFormManifest,
+  ThoughtFormBundle,
+} from './serializers/index.js';
