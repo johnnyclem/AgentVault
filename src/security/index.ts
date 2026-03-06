@@ -10,8 +10,13 @@ export * from './types.js';
 // VetKeysClient is exported from types.js, avoid re-exporting from vetkeys.js
 export { VetKeysClient } from './types.js';
 
-// Re-export decryptJSON from vetkeys.js
-export { decryptJSON } from './vetkeys.js';
+// Re-export decryptJSON and bundle encryption from vetkeys.js
+export {
+  decryptJSON,
+  encryptBundleWithVetKeys,
+  decryptBundle,
+  isVetKeysEncryptedBundle,
+} from './vetkeys.js';
 
 // Multi-sig approval workflows
 export * from './multisig.js';

@@ -52,6 +52,7 @@ import Text      "mo:base/Text";
 import Array     "mo:base/Array";
 import Option    "mo:base/Option";
 import Principal "mo:base/Principal";
+import Nat32     "mo:base/Nat32";
 import Cycles    "mo:base/ExperimentalCycles";
 import Prim      "mo:prim";
 
@@ -199,6 +200,16 @@ public type ShareHealthStatus = {
   reason  : Text;
 };
 
+// ── ThoughtForm Storage ─────────────────────────────────────────────────────
+
+public type ThoughtForm = {
+  id        : Nat;
+  json      : Text;
+  timestamp : Nat64;
+  hash      : Nat32;
+  storedAt  : Int;
+};
+
 // ==================== Security & Health Constants ====================
 
 /// 64 MB hard ceiling on live heap.
@@ -291,6 +302,11 @@ stable var lastShareHealthCheckNs    : Int                        = 0;
 
 /// Share health check interval: every 5 minutes (matches HEALTH_INTERVAL_NS).
 let SHARE_HEALTH_INTERVAL_NS : Int = 5 * 60 * 1_000_000_000;
+
+// ── ThoughtForm Stable State ────────────────────────────────────────────────
+
+stable var thoughtForms       : [ThoughtForm] = [];
+stable var nextThoughtFormId  : Nat           = 0;
 
 // ==================== Guard Functions ====================
 
@@ -1881,4 +1897,63 @@ public query func getMirrorStatus() : async {
     lastSyncToMirrorAt   = lastSyncToMirrorAt;
     lastSyncFromMirrorAt = lastSyncFromMirrorAt;
   }
+};
+
+// ==================== ThoughtForm Storage ====================
+
+/**
+ * Store a thought-form on-chain.
+ *
+ * Pushes the JSON payload together with a caller-supplied timestamp into the
+ * stable thoughtForms vec.  A simple hash (Text.hash of the JSON content) is
+ * computed and persisted alongside the record for quick integrity checks.
+ *
+ * Returns the newly created ThoughtForm record (including its id and hash).
+ */
+public shared(msg) func store_thoughtform(json : Text, timestamp : Nat64) : async {
+  #ok : ThoughtForm;
+  #err : Text;
+} {
+  assertWriteAllowed(msg.caller);
+
+  // Input validation — reject empty payloads and enforce a 1 MB size cap.
+  if (Text.size(json) == 0) {
+    return #err("json payload must not be empty");
+  };
+  if (Text.size(json) > 1_000_000) {
+    return #err("json payload exceeds 1 MB limit");
+  };
+
+  let id   = nextThoughtFormId;
+  let hash = Text.hash(json);
+
+  let entry : ThoughtForm = {
+    id        = id;
+    json      = json;
+    timestamp = timestamp;
+    hash      = hash;
+    storedAt  = Time.now();
+  };
+
+  thoughtForms      := Array.append<ThoughtForm>(thoughtForms, [entry]);
+  nextThoughtFormId := id + 1;
+
+  #ok(entry)
+};
+
+/**
+ * Retrieve a single stored thought-form by its id.
+ */
+public query func get_thoughtform(id : Nat) : async ?ThoughtForm {
+  for (tf in thoughtForms.vals()) {
+    if (tf.id == id) { return ?tf };
+  };
+  null
+};
+
+/**
+ * Return all stored thought-forms (newest last).
+ */
+public query func get_thoughtforms() : async [ThoughtForm] {
+  thoughtForms
 };
