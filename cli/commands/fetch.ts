@@ -8,13 +8,22 @@ import ora from 'ora';
 import inquirer from 'inquirer';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as zlib from 'node:zlib';
+import { promisify } from 'node:util';
 import type { NetworkType } from '../../src/deployment/types.js';
 import { createICPClient } from '../../src/deployment/icpClient.js';
+import { THOUGHTFORM_BUNDLE_FORMAT } from '../../src/backup/thoughtform-bundle.js';
+import type { ThoughtformBundle } from '../../src/backup/thoughtform-bundle.js';
+
+const gzipAsync = promisify(zlib.gzip);
+
+export type FetchType = 'default' | 'thoughtform-bundle';
 
 export interface FetchCommandOptions {
   network?: NetworkType;
   output?: string;
   decrypt?: boolean;
+  type?: FetchType;
 }
 
 export interface FetchAnswers {
@@ -40,8 +49,10 @@ export async function executeFetch(
   }
 
   // Determine output path
+  const fetchType = options.type ?? 'default';
+  const defaultExt = fetchType === 'thoughtform-bundle' ? '.thoughtform-bundle.json.gz' : '.state.json';
   const outputPath =
-    options.output ?? path.resolve(process.cwd(), `${resolvedCanisterId}.state.json`);
+    options.output ?? path.resolve(process.cwd(), `${resolvedCanisterId}${defaultExt}`);
 
   // Check if output already exists
   if (fs.existsSync(outputPath) && !options.decrypt) {
@@ -112,9 +123,36 @@ export async function executeFetch(
 
     // Write state to file
     if (!options.decrypt) {
-      fs.writeFileSync(outputPath, JSON.stringify(stateData, null, 2), 'utf-8');
-      console.log();
-      console.log(chalk.green('✓'), 'State saved to:', chalk.bold(outputPath));
+      if (fetchType === 'thoughtform-bundle') {
+        // Write as gzipped thoughtform-bundle
+        const now = new Date();
+        const bundle: ThoughtformBundle = {
+          format: THOUGHTFORM_BUNDLE_FORMAT,
+          createdAt: now.toISOString(),
+          manifest: {
+            version: '1.0',
+            agentName: stateData.canisterId,
+            timestamp: now,
+            created: now,
+            canisterId: stateData.canisterId,
+            checksums: {},
+            size: 0,
+            components: ['fetched-state'],
+          },
+          entries: {
+            'state.json': Buffer.from(JSON.stringify(stateData, null, 2), 'utf8').toString('base64'),
+          },
+        };
+        const compressed = await gzipAsync(Buffer.from(JSON.stringify(bundle), 'utf8'));
+        fs.writeFileSync(outputPath, compressed);
+        console.log();
+        console.log(chalk.green('✓'), 'Thoughtform-bundle saved to:', chalk.bold(outputPath));
+      } else {
+        fs.writeFileSync(outputPath, JSON.stringify(stateData, null, 2), 'utf-8');
+        console.log();
+        console.log(chalk.green('✓'), 'State saved to:', chalk.bold(outputPath));
+      }
+
       console.log();
       console.log(chalk.cyan('Next steps:'));
       console.log('  1. Decrypt the state:', chalk.bold('agentvault decrypt'), `<${outputPath}>`);
@@ -192,6 +230,7 @@ export function fetchCommand(): Command {
     .option('-n, --network <network>', 'network (local or ic)', 'local')
     .option('-o, --output <path>', 'output file path')
     .option('-d, --decrypt', 'decrypt state after fetching')
+    .option('-t, --type <type>', 'output type (default, thoughtform-bundle)', 'default')
     .action(async (canisterId: string, options: FetchCommandOptions) => {
       console.log(chalk.bold('\n📥 AgentVault Fetch\n'));
 
