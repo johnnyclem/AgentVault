@@ -24,7 +24,6 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { ed25519 } from '@noble/curves/ed25519';
-import { secp256k1 } from '@noble/curves/secp256k1';
 import * as crypto from 'node:crypto';
 import { SecureWallet, createSecureWallet } from '../../src/wallet/secure-wallet.js';
 import { encryptSecret, deriveStorageKey } from '../../src/wallet/wallet-crypto.js';
@@ -219,7 +218,7 @@ describe('Scenario 2: Message signing', () => {
       const message = new TextEncoder().encode('test');
       const sig = wallet.sign(message, PASSPHRASE);
       const tamperedSig = Buffer.from(sig);
-      tamperedSig[0] ^= 0xff; // flip first byte
+      tamperedSig.writeUInt8(tamperedSig[0]! ^ 0xff, 0);
 
       expect(wallet.verify(message, new Uint8Array(tamperedSig))).toBe(false);
     });

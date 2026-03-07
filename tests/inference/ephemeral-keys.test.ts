@@ -65,10 +65,6 @@ async function loadVenice() {
   return import('../../src/inference/venice-client.js');
 }
 
-async function loadSecure() {
-  return import('../../src/inference/secure-inference.js');
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Scenario 1 — Ephemeral key generation
 // ─────────────────────────────────────────────────────────────────────────────
@@ -355,7 +351,7 @@ describe('Scenario: Full fallback chain', () => {
       },
     }));
 
-    const { SecureInferenceEngine, readCostLog } = await import(
+    const { SecureInferenceEngine } = await import(
       '../../src/inference/secure-inference.js'
     );
     const engine = new SecureInferenceEngine({

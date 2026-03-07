@@ -152,7 +152,7 @@ describe('verifyWebAuthnAssertion()', () => {
 
     // Flip a byte in the signature
     const tamperedSig = Buffer.from(assertion.signatureB64, 'base64url');
-    tamperedSig[0] ^= 0xff;
+    tamperedSig.writeUInt8(tamperedSig[0]! ^ 0xff, 0);
     const tampered = { ...assertion, signatureB64: tamperedSig.toString('base64url') };
 
     const result = verifyWebAuthnAssertion(tampered, 'd'.repeat(64), setup.publicKeyB64, 0);

@@ -22,20 +22,6 @@ import { LocalModelClient } from '../../src/inference/local-model-client.js';
 import { InferenceFallbackChain } from '../../src/inference/fallback-chain.js';
 
 // ---------------------------------------------------------------------------
-// Shared mock helpers
-// ---------------------------------------------------------------------------
-
-/** Build a minimal mock axios-like client whose post/get can be overridden. */
-function buildMockAxios(overrides: { post?: any; get?: any } = {}): any {
-  return {
-    create: vi.fn().mockReturnValue({
-      post: overrides.post ?? vi.fn().mockResolvedValue({ data: { success: true, output: 'hello', uid: 1, name: 'mock' } }),
-      get: overrides.get ?? vi.fn().mockResolvedValue({ data: { neurons: [], subnets: [], modules: [] } }),
-    }),
-  };
-}
-
-// ---------------------------------------------------------------------------
 // Scenario 1 – Authenticated inference request
 // ---------------------------------------------------------------------------
 

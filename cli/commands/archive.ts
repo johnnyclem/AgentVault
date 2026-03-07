@@ -8,7 +8,7 @@ import {
   deleteArchive,
   verifyArchive,
   getArchiveStats,
-  type ArchiveResult,
+  type ManagerArchiveResult as ArchiveResult,
 } from '../../src/archival/index.js';
 
 const archiveCmd = new Command('archive');

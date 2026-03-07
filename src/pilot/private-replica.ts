@@ -269,11 +269,12 @@ async function deployGuildCanisters(
       reject: false,
     });
 
-    // Parse canister IDs from dfx output (best-effort)
     const canisterIds: Record<string, string> = {};
     const matches = result.stdout.matchAll(/(\w+):\s+([a-z0-9]{5}-[a-z0-9]{5}-[a-z0-9]{5}-[a-z0-9]{5}-[a-z0-9]{3})/g);
     for (const m of matches) {
-      canisterIds[m[1]] = m[2];
+      if (m[1] && m[2]) {
+        canisterIds[m[1]] = m[2];
+      }
     }
 
     // Provide placeholder IDs when dfx is not available (stub mode)

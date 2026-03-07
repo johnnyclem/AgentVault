@@ -106,7 +106,6 @@ export class SgxHsmProvider implements HsmProvider {
   private readonly _socketPath: string;
   private readonly _enclavePath: string;
   private _socket: net.Socket | null = null;
-  private _sessionId: string | null = null;
 
   constructor(options: { socketPath?: string; enclavePath?: string } = {}) {
     this._socketPath = options.socketPath ?? DEFAULT_AESM_SOCKET;
@@ -125,10 +124,8 @@ export class SgxHsmProvider implements HsmProvider {
 
     await this._connectSocket();
 
-    // Handshake: ping the enclave daemon to verify it is responsive.
-    let pong: unknown;
     try {
-      pong = await this._send({ op: 'ping' });
+      await this._send({ op: 'ping' });
     } catch (err) {
       await this.close();
       throw new HsmNotAvailableError(
@@ -136,9 +133,6 @@ export class SgxHsmProvider implements HsmProvider {
         `SGX daemon at ${this._socketPath} did not respond to ping: ${String(err)}`,
       );
     }
-
-    // Generate a session ID for logging / audit trail.
-    this._sessionId = crypto.randomBytes(8).toString('hex');
   }
 
   async close(): Promise<void> {
@@ -146,7 +140,6 @@ export class SgxHsmProvider implements HsmProvider {
       this._socket.destroy();
       this._socket = null;
     }
-    this._sessionId = null;
   }
 
   // -------------------------------------------------------------------------

@@ -299,6 +299,7 @@ describe('One-time approval link', () => {
     setupMfa('branch-link2');
     const challenge = issueChallenge('req-001', 'branch-link2');
     const token = challenge.approvalLink.split('token=')[1];
+    if (!token) throw new Error('Token not found in approval link');
 
     const result = validateOtpToken(token);
     expect(result.ok).toBe(true);
@@ -310,6 +311,7 @@ describe('One-time approval link', () => {
     setupMfa('branch-link3');
     const challenge = issueChallenge('req-001', 'branch-link3');
     const token = challenge.approvalLink.split('token=')[1];
+    if (!token) throw new Error('Token not found in approval link');
 
     validateOtpToken(token); // first use — ok
     const second = validateOtpToken(token); // replay
@@ -597,7 +599,7 @@ describe('verifyBiometricApproval() — rejections', () => {
 
     // Tamper the signature
     const sigBuf = Buffer.from(assertion.signatureB64, 'base64url');
-    sigBuf[0] ^= 0xff;
+    sigBuf.writeUInt8(sigBuf[0]! ^ 0xff, 0);
     const tamperedAssertion = { ...assertion, signatureB64: sigBuf.toString('base64url') };
 
     const result = verifyBiometricApproval({

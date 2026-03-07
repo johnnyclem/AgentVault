@@ -138,7 +138,7 @@ function validateGenericConfig(config: GenericConfig): ConfigValidationResult {
  */
 export async function parseGenericConfig(
   sourcePath: string,
-  verbose: boolean = false
+  _verbose: boolean = false
 ): Promise<GenericConfig> {
   debugLog(`[Generic] Parsing configuration from: ${sourcePath}`);
 
