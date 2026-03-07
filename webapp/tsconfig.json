@@ -24,6 +24,7 @@
       "@/hooks/*": ["./src/hooks/*"],
       "@/lib/*": ["./src/lib/*"],
       "@/inference/*": ["../../src/inference/*"],
+      "@/orchestration/*": ["../../src/orchestration/*"],
       "@/app/*": ["./src/app/*"],
       "@/providers/*": ["./src/providers/*"]
     },
