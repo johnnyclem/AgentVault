@@ -20,32 +20,31 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import * as crypto from 'node:crypto';
 import { execaCommand } from 'execa';
+import type { MCPServerConfig } from './mcp-client.js';
+import {
+  enrichWithPolyticianContext,
+  saveConceptFromOrchestration,
+  type EnrichmentResult,
+} from './polytician-enricher.js';
 
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
 
 export interface OrchestratorOptions {
-  /** Human-readable task description passed to Claude Code */
   task: string;
-  /** Canister ID to snapshot before/after the session */
   canisterId?: string;
-  /** ICP network target */
   network?: 'local' | 'ic';
-  /** If true, print plan but do not mutate any state */
   dryRun?: boolean;
-  /** If true, create an approval request before committing state */
   requireApproval?: boolean;
-  /** Reviewer identities required to sign off (multi-sig) */
   reviewers?: string[];
-  /** Anthropic API key – falls back to ANTHROPIC_API_KEY env var */
   apiKey?: string;
-  /** Override the Claude model used */
   model?: string;
-  /** Max milliseconds to wait for Claude (default: 30 minutes) */
   timeoutMs?: number;
-  /** Emit progress messages via callback */
   onProgress?: (message: string) => void;
+  polyticianServer?: MCPServerConfig;
+  enableSemanticEnrichment?: boolean;
+  saveResultAsConcept?: boolean;
 }
 
 export interface OrchestrationResult {
@@ -442,11 +441,33 @@ export class ClaudeOrchestrator {
     }
 
     // -----------------------------------------------------------------------
+    // 2a. Semantic enrichment via Polytician MCP (if configured)
+    // -----------------------------------------------------------------------
+    let enrichedTask = options.task;
+    let enrichmentResult: EnrichmentResult | null = null;
+
+    if (options.polyticianServer && options.enableSemanticEnrichment !== false) {
+      try {
+        emit(onProgress, 'Enriching prompt with semantic context from Polytician...');
+        enrichmentResult = await enrichWithPolyticianContext(options.task, {
+          mcpServer: options.polyticianServer,
+          maxContextLength: 8000,
+          topK: 5,
+        });
+        enrichedTask = enrichmentResult.enrichedPrompt;
+        emit(onProgress, `Enriched with ${enrichmentResult.conceptsUsed.length} relevant concepts`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        emit(onProgress, `Semantic enrichment failed (continuing without): ${message}`);
+      }
+    }
+
+    // -----------------------------------------------------------------------
     // 3. Dry-run early return
     // -----------------------------------------------------------------------
     if (options.dryRun) {
       emit(onProgress, '[DRY RUN] Would launch Claude Code with the following context:');
-      emit(onProgress, buildSystemPrompt(options.task, conventions, options.canisterId));
+      emit(onProgress, buildSystemPrompt(enrichedTask, conventions, options.canisterId));
 
       const entry: AuditEntry = {
         sessionId,
@@ -650,6 +671,28 @@ export class ClaudeOrchestrator {
 
     const auditLogId = writeAuditLog(this.projectRoot, entry);
     emit(onProgress, `Audit log written: ${auditLogId}`);
+
+    // -----------------------------------------------------------------------
+    // 11. Save result as Polytician concept (if enabled)
+    // -----------------------------------------------------------------------
+    if (options.polyticianServer && options.saveResultAsConcept !== false && claudeOutput) {
+      try {
+        emit(onProgress, 'Saving orchestration result as semantic memory concept...');
+        const conceptId = await saveConceptFromOrchestration(
+          sessionId,
+          options.task,
+          claudeOutput,
+          filesChanged,
+          options.polyticianServer
+        );
+        if (conceptId) {
+          emit(onProgress, `Saved concept: ${conceptId}`);
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        emit(onProgress, `Failed to save concept (non-fatal): ${message}`);
+      }
+    }
 
     return {
       success: true,
