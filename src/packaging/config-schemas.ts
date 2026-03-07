@@ -90,14 +90,24 @@ export interface GenericConfig extends BaseAgentConfig {
   maxFileSize?: number;
 }
 
-/**
- * Union type for all agent configurations
- */
+export interface PolyticianConfig extends BaseAgentConfig {
+  type: 'polytician';
+  entryPoint?: string;
+  embeddingModel?: string;
+  storageBackend?: 'sqlite' | 'memory' | 'icp';
+  healthPort?: number;
+  mcp?: {
+    namespace?: string;
+    tools?: string[];
+  };
+}
+
 export type ParsedAgentConfig =
   | ClawdbotConfig
   | GooseConfig
   | ClineConfig
-  | GenericConfig;
+  | GenericConfig
+  | PolyticianConfig;
 
 /**
  * Validation result for agent configuration

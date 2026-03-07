@@ -8,4 +8,5 @@
 export { parseClawdbotConfig, findClawdbotConfigs } from './clawdbot.js';
 export { parseGooseConfig, findGooseConfigs } from './goose.js';
 export { parseClineConfig, findClineConfigs } from './cline.js';
+export { parsePolyticianConfig, findPolyticianConfigs } from './polytician.js';
 export { parseGenericConfig, findGenericConfigs } from './generic.js';
