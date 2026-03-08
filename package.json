@@ -8,6 +8,14 @@
     ".": {
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
+    },
+    "./vault": {
+      "types": "./dist/src/vault/index.d.ts",
+      "import": "./dist/src/vault/index.js"
+    },
+    "./backbone": {
+      "types": "./dist/src/backbone/index.d.ts",
+      "import": "./dist/src/backbone/index.js"
     }
   },
   "bin": {
