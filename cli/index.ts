@@ -68,6 +68,9 @@ import { memoryCmd } from './commands/memory.js';
 // MCP commands (Phase 2)
 import { mcpCmd } from './commands/mcp.js';
 
+// Polytician commands (Phase 5)
+import { polyticianCmd } from './commands/polytician.js';
+
 export function createProgram(): Command {
   const program = new Command();
 
@@ -139,6 +142,9 @@ export function createProgram(): Command {
 
   // MCP commands
   program.addCommand(mcpCmd);
+
+  // Polytician commands
+  program.addCommand(polyticianCmd);
 
   return program;
 }
