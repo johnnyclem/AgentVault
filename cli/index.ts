@@ -65,6 +65,8 @@ import { repoCmd } from './commands/repo.js';
 // MemoryRepo commands
 import { memoryCmd } from './commands/memory.js';
 
+// Rebase command
+import { rebaseCommand } from './commands/rebase.js';
 // MCP commands (Phase 2)
 import { mcpCmd } from './commands/mcp.js';
 
@@ -140,6 +142,8 @@ export function createProgram(): Command {
   // MemoryRepo commands
   program.addCommand(memoryCmd);
 
+  // Rebase command
+  program.addCommand(rebaseCommand());
   // MCP commands
   program.addCommand(mcpCmd);
 
