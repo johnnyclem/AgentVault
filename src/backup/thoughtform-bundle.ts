@@ -33,6 +33,64 @@ export interface ThoughtformBundle {
 }
 
 /**
+ * Validate that a parsed object conforms to the ThoughtformBundle schema.
+ *
+ * Checks required fields, format string, manifest structure, and entry types.
+ * Throws a descriptive error on validation failure.
+ */
+export function validateThoughtformBundle(data: unknown): asserts data is ThoughtformBundle {
+  if (data === null || typeof data !== 'object') {
+    throw new Error('Invalid thoughtform-bundle: expected an object');
+  }
+
+  const obj = data as Record<string, unknown>;
+
+  // format
+  if (obj.format !== THOUGHTFORM_BUNDLE_FORMAT) {
+    throw new Error(
+      `Invalid thoughtform-bundle format: expected '${THOUGHTFORM_BUNDLE_FORMAT}', got '${String(obj.format)}'`
+    );
+  }
+
+  // createdAt
+  if (typeof obj.createdAt !== 'string' || !obj.createdAt) {
+    throw new Error('Invalid thoughtform-bundle: missing or invalid createdAt (expected ISO-8601 string)');
+  }
+
+  // manifest
+  if (obj.manifest === null || typeof obj.manifest !== 'object') {
+    throw new Error('Invalid thoughtform-bundle: missing or invalid manifest object');
+  }
+  const manifest = obj.manifest as Record<string, unknown>;
+  if (typeof manifest.version !== 'string') {
+    throw new Error('Invalid thoughtform-bundle manifest: missing version');
+  }
+  if (typeof manifest.agentName !== 'string') {
+    throw new Error('Invalid thoughtform-bundle manifest: missing agentName');
+  }
+  if (typeof manifest.size !== 'number') {
+    throw new Error('Invalid thoughtform-bundle manifest: missing or invalid size');
+  }
+  if (!Array.isArray(manifest.components)) {
+    throw new Error('Invalid thoughtform-bundle manifest: missing components array');
+  }
+  if (manifest.checksums === null || typeof manifest.checksums !== 'object') {
+    throw new Error('Invalid thoughtform-bundle manifest: missing checksums object');
+  }
+
+  // entries
+  if (obj.entries === null || typeof obj.entries !== 'object') {
+    throw new Error('Invalid thoughtform-bundle: missing or invalid entries object');
+  }
+  const entries = obj.entries as Record<string, unknown>;
+  for (const [key, value] of Object.entries(entries)) {
+    if (typeof value !== 'string') {
+      throw new Error(`Invalid thoughtform-bundle: entry '${key}' value must be a base64 string`);
+    }
+  }
+}
+
+/**
  * Serialize agent backup data to a gzipped thoughtform-bundle.
  *
  * Writes a `.json.gz` file at `outputPath`.

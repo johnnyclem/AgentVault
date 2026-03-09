@@ -275,6 +275,10 @@ export interface _SERVICE {
   verifyThresholdSignature: (arg_0: string, arg_1: string) => Promise<OperationResult>;
   deriveVetKeysKey: (arg_0: string, arg_1: number) => Promise<OperationResult>;
   getVetKeysStatus: () => Promise<CanisterVetKeysStatus>;
+
+  // Thoughtform bundle methods
+  store_thoughtform: (arg_0: Uint8Array) => Promise<OperationResult>;
+  fetch_thoughtforms: () => Promise<Uint8Array>;
 }
 
 /**
