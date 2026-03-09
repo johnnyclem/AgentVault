@@ -10,6 +10,10 @@ import {
   deleteBackup,
   formatBackupSize,
 } from '../../src/backup/index.js';
+import {
+  serializeThoughtformBundle,
+  deserializeThoughtformBundle,
+} from '../../src/backup/thoughtform-bundle.js';
 
 const backupCmd = new Command('backup');
 
@@ -37,9 +41,45 @@ backupCmd
     'Create a full encrypted backup: Merkle-root manifest + AES-256-GCM payload + ed25519-signed key'
   )
   .option('--signing-key <path>', 'Path to ed25519 signing key file (auto-created if absent)')
+  .option('-t, --type <type>', 'Backup type (default, thoughtform-bundle)', 'default')
   .action(async (agentName, options) => {
+    const backupType = options.type as 'default' | 'thoughtform-bundle';
     const isFull: boolean = Boolean(options.full);
     const includeCanisterState = options.canisterId ? options.canisterState !== false : false;
+
+    if (backupType === 'thoughtform-bundle') {
+      // Thoughtform-bundle: gzipped JSON bundle
+      const defaultOut = `${agentName}.thoughtform-bundle.json.gz`;
+      const outputPath = options.output ?? defaultOut;
+      const spinner = ora(`Creating thoughtform-bundle backup for ${agentName}...`).start();
+
+      try {
+        const result = await serializeThoughtformBundle({
+          agentName,
+          outputPath,
+          includeConfig: true,
+          canisterId: options.canisterId,
+          includeCanisterState,
+        });
+
+        if (result.success && result.path && result.manifest) {
+          spinner.succeed(chalk.green(`Thoughtform-bundle written to ${result.path}`));
+          const sizeBytes = result.sizeBytes ?? result.manifest.size;
+          console.log(chalk.gray(`Size:       ${formatBackupSize(sizeBytes)}`));
+          console.log(chalk.gray(`Components: ${result.manifest.components.join(', ')}`));
+          console.log(chalk.gray(`Format:     thoughtform-bundle (gzipped JSON)`));
+        } else {
+          spinner.fail(chalk.red(`Thoughtform-bundle backup failed: ${result.error ?? 'unknown error'}`));
+          process.exit(1);
+        }
+      } catch (error) {
+        spinner.fail(chalk.red('Thoughtform-bundle backup failed'));
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error(chalk.red(message));
+        process.exit(1);
+      }
+      return;
+    }
 
     if (isFull) {
       // Full encrypted backup
@@ -115,7 +155,32 @@ backupCmd
   .argument('<file>', 'Backup file path to import')
   .option('--name <name>', 'New agent name (defaults to original)')
   .option('--overwrite', 'Overwrite existing agent configuration')
+  .option('-t, --type <type>', 'Backup type (default, thoughtform-bundle)', 'default')
   .action(async (filePath, options) => {
+    const importType = options.type as 'default' | 'thoughtform-bundle';
+
+    // Auto-detect thoughtform-bundle from file extension
+    const isThoughtformBundle =
+      importType === 'thoughtform-bundle' || filePath.endsWith('.thoughtform-bundle.json.gz');
+
+    if (isThoughtformBundle) {
+      const spinner = ora(`Importing thoughtform-bundle from ${filePath}...`).start();
+      try {
+        const bundle = await deserializeThoughtformBundle(filePath);
+        const targetName = options.name || bundle.manifest.agentName;
+        spinner.succeed(chalk.green(`Thoughtform-bundle imported for ${targetName}`));
+        console.log(chalk.gray(`Components: ${bundle.manifest.components.join(', ')}`));
+        console.log(chalk.gray(`Created:    ${bundle.createdAt}`));
+        console.log(chalk.gray(`Entries:    ${Object.keys(bundle.entries).length}`));
+      } catch (error) {
+        spinner.fail(chalk.red('Thoughtform-bundle import failed'));
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error(chalk.red(message));
+        process.exit(1);
+      }
+      return;
+    }
+
     const spinner = ora(`Importing backup from ${filePath}...`).start();
 
     try {

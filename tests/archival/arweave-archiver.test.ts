@@ -315,7 +315,7 @@ describe('Scenario 2 – Auto-archive on state change', () => {
     it('calls onArchived callback after successful upload', async () => {
       vi.useFakeTimers();
       const { archiver } = makeArchiver('hb-cb', keyPath);
-      const onArchived = vi.fn<[ArchiveResult], void>();
+      const onArchived = vi.fn<(result: ArchiveResult) => void>();
 
       archiver.setState(AGENT_STATE);
       archiver.startHeartbeat({ intervalMs: 500, jwk: STUB_JWK, onArchived });
@@ -323,8 +323,9 @@ describe('Scenario 2 – Auto-archive on state change', () => {
       await vi.advanceTimersByTimeAsync(600);
 
       expect(onArchived).toHaveBeenCalledOnce();
-      const [result] = onArchived.mock.calls[0] as [ArchiveResult];
-      expect(result.success).toBe(true);
+      const callArgs = onArchived.mock.calls[0];
+      const result = callArgs?.[0];
+      expect(result?.success).toBe(true);
       archiver.stopHeartbeat();
     });
 
@@ -334,7 +335,7 @@ describe('Scenario 2 – Auto-archive on state change', () => {
         success: false,
         error: 'gateway error',
       });
-      const onError = vi.fn<[Error], void>();
+      const onError = vi.fn<(error: Error) => void>();
 
       archiver.setState(AGENT_STATE);
       archiver.startHeartbeat({ intervalMs: 500, jwk: STUB_JWK, onError });

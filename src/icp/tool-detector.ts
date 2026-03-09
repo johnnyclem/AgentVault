@@ -6,8 +6,22 @@
  * prefer icp-cli when available, fall back to dfx.
  */
 
-import { execaCommand } from 'execa';
+import { execa } from 'execa';
 import type { ToolName, ToolInfo, ToolchainStatus } from './types.js';
+
+/**
+ * Allowed tool names for security - prevents arbitrary command execution
+ */
+const ALLOWED_TOOLS: readonly ToolName[] = ['ic-wasm', 'icp', 'dfx'] as const;
+
+/**
+ * Validate tool name against whitelist to prevent command injection
+ */
+function validateToolName(name: string): asserts name is ToolName {
+  if (!ALLOWED_TOOLS.includes(name as ToolName)) {
+    throw new Error(`Unknown tool: ${name}. Allowed tools: ${ALLOWED_TOOLS.join(', ')}`);
+  }
+}
 
 /**
  * Detect whether a single tool is installed and get its version.
@@ -16,11 +30,14 @@ import type { ToolName, ToolInfo, ToolchainStatus } from './types.js';
  * @returns ToolInfo with availability, path, and version
  */
 export async function detectTool(name: ToolName): Promise<ToolInfo> {
+  // Validate tool name against whitelist (security)
+  validateToolName(name);
+
   const result: ToolInfo = { name, available: false };
 
-  // Locate the binary
+  // Locate the binary using array arguments (prevents command injection)
   try {
-    const whichResult = await execaCommand(`which ${name}`, {
+    const whichResult = await execa('which', [name], {
       reject: false,
       timeout: 5000,
     });
@@ -33,9 +50,9 @@ export async function detectTool(name: ToolName): Promise<ToolInfo> {
     return result;
   }
 
-  // Get the version
+  // Get the version using array arguments (prevents command injection)
   try {
-    const versionResult = await execaCommand(`${name} --version`, {
+    const versionResult = await execa(name, ['--version'], {
       reject: false,
       timeout: 5000,
     });

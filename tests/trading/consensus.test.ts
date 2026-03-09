@@ -26,7 +26,6 @@ import {
 import type {
   TradeSignal,
   ConsensusVote,
-  ConsensusSession,
 } from '../../src/trading/consensus.js';
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────

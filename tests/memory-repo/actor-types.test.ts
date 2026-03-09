@@ -57,7 +57,7 @@ describe('MemoryRepo Actor Types', () => {
       for (const method of expectedMethods) {
         expect(service).toHaveProperty(method);
       }
-      expect(Object.keys(service)).toHaveLength(19);
+      expect(Object.keys(service)).toHaveLength(22);
     });
 
     it('should mark query methods correctly', () => {

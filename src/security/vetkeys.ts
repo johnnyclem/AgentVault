@@ -158,11 +158,13 @@ export class VetKeysImplementation {
       // Derive master key from seed phrase (for local use)
       const derivedKey = await this.deriveMasterKey(seedPhrase, algorithm!);
 
+      // SECURITY: Do not include seedPhrase in returned object to prevent memory exposure
+      // The seed phrase should only be used transiently for key derivation
       return {
         type: 'threshold',
         key: derivedKey.key,
         method: derivedKey.method,
-        seedPhrase,
+        // seedPhrase intentionally omitted for security - see SEC-3 in SECURITY_AUDIT
         threshold: threshold!,
         totalParties: totalParties!,
         algorithm: algorithm!,
@@ -653,4 +655,180 @@ export async function decryptJSON<T = unknown>(
   seedPhrase: string
 ): Promise<T> {
   return VetKeysImplementation.decryptJSON(encrypted, seedPhrase);
+}
+
+// ---------------------------------------------------------------------------
+// Bundle encryption / decryption using principal-based VetKeys
+// ---------------------------------------------------------------------------
+
+/** AES-256-GCM constants */
+const BUNDLE_AES_KEY_BYTES = 32;
+const BUNDLE_GCM_IV_BYTES = 12;
+const BUNDLE_SALT_BYTES = 32;
+const BUNDLE_PBKDF2_ITERATIONS = 210_000;
+
+/** 4-byte magic header so we can identify VetKeys-encrypted bundles */
+const VETKEYS_MAGIC = Buffer.from('VKEB'); // VetKeys Encrypted Bundle
+
+/**
+ * Metadata prepended to an encrypted bundle so the deserializer can detect
+ * that decryption is required and reproduce the key.
+ *
+ * Wire format (all lengths in bytes):
+ *   [4  magic] [32 salt] [12 iv] [16 authTag] [4 principalLen] [principalLen principal] [N ciphertext]
+ */
+export interface EncryptedBundleHeader {
+  salt: Buffer;
+  iv: Buffer;
+  authTag: Buffer;
+  principalId: string;
+}
+
+/**
+ * Derive a 32-byte AES-256-GCM key from the caller's ICP principal.
+ *
+ * The principal acts as the identity-binding input; a random per-bundle salt
+ * prevents key reuse across bundles encrypted for the same principal.
+ */
+function deriveBundleKey(principalId: string, salt: Buffer): Buffer {
+  return crypto.pbkdf2Sync(
+    principalId,
+    Buffer.concat([salt, Buffer.from('agentvault-vetkeys-bundle-v1')]),
+    BUNDLE_PBKDF2_ITERATIONS,
+    BUNDLE_AES_KEY_BYTES,
+    'sha256',
+  );
+}
+
+/**
+ * Encrypt an agent bundle buffer using VetKeys principal-based key derivation.
+ *
+ * The returned buffer is self-describing: it contains a magic header, the salt,
+ * IV, auth tag, the encrypting principal, and the AES-256-GCM ciphertext. This
+ * allows `decryptBundle` to reconstruct the key and decrypt without any
+ * out-of-band metadata.
+ *
+ * @param buffer      - Plaintext bundle (e.g. serialized agent state)
+ * @param principalId - ICP principal that "owns" the encryption key
+ * @returns Encrypted bundle buffer (magic ‖ salt ‖ iv ‖ tag ‖ principalLen ‖ principal ‖ ciphertext)
+ */
+export async function encryptBundleWithVetKeys(
+  buffer: Buffer,
+  principalId: string,
+): Promise<Buffer> {
+  if (!principalId || principalId.length === 0) {
+    throw new Error('principalId is required for VetKeys bundle encryption');
+  }
+
+  const salt = crypto.randomBytes(BUNDLE_SALT_BYTES);
+  const iv = crypto.randomBytes(BUNDLE_GCM_IV_BYTES);
+  const key = deriveBundleKey(principalId, salt);
+
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const ciphertext = Buffer.concat([cipher.update(buffer), cipher.final()]);
+  const authTag = cipher.getAuthTag(); // 16 bytes
+
+  // Encode principal length as a 4-byte big-endian uint
+  const principalBuf = Buffer.from(principalId, 'utf-8');
+  const principalLenBuf = Buffer.alloc(4);
+  principalLenBuf.writeUInt32BE(principalBuf.length, 0);
+
+  return Buffer.concat([
+    VETKEYS_MAGIC,        // 4
+    salt,                 // 32
+    iv,                   // 12
+    authTag,              // 16
+    principalLenBuf,      // 4
+    principalBuf,         // variable
+    ciphertext,           // variable
+  ]);
+}
+
+/**
+ * Detect whether a buffer starts with the VetKeys encrypted-bundle magic.
+ */
+export function isVetKeysEncryptedBundle(buffer: Buffer): boolean {
+  if (buffer.length < VETKEYS_MAGIC.length) {
+    return false;
+  }
+  return buffer.subarray(0, VETKEYS_MAGIC.length).equals(VETKEYS_MAGIC);
+}
+
+/**
+ * Parse the header from an encrypted bundle buffer.
+ *
+ * @returns The parsed header and the offset where ciphertext begins.
+ */
+function parseEncryptedBundleHeader(
+  encrypted: Buffer,
+): { header: EncryptedBundleHeader; ciphertextOffset: number } {
+  const minHeaderSize = 4 + 32 + 12 + 16 + 4; // magic + salt + iv + tag + principalLen
+  if (encrypted.length < minHeaderSize) {
+    throw new Error('Encrypted bundle is too short to contain a valid header');
+  }
+
+  let offset = VETKEYS_MAGIC.length; // skip magic (already verified by caller)
+
+  const salt = encrypted.subarray(offset, offset + BUNDLE_SALT_BYTES);
+  offset += BUNDLE_SALT_BYTES;
+
+  const iv = encrypted.subarray(offset, offset + BUNDLE_GCM_IV_BYTES);
+  offset += BUNDLE_GCM_IV_BYTES;
+
+  const authTag = encrypted.subarray(offset, offset + 16);
+  offset += 16;
+
+  const principalLen = encrypted.readUInt32BE(offset);
+  offset += 4;
+
+  if (encrypted.length < offset + principalLen) {
+    throw new Error('Encrypted bundle is truncated: principal field extends past end');
+  }
+
+  const principalId = encrypted.subarray(offset, offset + principalLen).toString('utf-8');
+  offset += principalLen;
+
+  return {
+    header: { salt: Buffer.from(salt), iv: Buffer.from(iv), authTag: Buffer.from(authTag), principalId },
+    ciphertextOffset: offset,
+  };
+}
+
+/**
+ * Decrypt a VetKeys-encrypted bundle buffer.
+ *
+ * The principal used for decryption is embedded in the bundle header.  The
+ * caller may optionally supply their own `principalId` to verify that the
+ * bundle was encrypted for them; if omitted the embedded principal is used.
+ *
+ * @param encrypted   - Buffer produced by `encryptBundleWithVetKeys`
+ * @param principalId - (optional) expected principal; if provided and it does
+ *                       not match the embedded principal an error is thrown
+ * @returns Decrypted plaintext buffer
+ */
+export async function decryptBundle(
+  encrypted: Buffer,
+  principalId?: string,
+): Promise<Buffer> {
+  if (!isVetKeysEncryptedBundle(encrypted)) {
+    throw new Error('Buffer is not a VetKeys encrypted bundle (missing magic header)');
+  }
+
+  const { header, ciphertextOffset } = parseEncryptedBundleHeader(encrypted);
+
+  // Optionally enforce principal match
+  if (principalId && principalId !== header.principalId) {
+    throw new Error(
+      `Principal mismatch: bundle was encrypted for "${header.principalId}" but decryption was requested with "${principalId}"`,
+    );
+  }
+
+  const ciphertext = encrypted.subarray(ciphertextOffset);
+  const key = deriveBundleKey(header.principalId, header.salt);
+
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, header.iv);
+  decipher.setAuthTag(header.authTag);
+
+  const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+  return plaintext;
 }

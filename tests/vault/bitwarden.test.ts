@@ -46,11 +46,7 @@ vi.mock('node:util', async () => {
 
 async function getMockedExecFile() {
   const mod = await import('node:child_process');
-  return mod.execFile as ReturnType<typeof vi.fn>;
-}
-
-function mockBwSuccess(stdout: string) {
-  return { stdout, stderr: '' };
+  return mod.execFile as unknown as ReturnType<typeof vi.fn>;
 }
 
 // ---------------------------------------------------------------------------
@@ -122,7 +118,7 @@ describe('BitwardenProvider – healthCheck', () => {
   it('reports unhealthy and provides install hint when bw is missing', async () => {
     const execFile = await getMockedExecFile();
     execFile.mockImplementation((_bin: string, _args: string[], _opts: unknown, cb: Function) => {
-      const err = new Error('ENOENT: bw not found') as NodeJS.ErrnoException;
+      const err = new Error('ENOENT: bw not found') as Error & { stderr?: string };
       err.stderr = 'ENOENT: bw not found';
       cb(err, '', '');
     });
@@ -144,7 +140,7 @@ describe('BitwardenProvider – item name convention', () => {
     execFile.mockImplementation((_bin: string, args: string[], _opts: unknown, cb: Function) => {
       capturedArgs.push(args);
       // Return "not found" to simulate a missing item on the initial get
-      const err = new Error('Not found') as NodeJS.ErrnoException;
+      const err = new Error('Not found') as Error & { stderr?: string };
       err.stderr = 'Not found.';
       cb(err, '', '');
     });

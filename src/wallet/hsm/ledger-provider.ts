@@ -68,35 +68,6 @@ type SolanaApp = {
 // ---------------------------------------------------------------------------
 // Address derivation helpers (pure, no private key needed)
 // ---------------------------------------------------------------------------
-
-/**
- * Convert a 65-byte uncompressed secp256k1 public key (returned by the Ledger
- * Ethereum app as hex) to an EIP-55 checksum address.
- */
-function pubkeyToEthAddress(uncompressedHex: string): string {
-  // Strip leading '04' prefix if present (uncompressed point marker)
-  const cleaned = uncompressedHex.startsWith('04')
-    ? uncompressedHex.slice(2)
-    : uncompressedHex;
-
-  // keccak256 of the 64-byte x||y coordinates → take last 20 bytes
-  // We use SHA-256 as a stand-in because Node.js doesn't ship keccak.
-  // The Ledger app already returns the EIP-55 address via getAddress();
-  // this helper is only used when we need to compute it independently.
-  const { keccak256 } = await importEthers();
-  return keccak256('0x' + cleaned).slice(-40);
-}
-
-/** Dynamically import ethers for address utilities (already a dep). */
-async function importEthers() {
-  try {
-    return await import('ethers');
-  } catch {
-    throw new HsmNotAvailableError('ledger', 'ethers package missing');
-  }
-}
-
-// ---------------------------------------------------------------------------
 // LedgerHsmProvider
 // ---------------------------------------------------------------------------
 
@@ -117,7 +88,6 @@ export class LedgerHsmProvider implements HsmProvider {
   readonly supportedCurves: ReadonlyArray<HsmCurve> = ['secp256k1', 'ed25519'];
 
   private _transport: LedgerTransport | null = null;
-  private _TransportConstructor: LedgerTransportConstructor | null = null;
   private _deviceProduct: string | null = null;
   private _deviceSerial: string | null = null;
 
@@ -158,7 +128,6 @@ export class LedgerHsmProvider implements HsmProvider {
 
     try {
       this._transport = await TransportNodeHid.create();
-      this._TransportConstructor = TransportNodeHid;
     } catch (err) {
       throw new HsmNotAvailableError('ledger', 'Could not open HID transport: ' + String(err));
     }

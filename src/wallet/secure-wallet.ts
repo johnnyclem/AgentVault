@@ -176,7 +176,7 @@ export class SecureWallet {
    */
   sign(message: Uint8Array, passphrase: string): Uint8Array {
     const state = this._requireState();
-    const { salt, privateKeyHex, aesKey } = this._decryptPrivateKey(
+    const { privateKeyHex, aesKey } = this._decryptPrivateKey(
       state.encryptedBundle,
       passphrase
     );

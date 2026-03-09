@@ -11,7 +11,6 @@ import * as os from 'node:os';
 import {
   serializeWallet,
   deserializeWallet,
-  validateCborData,
 } from './cbor-serializer.js';
 import {
   encryptWalletSecrets,
@@ -141,12 +140,7 @@ export function loadWallet(
   // Read wallet file
   const data = fs.readFileSync(walletPath);
 
-  // Validate CBOR data
-  if (!validateCborData(new Uint8Array(data))) {
-    throw new Error(`Invalid wallet data: ${walletId}`);
-  }
-
-  // Deserialize wallet
+  // Deserialize wallet (validation is done inside deserializeWallet)
   const wallet = deserializeWallet(new Uint8Array(data));
 
   // Decrypt secrets when a key is present

@@ -105,7 +105,7 @@ export interface BiometricSetup {
 function deriveEncryptionKey(fingerprint: string, saltHex: string): Buffer {
   const salt = Buffer.from(saltHex, 'hex');
   const ikm = crypto.createHash('sha256').update(`agentvault:device-key:${fingerprint}`).digest();
-  return crypto.hkdfSync('sha256', ikm, salt, 'agentvault:biometric-key:v1', 32) as Buffer;
+  return Buffer.from(crypto.hkdfSync('sha256', ikm, salt, 'agentvault:biometric-key:v1', 32));
 }
 
 /** AES-256-GCM encrypt. Returns { ciphertext, iv, authTag } — all Buffer. */
@@ -325,13 +325,10 @@ export function verifyWebAuthnAssertion(
   // issued, which is ensured by the nonce/timestamp in the calling mfa-approval layer.
   // If the full clientDataJSON is available (webapp flow), verify:
   //   JSON.parse(clientDataJSON).challenge === challengeHash
-  _ = challengeHash; // used by mfa-approval layer for binding
+  void challengeHash;
 
   return { ok: true };
 }
-
-// Suppress unused variable lint warning for the binding comment above
-function _(_x: unknown): void {}
 
 /**
  * Return the registered public key for a device, or null if not enrolled.

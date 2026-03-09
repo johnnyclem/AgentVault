@@ -551,4 +551,32 @@ export const idlFactory = ({ IDL }: any) => IDL.Service({
   })], ['query']),
 
   heartbeat: IDL.Func([], [IDL.Bool], []),
+
+  // ==================== MCP Server Registration ====================
+  registerMCPServer: IDL.Func([IDL.Record({
+    namespace: IDL.Text,
+    entryPoint: IDL.Text,
+    healthPort: IDL.Opt(IDL.Nat),
+    tools: IDL.Vec(IDL.Text),
+    metadata: IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text)),
+  })], [IDL.Variant({
+    ok: IDL.Text,
+    err: IDL.Text,
+  })], []),
+
+  listMCPServers: IDL.Func([], [IDL.Vec(IDL.Record({
+    namespace: IDL.Text,
+    entryPoint: IDL.Text,
+    healthPort: IDL.Opt(IDL.Nat),
+    tools: IDL.Vec(IDL.Text),
+    metadata: IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text)),
+    registeredAt: IDL.Int,
+    lastHealthCheck: IDL.Opt(IDL.Int),
+    healthy: IDL.Bool,
+  }))], ['query']),
+
+  removeMCPServer: IDL.Func([IDL.Text], [IDL.Variant({
+    ok: IDL.Text,
+    err: IDL.Text,
+  })], []),
 });

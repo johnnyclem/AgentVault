@@ -183,7 +183,7 @@ function validateClawdbotConfig(config: ClawdbotConfig): ConfigValidationResult 
  */
 export async function parseClawdbotConfig(
   sourcePath: string,
-  verbose: boolean = false
+  _verbose: boolean = false
 ): Promise<ClawdbotConfig> {
   // ── Sandbox enforcement ─────────────────────────────────────────────────
   // OpenClaw / Clawdbot skills must never execute as root and may only write

@@ -47,11 +47,13 @@ vi.mock('../../src/icp/environment.js', () => ({
 // Mock @dfinity/agent HttpAgent to avoid real network calls
 vi.mock('@dfinity/agent', async (importOriginal) => {
   const original = await importOriginal<typeof import('@dfinity/agent')>();
+  class MockHttpAgent {
+    fetchRootKey = vi.fn().mockResolvedValue(new ArrayBuffer(0));
+    status = vi.fn().mockResolvedValue({});
+  }
   return {
     ...original,
-    HttpAgent: vi.fn().mockImplementation(() => ({
-      fetchRootKey: vi.fn().mockResolvedValue(new ArrayBuffer(0)),
-    })),
+    HttpAgent: MockHttpAgent,
   };
 });
 
