@@ -13,7 +13,14 @@ import {
 import {
   serializeThoughtformBundle,
   deserializeThoughtformBundle,
+  validateThoughtformBundle,
 } from '../../src/backup/thoughtform-bundle.js';
+import * as fs from 'node:fs';
+import * as zlib from 'node:zlib';
+import { promisify } from 'node:util';
+import { createICPClient } from '../../src/deployment/icpClient.js';
+
+const gunzipAsync = promisify(zlib.gunzip);
 
 const backupCmd = new Command('backup');
 
@@ -42,8 +49,17 @@ backupCmd
   )
   .option('--signing-key <path>', 'Path to ed25519 signing key file (auto-created if absent)')
   .option('-t, --type <type>', 'Backup type (default, thoughtform-bundle)', 'default')
+  .option('--store', 'Store thoughtform-bundle to canister after creating it')
+  .option('-n, --network <network>', 'Network for canister operations (local or ic)', 'local')
   .action(async (agentName, options) => {
-    const backupType = options.type as 'default' | 'thoughtform-bundle';
+    const backupType = options.type as string;
+
+    // Validate type flag
+    if (backupType !== 'default' && backupType !== 'thoughtform-bundle') {
+      console.error(chalk.red(`Invalid backup type: '${backupType}'. Supported types: default, thoughtform-bundle`));
+      process.exit(1);
+    }
+
     const isFull: boolean = Boolean(options.full);
     const includeCanisterState = options.canisterId ? options.canisterState !== false : false;
 
@@ -68,6 +84,31 @@ backupCmd
           console.log(chalk.gray(`Size:       ${formatBackupSize(sizeBytes)}`));
           console.log(chalk.gray(`Components: ${result.manifest.components.join(', ')}`));
           console.log(chalk.gray(`Format:     thoughtform-bundle (gzipped JSON)`));
+
+          // Store to canister if --store flag is set
+          if (options.store && options.canisterId) {
+            const storeSpinner = ora('Storing thoughtform-bundle to canister...').start();
+            try {
+              const bundleData = fs.readFileSync(result.path);
+              const client = createICPClient({ network: options.network ?? 'local' });
+              const storeResult = await client.callAgentMethod<{ ok?: string; err?: string }>(
+                options.canisterId,
+                'store_thoughtform',
+                [new Uint8Array(bundleData)]
+              );
+              if ('err' in storeResult && storeResult.err) {
+                storeSpinner.fail(chalk.red(`Failed to store on canister: ${storeResult.err}`));
+                process.exit(1);
+              }
+              storeSpinner.succeed(chalk.green('Thoughtform-bundle stored to canister'));
+            } catch (error) {
+              const message = error instanceof Error ? error.message : 'Unknown error';
+              storeSpinner.fail(chalk.red(`Canister store failed: ${message}`));
+              process.exit(1);
+            }
+          } else if (options.store && !options.canisterId) {
+            console.log(chalk.yellow('Warning: --store requires --canister-id to be specified'));
+          }
         } else {
           spinner.fail(chalk.red(`Thoughtform-bundle backup failed: ${result.error ?? 'unknown error'}`));
           process.exit(1);
@@ -156,8 +197,17 @@ backupCmd
   .option('--name <name>', 'New agent name (defaults to original)')
   .option('--overwrite', 'Overwrite existing agent configuration')
   .option('-t, --type <type>', 'Backup type (default, thoughtform-bundle)', 'default')
+  .option('--store', 'Store imported thoughtform-bundle to canister')
+  .option('-c, --canister-id <id>', 'Canister ID for storing thoughtform-bundle')
+  .option('-n, --network <network>', 'Network for canister operations (local or ic)', 'local')
   .action(async (filePath, options) => {
-    const importType = options.type as 'default' | 'thoughtform-bundle';
+    const importType = options.type as string;
+
+    // Validate type flag
+    if (importType !== 'default' && importType !== 'thoughtform-bundle') {
+      console.error(chalk.red(`Invalid import type: '${importType}'. Supported types: default, thoughtform-bundle`));
+      process.exit(1);
+    }
 
     // Auto-detect thoughtform-bundle from file extension
     const isThoughtformBundle =
@@ -166,12 +216,55 @@ backupCmd
     if (isThoughtformBundle) {
       const spinner = ora(`Importing thoughtform-bundle from ${filePath}...`).start();
       try {
+        // Read and validate the file
+        if (!fs.existsSync(filePath)) {
+          throw new Error(`File not found: ${filePath}`);
+        }
+
+        const rawData = fs.readFileSync(filePath);
+        let parsed: unknown;
+
+        // Support both .json.gz (gzipped) and .json (plain) input
+        if (filePath.endsWith('.gz')) {
+          const decompressed = await gunzipAsync(rawData);
+          parsed = JSON.parse(decompressed.toString('utf8'));
+        } else {
+          parsed = JSON.parse(rawData.toString('utf8'));
+        }
+
+        // Validate schema before proceeding
+        validateThoughtformBundle(parsed);
+
         const bundle = await deserializeThoughtformBundle(filePath);
         const targetName = options.name || bundle.manifest.agentName;
         spinner.succeed(chalk.green(`Thoughtform-bundle imported for ${targetName}`));
         console.log(chalk.gray(`Components: ${bundle.manifest.components.join(', ')}`));
         console.log(chalk.gray(`Created:    ${bundle.createdAt}`));
         console.log(chalk.gray(`Entries:    ${Object.keys(bundle.entries).length}`));
+
+        // Store to canister if requested
+        if (options.store && options.canisterId) {
+          const storeSpinner = ora('Storing thoughtform-bundle to canister...').start();
+          try {
+            const client = createICPClient({ network: options.network ?? 'local' });
+            const storeResult = await client.callAgentMethod<{ ok?: string; err?: string }>(
+              options.canisterId,
+              'store_thoughtform',
+              [new Uint8Array(rawData)]
+            );
+            if ('err' in storeResult && storeResult.err) {
+              storeSpinner.fail(chalk.red(`Failed to store on canister: ${storeResult.err}`));
+              process.exit(1);
+            }
+            storeSpinner.succeed(chalk.green('Thoughtform-bundle stored to canister'));
+          } catch (error) {
+            const message = error instanceof Error ? error.message : 'Unknown error';
+            storeSpinner.fail(chalk.red(`Canister store failed: ${message}`));
+            process.exit(1);
+          }
+        } else if (options.store && !options.canisterId) {
+          console.log(chalk.yellow('Warning: --store requires --canister-id to be specified'));
+        }
       } catch (error) {
         spinner.fail(chalk.red('Thoughtform-bundle import failed'));
         const message = error instanceof Error ? error.message : 'Unknown error';

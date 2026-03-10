@@ -24,6 +24,7 @@ export interface FetchCommandOptions {
   output?: string;
   decrypt?: boolean;
   type?: FetchType;
+  compress?: boolean;
 }
 
 export interface FetchAnswers {
@@ -48,9 +49,19 @@ export async function executeFetch(
     );
   }
 
-  // Determine output path
+  // Validate type flag
   const fetchType = options.type ?? 'default';
-  const defaultExt = fetchType === 'thoughtform-bundle' ? '.thoughtform-bundle.json.gz' : '.state.json';
+  if (fetchType !== 'default' && fetchType !== 'thoughtform-bundle') {
+    throw new Error(
+      `Invalid fetch type: '${fetchType}'. Supported types: default, thoughtform-bundle`
+    );
+  }
+
+  // Determine output path
+  const useCompress = options.compress ?? (fetchType === 'thoughtform-bundle');
+  const defaultExt = fetchType === 'thoughtform-bundle'
+    ? (useCompress ? '.thoughtform-bundle.json.gz' : '.thoughtform-bundle.json')
+    : '.state.json';
   const outputPath =
     options.output ?? path.resolve(process.cwd(), `${resolvedCanisterId}${defaultExt}`);
 
@@ -124,8 +135,27 @@ export async function executeFetch(
     // Write state to file
     if (!options.decrypt) {
       if (fetchType === 'thoughtform-bundle') {
-        // Write as gzipped thoughtform-bundle
+        // Fetch thoughtform data from canister via dedicated method
+        spinner.text = 'Fetching thoughtforms from canister...';
+        let thoughtformData: Uint8Array | null = null;
+        try {
+          thoughtformData = await client.callAgentMethod<Uint8Array>(
+            resolvedCanisterId,
+            'fetch_thoughtforms'
+          );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          console.log(chalk.yellow(`\nWarning: fetch_thoughtforms call failed (${message}), using state data as fallback`));
+        }
+
+        // Build the bundle from fetched thoughtform data or fall back to state
         const now = new Date();
+        const entries: Record<string, string> = {
+          'state.json': Buffer.from(JSON.stringify(stateData, null, 2), 'utf8').toString('base64'),
+        };
+        if (thoughtformData && thoughtformData.length > 0) {
+          entries['thoughtforms.bin'] = Buffer.from(thoughtformData).toString('base64');
+        }
         const bundle: ThoughtformBundle = {
           format: THOUGHTFORM_BUNDLE_FORMAT,
           createdAt: now.toISOString(),
@@ -137,16 +167,27 @@ export async function executeFetch(
             canisterId: stateData.canisterId,
             checksums: {},
             size: 0,
-            components: ['fetched-state'],
+            components: thoughtformData && thoughtformData.length > 0
+              ? ['fetched-state', 'thoughtforms']
+              : ['fetched-state'],
           },
-          entries: {
-            'state.json': Buffer.from(JSON.stringify(stateData, null, 2), 'utf8').toString('base64'),
-          },
+          entries,
         };
-        const compressed = await gzipAsync(Buffer.from(JSON.stringify(bundle), 'utf8'));
-        fs.writeFileSync(outputPath, compressed);
+
+        const jsonBuf = Buffer.from(JSON.stringify(bundle, null, 2), 'utf8');
+        if (useCompress) {
+          const compressed = await gzipAsync(jsonBuf);
+          fs.writeFileSync(outputPath, compressed);
+        } else {
+          fs.writeFileSync(outputPath, jsonBuf, 'utf-8');
+        }
         console.log();
-        console.log(chalk.green('✓'), 'Thoughtform-bundle saved to:', chalk.bold(outputPath));
+        console.log(
+          chalk.green('✓'),
+          `Thoughtform-bundle saved to:`,
+          chalk.bold(outputPath),
+          useCompress ? chalk.gray('(compressed)') : chalk.gray('(JSON)')
+        );
       } else {
         fs.writeFileSync(outputPath, JSON.stringify(stateData, null, 2), 'utf-8');
         console.log();
@@ -231,6 +272,7 @@ export function fetchCommand(): Command {
     .option('-o, --output <path>', 'output file path')
     .option('-d, --decrypt', 'decrypt state after fetching')
     .option('-t, --type <type>', 'output type (default, thoughtform-bundle)', 'default')
+    .option('--compress', 'compress output as gzip (default for thoughtform-bundle)')
     .action(async (canisterId: string, options: FetchCommandOptions) => {
       console.log(chalk.bold('\n📥 AgentVault Fetch\n'));
 
