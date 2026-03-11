@@ -73,6 +73,9 @@ import { mcpCmd } from './commands/mcp.js';
 // Polytician commands (Phase 5)
 import { polyticianCmd } from './commands/polytician.js';
 
+// Agent Safehouse secret management layer
+import { safehouseCmd } from './commands/safehouse.js';
+
 export function createProgram(): Command {
   const program = new Command();
 
@@ -149,6 +152,9 @@ export function createProgram(): Command {
 
   // Polytician commands
   program.addCommand(polyticianCmd);
+
+  // Agent Safehouse secret management layer
+  program.addCommand(safehouseCmd);
 
   return program;
 }
