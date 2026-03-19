@@ -102,12 +102,44 @@ export interface PolyticianConfig extends BaseAgentConfig {
   };
 }
 
+/**
+ * NemoClaw configuration interface
+ * NemoClaw is NVIDIA's OpenClaw agent stack using Nemotron models and OpenShell runtime
+ */
+export interface NemoClawConfig extends BaseAgentConfig {
+  type: 'nemoclaw';
+  /** Entry point file for the agent */
+  entryPoint?: string;
+  /** Nemotron model identifier (e.g. 'nemotron-4-340b', 'nemotron-mini') */
+  model?: string;
+  /** Run models locally or route to cloud via privacy router */
+  runtime?: 'local' | 'cloud' | 'hybrid';
+  /** OpenShell sandbox isolation level */
+  sandboxLevel?: 'strict' | 'standard' | 'permissive';
+  /** Enable the privacy router for cloud model access */
+  privacyRouter?: boolean;
+  /** Target hardware platform */
+  platform?: 'geforce-rtx' | 'rtx-pro' | 'dgx-station' | 'dgx-spark' | 'auto';
+  /** Skills the agent can develop and execute */
+  skills?: string[];
+  /** Security and privacy policy guardrails */
+  policies?: {
+    /** Allow network access from sandbox */
+    networkAccess?: boolean;
+    /** Allow filesystem writes from sandbox */
+    filesystemWrite?: boolean;
+    /** Data retention policy */
+    dataRetention?: 'none' | 'session' | 'persistent';
+  };
+}
+
 export type ParsedAgentConfig =
   | ClawdbotConfig
   | GooseConfig
   | ClineConfig
   | GenericConfig
-  | PolyticianConfig;
+  | PolyticianConfig
+  | NemoClawConfig;
 
 /**
  * Validation result for agent configuration
@@ -163,4 +195,24 @@ export const DEFAULT_CLINE_CONFIG: Omit<ClineConfig, 'type'> = {
   name: 'Agent',
   version: '1.0.0',
   description: '',
+};
+
+/**
+ * Default values for NemoClaw configuration
+ */
+export const DEFAULT_NEMOCLAW_CONFIG: Omit<NemoClawConfig, 'type'> = {
+  name: 'nemoclaw-agent',
+  version: '1.0.0',
+  description: '',
+  model: 'nemotron-4-340b',
+  runtime: 'local',
+  sandboxLevel: 'standard',
+  privacyRouter: true,
+  platform: 'auto',
+  skills: [],
+  policies: {
+    networkAccess: false,
+    filesystemWrite: false,
+    dataRetention: 'session',
+  },
 };
