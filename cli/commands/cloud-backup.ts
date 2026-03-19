@@ -88,6 +88,10 @@ cloudBackupCmd
   .option('--no-wallets', 'Exclude wallet data')
   .option('--no-backups', 'Exclude existing backups')
   .option('--no-networks', 'Exclude network configurations')
+  .option(
+    '--include-path <entries...>',
+    'Additional directories to include (format: /path:label)',
+  )
   .option('--subdirectory <name>', 'Subdirectory name inside provider', 'AgentVault-Backups')
   .action(async (options) => {
     // Resolve provider path
@@ -151,12 +155,33 @@ cloudBackupCmd
       `Archiving to ${providerLabel}...`,
     ).start();
 
+    // Parse --include-path entries (format: /path:label)
+    let customSources: Array<{ label: string; path: string }> | undefined;
+    if (options.includePath) {
+      customSources = (options.includePath as string[]).map((entry) => {
+        const lastColon = entry.lastIndexOf(':');
+        if (lastColon <= 0) {
+          console.error(
+            chalk.red(
+              `Invalid --include-path format: "${entry}". Use /path:label (e.g. /usr/local/share/profiles:my-profiles)`,
+            ),
+          );
+          process.exit(1);
+        }
+        return {
+          path: entry.slice(0, lastColon),
+          label: entry.slice(lastColon + 1),
+        };
+      });
+    }
+
     const result = archiveToCloud(providerPath, {
       agentName: options.agent,
       includeConfigs: options.configs !== false,
       includeWallets: options.wallets !== false,
       includeBackups: options.backups !== false,
       includeNetworks: options.networks !== false,
+      customSources,
     }, options.subdirectory);
 
     if (result.success) {
