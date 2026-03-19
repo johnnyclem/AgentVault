@@ -57,6 +57,8 @@ export {
   findClineConfigs,
   parseGenericConfig,
   findGenericConfigs,
+  parseNemoClawConfig,
+  findNemoClawConfigs,
 } from './parsers/index.js';
 
 // Config Persistence
@@ -73,6 +75,7 @@ export {
   DEFAULT_CLAWDBOT_SETTINGS,
   DEFAULT_GOOSE_CONFIG,
   DEFAULT_CLINE_CONFIG,
+  DEFAULT_NEMOCLAW_CONFIG,
 } from './config-schemas.js';
 
 // Summary - used by package command

@@ -83,6 +83,36 @@ describe('detector', () => {
       expect(result).toBe('clawdbot');
     });
 
+    it('should detect nemoclaw agent from config file', () => {
+      vi.mocked(fs.existsSync).mockImplementation((p) => {
+        return String(p).endsWith('nemoclaw.json');
+      });
+      vi.mocked(fs.statSync).mockReturnValue({ isFile: () => true, isDirectory: () => false } as fs.Stats);
+
+      const result = detectAgentType('/agent/path');
+      expect(result).toBe('nemoclaw');
+    });
+
+    it('should detect nemoclaw agent from .nemoclaw directory', () => {
+      vi.mocked(fs.existsSync).mockImplementation((p) => {
+        return String(p).endsWith('.nemoclaw');
+      });
+      vi.mocked(fs.statSync).mockReturnValue({ isFile: () => false, isDirectory: () => true } as fs.Stats);
+
+      const result = detectAgentType('/agent/path');
+      expect(result).toBe('nemoclaw');
+    });
+
+    it('should detect nemoclaw agent from nemoclaw.config.json', () => {
+      vi.mocked(fs.existsSync).mockImplementation((p) => {
+        return String(p).endsWith('nemoclaw.config.json');
+      });
+      vi.mocked(fs.statSync).mockReturnValue({ isFile: () => true, isDirectory: () => false } as fs.Stats);
+
+      const result = detectAgentType('/agent/path');
+      expect(result).toBe('nemoclaw');
+    });
+
     it('should return generic when no specific agent detected', () => {
       vi.mocked(fs.existsSync).mockReturnValue(false);
 

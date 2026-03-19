@@ -5,7 +5,7 @@
 /**
  * Supported agent types that can be packaged
  */
-export type AgentType = 'clawdbot' | 'goose' | 'cline' | 'polytician' | 'generic';
+export type AgentType = 'clawdbot' | 'goose' | 'cline' | 'polytician' | 'nemoclaw' | 'generic';
 
 /**
  * Agent configuration as detected from the source directory
@@ -132,7 +132,7 @@ export interface ParsedAgentConfig {
     version?: string;
     description?: string;
   };
-  type: 'clawdbot' | 'goose' | 'cline' | 'polytician' | 'generic';
+  type: 'clawdbot' | 'goose' | 'cline' | 'polytician' | 'nemoclaw' | 'generic';
 }
 
 /**
