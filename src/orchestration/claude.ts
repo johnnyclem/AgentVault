@@ -26,10 +26,24 @@ import {
   saveConceptFromOrchestration,
   type EnrichmentResult,
 } from './polytician-enricher.js';
+import { SmallChatBridge, type SmallChatBridgeConfig, type CompressedToolCall } from './smallchat-bridge.js';
+import { SmallChatPolicyEngine, type PolicyConfig, type PolicyResult } from './smallchat-policy.js';
+import { IntentCompressor, type IntentCompressorConfig, type BinaryToolCallRecord } from './smallchat-compression.js';
 
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
+
+export interface SmallChatOptions {
+  /** Enable SmallChat tool dispatch middleware (default: false) */
+  enabled?: boolean;
+  /** SmallChat bridge configuration */
+  bridgeConfig?: SmallChatBridgeConfig;
+  /** Policy enforcement configuration */
+  policyConfig?: PolicyConfig;
+  /** Intent compression configuration */
+  compressionConfig?: IntentCompressorConfig;
+}
 
 export interface OrchestratorOptions {
   task: string;
@@ -45,6 +59,25 @@ export interface OrchestratorOptions {
   polyticianServer?: MCPServerConfig;
   enableSemanticEnrichment?: boolean;
   saveResultAsConcept?: boolean;
+  /** SmallChat integration options */
+  smallChat?: SmallChatOptions;
+}
+
+export interface SmallChatSessionReport {
+  /** Whether SmallChat was active for this session */
+  enabled: boolean;
+  /** Compressed tool calls dispatched during the session */
+  toolCalls: CompressedToolCall[];
+  /** Policy decisions made */
+  policyDecisions: PolicyResult[];
+  /** Compressed binary records */
+  compressedRecords: BinaryToolCallRecord[];
+  /** Bridge statistics */
+  bridgeStats?: ReturnType<SmallChatBridge['getStats']>;
+  /** Compression statistics */
+  compressionStats?: ReturnType<IntentCompressor['getStats']>;
+  /** Compact system prompt header (for token savings audit) */
+  systemPromptHeader?: string;
 }
 
 export interface OrchestrationResult {
@@ -59,6 +92,8 @@ export interface OrchestrationResult {
   approvalRequestId?: string;
   error?: string;
   durationMs: number;
+  /** SmallChat session report (present when SmallChat is enabled) */
+  smallChat?: SmallChatSessionReport;
 }
 
 export interface AuditEntry {
@@ -407,9 +442,79 @@ function signStateSnapshot(snapshotHash: string, canisterId?: string): string {
 
 export class ClaudeOrchestrator {
   private projectRoot: string;
+  private smallChatBridge?: SmallChatBridge;
+  private smallChatPolicy?: SmallChatPolicyEngine;
+  private smallChatCompressor?: IntentCompressor;
 
   constructor(projectRoot: string = process.cwd()) {
     this.projectRoot = projectRoot;
+  }
+
+  /**
+   * Initialize the SmallChat middleware layer.
+   * Call this before orchestrate() to enable SmallChat integration.
+   */
+  initSmallChat(options: SmallChatOptions = {}): {
+    bridge: SmallChatBridge;
+    policy: SmallChatPolicyEngine;
+    compressor: IntentCompressor;
+  } {
+    this.smallChatBridge = new SmallChatBridge(options.bridgeConfig);
+    this.smallChatPolicy = new SmallChatPolicyEngine(options.policyConfig);
+    this.smallChatCompressor = new IntentCompressor(options.compressionConfig);
+
+    return {
+      bridge: this.smallChatBridge,
+      policy: this.smallChatPolicy,
+      compressor: this.smallChatCompressor,
+    };
+  }
+
+  /**
+   * Dispatch a tool call through the SmallChat pipeline.
+   * Resolves, validates, enforces policy, and compresses in one call.
+   */
+  dispatchToolCall(
+    selector: string,
+    parameters: Record<string, unknown> = {},
+    callerId?: string
+  ): {
+    allowed: boolean;
+    toolCall?: CompressedToolCall;
+    policyResult?: PolicyResult;
+    compressed?: BinaryToolCallRecord;
+    error?: string;
+  } {
+    if (!this.smallChatBridge || !this.smallChatPolicy || !this.smallChatCompressor) {
+      return { allowed: false, error: 'SmallChat not initialized. Call initSmallChat() first.' };
+    }
+
+    // Step 1: Resolve through bridge
+    const dispatchResult = this.smallChatBridge.dispatch(selector, parameters);
+    if (!dispatchResult.success || !dispatchResult.toolCall) {
+      return { allowed: false, error: dispatchResult.error };
+    }
+
+    // Step 2: Enforce policy
+    const policyResult = this.smallChatPolicy.evaluate(dispatchResult.toolCall, callerId);
+    if (policyResult.decision !== 'allow') {
+      return {
+        allowed: false,
+        toolCall: dispatchResult.toolCall,
+        policyResult,
+        error: `Policy: ${policyResult.decision} — ${policyResult.reason}`,
+      };
+    }
+
+    // Step 3: Compress for storage
+    const compressed = this.smallChatCompressor.encode(dispatchResult.toolCall);
+
+    return {
+      allowed: true,
+      toolCall: dispatchResult.toolCall,
+      policyResult,
+      compressed,
+    };
   }
 
   /**
@@ -425,6 +530,23 @@ export class ClaudeOrchestrator {
 
     emit(onProgress, `[${sessionId}] Starting Claude Code orchestration session`);
     emit(onProgress, `Task: ${options.task}`);
+
+    // -----------------------------------------------------------------------
+    // 0. Initialize SmallChat middleware (if enabled)
+    // -----------------------------------------------------------------------
+    const smallChatReport: SmallChatSessionReport = {
+      enabled: false,
+      toolCalls: [],
+      policyDecisions: [],
+      compressedRecords: [],
+    };
+
+    if (options.smallChat?.enabled) {
+      this.initSmallChat(options.smallChat);
+      smallChatReport.enabled = true;
+      smallChatReport.systemPromptHeader = this.smallChatBridge!.generateSystemPromptHeader();
+      emit(onProgress, `SmallChat middleware initialized (${this.smallChatBridge!.getStats().registeredSelectors} selectors registered)`);
+    }
 
     // -----------------------------------------------------------------------
     // 1. Snapshot current state
@@ -503,7 +625,14 @@ export class ClaudeOrchestrator {
     const apiKey = options.apiKey ?? process.env['ANTHROPIC_API_KEY'];
     let claudeOutput: string;
 
-    const systemPrompt = buildSystemPrompt(options.task, conventions, options.canisterId);
+    let systemPrompt = buildSystemPrompt(options.task, conventions, options.canisterId);
+
+    // Append SmallChat tool header for compact tool descriptions (saves LLM tokens)
+    if (smallChatReport.enabled && smallChatReport.systemPromptHeader) {
+      systemPrompt += `\n\n${smallChatReport.systemPromptHeader}`;
+      emit(onProgress, 'Appended SmallChat compact tool header to system prompt');
+    }
+
     const userMessage = `Please complete the following task and produce the required code changes in this repository.\n\nTask: ${options.task}`;
 
     try {
@@ -694,6 +823,16 @@ export class ClaudeOrchestrator {
       }
     }
 
+    // -----------------------------------------------------------------------
+    // 12. Collect SmallChat session report
+    // -----------------------------------------------------------------------
+    if (smallChatReport.enabled && this.smallChatBridge && this.smallChatCompressor) {
+      smallChatReport.bridgeStats = this.smallChatBridge.getStats();
+      smallChatReport.compressionStats = this.smallChatCompressor.getStats();
+      emit(onProgress, `SmallChat stats: ${smallChatReport.bridgeStats.registeredSelectors} selectors, ` +
+        `cache hit rate ${(smallChatReport.bridgeStats.cacheHitRate * 100).toFixed(1)}%`);
+    }
+
     return {
       success: true,
       sessionId,
@@ -705,6 +844,7 @@ export class ClaudeOrchestrator {
       auditLogId,
       approvalRequestId,
       durationMs: Date.now() - startTime,
+      smallChat: smallChatReport.enabled ? smallChatReport : undefined,
     };
   }
 }
