@@ -94,6 +94,58 @@ export const castVoteSchema = z.object({
   reasoning: z.string().max(10000).optional(),
 });
 
+// ── Wiki ──────────────────────────────────────────────────────────────────
+
+const slugRegex = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+export const createWikiPageSchema = z.object({
+  title: z.string().min(1, 'Title is required').max(500),
+  content: z.string().min(1, 'Content is required').max(1048576, 'Content must be at most 1 MB'),
+  category: z.enum(KNOWLEDGE_CATEGORIES),
+  status: z.enum(KNOWLEDGE_STATUSES).default('draft'),
+  slug: z
+    .string()
+    .min(1, 'Slug is required')
+    .max(200)
+    .regex(slugRegex, 'Slug must be lowercase alphanumeric with hyphens'),
+  crossRefs: z.array(z.string().max(200)).max(100).optional(),
+  sourceRefs: z.array(z.string().max(200)).max(50).optional(),
+  tags: z.array(z.string().max(100)).max(20).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const updateWikiPageSchema = z.object({
+  title: z.string().min(1).max(500).optional(),
+  content: z.string().min(1).max(1048576).optional(),
+  category: z.enum(KNOWLEDGE_CATEGORIES).optional(),
+  status: z.enum(KNOWLEDGE_STATUSES).optional(),
+  slug: z.string().min(1).max(200).regex(slugRegex).optional(),
+  crossRefs: z.array(z.string().max(200)).max(100).optional(),
+  sourceRefs: z.array(z.string().max(200)).max(50).optional(),
+  staleness: z.enum(['fresh', 'stale', 'needs-review'] as const).optional(),
+  contradictions: z.array(z.string()).optional(),
+  tags: z.array(z.string().max(100)).max(20).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const wikiSchemaValidator = z.object({
+  name: z.string().min(1, 'Wiki name is required').max(200),
+  description: z.string().max(2000).default(''),
+  categories: z.array(z.string().max(100)).max(50).default([]),
+  ingestPrompt: z.string().max(10000).optional(),
+  queryPrompt: z.string().max(10000).optional(),
+  lintPrompt: z.string().max(10000).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const rawSourceSchema = z.object({
+  name: z.string().min(1, 'Source name is required').max(500),
+  type: z.enum(['file', 'url', 'text'] as const),
+  content: z.string().min(1, 'Content is required').max(10485760, 'Content must be at most 10 MB'),
+  mimeType: z.string().max(200).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
 // ── Re-export inferred types ───────────────────────────────────────────────
 
 export type SetMemorySchema = z.infer<typeof setMemorySchema>;
@@ -103,3 +155,7 @@ export type SendMessageSchema = z.infer<typeof sendMessageSchema>;
 export type AcknowledgeMessageSchema = z.infer<typeof acknowledgeMessageSchema>;
 export type CreateProposalSchema = z.infer<typeof createProposalSchema>;
 export type CastVoteSchema = z.infer<typeof castVoteSchema>;
+export type CreateWikiPageSchema = z.infer<typeof createWikiPageSchema>;
+export type UpdateWikiPageSchema = z.infer<typeof updateWikiPageSchema>;
+export type WikiSchemaValidator = z.infer<typeof wikiSchemaValidator>;
+export type RawSourceSchema = z.infer<typeof rawSourceSchema>;

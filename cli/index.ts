@@ -76,6 +76,9 @@ import { polyticianCmd } from './commands/polytician.js';
 // Agent Safehouse secret management layer
 import { safehouseCmd } from './commands/safehouse.js';
 
+// Wiki — LLM-maintained knowledge base (archivist)
+import { wikiCmd } from './commands/wiki.js';
+
 export function createProgram(): Command {
   const program = new Command();
 
@@ -155,6 +158,9 @@ export function createProgram(): Command {
 
   // Agent Safehouse secret management layer
   program.addCommand(safehouseCmd);
+
+  // Wiki — LLM-maintained knowledge base (archivist)
+  program.addCommand(wikiCmd);
 
   return program;
 }

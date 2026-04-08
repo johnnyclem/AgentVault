@@ -23,6 +23,10 @@ export {
   acknowledgeMessageSchema,
   createProposalSchema,
   castVoteSchema,
+  createWikiPageSchema,
+  updateWikiPageSchema,
+  wikiSchemaValidator,
+  rawSourceSchema,
 } from './validators.js';
 export type {
   SetMemorySchema,
@@ -32,6 +36,10 @@ export type {
   AcknowledgeMessageSchema,
   CreateProposalSchema,
   CastVoteSchema,
+  CreateWikiPageSchema,
+  UpdateWikiPageSchema,
+  WikiSchemaValidator,
+  RawSourceSchema,
 } from './validators.js';
 
 // Services
