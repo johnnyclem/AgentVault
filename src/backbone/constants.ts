@@ -17,6 +17,11 @@ export const KNOWLEDGE_CATEGORIES = [
   'decision',
   'process',
   'reference',
+  'entity',
+  'summary',
+  'exploration',
+  'index',
+  'log',
 ] as const;
 export type KnowledgeCategory = (typeof KNOWLEDGE_CATEGORIES)[number];
 

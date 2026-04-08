@@ -154,6 +154,92 @@ export interface CastVoteInput {
   reasoning?: string;
 }
 
+// ── Wiki ──────────────────────────────────────────────────────────────────
+
+export type WikiStaleness = 'fresh' | 'stale' | 'needs-review';
+
+export interface WikiPage extends KnowledgeEntry {
+  slug: string;
+  crossRefs: string[];
+  sourceRefs: string[];
+  lastLintedAt?: string;
+  contradictions?: string[];
+  staleness: WikiStaleness;
+}
+
+export interface CreateWikiPageInput extends CreateKnowledgeEntryInput {
+  slug: string;
+  crossRefs?: string[];
+  sourceRefs?: string[];
+}
+
+export interface UpdateWikiPageInput extends UpdateKnowledgeEntryInput {
+  slug?: string;
+  crossRefs?: string[];
+  sourceRefs?: string[];
+  staleness?: WikiStaleness;
+  contradictions?: string[];
+  lastLintedAt?: string;
+}
+
+export interface RawSource {
+  name: string;
+  type: 'file' | 'url' | 'text';
+  content: string;
+  mimeType?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface WikiSchema {
+  name: string;
+  description: string;
+  categories: string[];
+  ingestPrompt?: string;
+  queryPrompt?: string;
+  lintPrompt?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface WikiLintIssue {
+  type: 'contradiction' | 'orphan' | 'stale' | 'missing-crossref' | 'dead-source';
+  severity: 'info' | 'warning' | 'error';
+  pageSlug: string;
+  description: string;
+  suggestedFix?: string;
+  relatedSlugs?: string[];
+}
+
+export interface WikiLintReport {
+  wikiId: string;
+  timestamp: string;
+  issues: WikiLintIssue[];
+  pagesChecked: number;
+  healthScore: number;
+}
+
+export interface WikiQueryResult {
+  answer: string;
+  citations: Array<{ slug: string; title: string; excerpt: string }>;
+  confidence: number;
+  pagesConsulted: string[];
+}
+
+export interface WikiIngestResult {
+  sourceArchiveId: string;
+  pagesCreated: string[];
+  pagesUpdated: string[];
+  crossRefsAdded: number;
+}
+
+export interface WikiLogEntry {
+  timestamp: string;
+  operation: 'ingest' | 'query' | 'lint' | 'update' | 'delete';
+  summary: string;
+  pagesSlugs?: string[];
+  sourceRef?: string;
+  metadata?: Record<string, unknown>;
+}
+
 // ── Vault Health ───────────────────────────────────────────────────────────
 
 export interface VaultBackboneHealth {
