@@ -134,7 +134,7 @@ describe('nemoclaw parser', () => {
 
   describe('findNemoClawConfigs', () => {
     it('should find nemoclaw config files recursively', () => {
-      vi.mocked(fs.readdirSync).mockImplementation((dirPath) => {
+      (vi.mocked(fs.readdirSync) as ReturnType<typeof vi.fn>).mockImplementation((dirPath: unknown) => {
         const dir = String(dirPath);
         if (dir.endsWith('/root')) {
           return [
