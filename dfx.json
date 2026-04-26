@@ -1,7 +1,8 @@
 {
   "canisters": {
     "agent_vault": {
-      "main": "canister/agent.mo"
+      "main": "canister/agent.mo",
+      "wasm_memory_limit": "64MiB"
     }
   },
   "networks": {
@@ -17,7 +18,9 @@
       }
     },
     "ic": {
-      "providers": ["https://ic0.app"],
+      "providers": [
+        "https://ic0.app"
+      ],
       "type": "persistent"
     }
   }

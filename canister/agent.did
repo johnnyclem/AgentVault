@@ -56,9 +56,13 @@ service : {
   updateWalletStatus : (text, variant { active : null; inactive : null; revoked : null }) -> (variant { ok : text; err : text });
 
   // System Functions
-  getCanisterStatus : () -> (record { status : variant { running : null; stopping : null; stopped : null }; memorySize : nat; cycles : nat }) query;
+  getCanisterStatus : () -> (record { status : variant { running : null; stopping : null; stopped : null }; memorySize : nat; memoryLimit : nat; cycles : nat; frozen : bool; upgradesLocked : bool; killed : bool }) query;
+  getHardeningStatus : () -> (record { owner : opt principal; authorizedCallerCount : nat; frozen : bool; upgradesLocked : bool; killed : bool; heapLimitBytes : nat; heapSizeBytes : nat; lastHealthCheckAt : int; lastHealthCheckOkAt : int; consecutiveHealthTimeouts : nat }) query;
+  addAuthorizedCaller : (principal) -> (variant { ok : text; err : text });
+  unlockUpgrades : () -> (variant { ok : text; err : text });
+  lockUpgrades : () -> (variant { ok : text; err : text });
   getMetrics : () -> (record { uptime : int; operations : nat; lastActivity : int }) query;
-  heartbeat : () -> (bool);
+  triggerHealthCheck : () -> (bool);
 }
 
 type AgentConfig = record { name : text; agentType : text; version : text; createdAt : int };

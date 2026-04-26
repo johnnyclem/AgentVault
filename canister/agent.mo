@@ -9,12 +9,17 @@
 import Memory "mo:base/Memory";
 import Buffer "mo:base/Buffer";
 import Int "mo:base/Int";
+import Nat "mo:base/Nat";
 import Time "mo:base/Time";
 import Iter "mo:base/Iter";
 import Blob "mo:base/Blob";
 import Text "mo:base/Text";
 import Array "mo:base/Array";
 import Option "mo:base/Option";
+import Result "mo:base/Result";
+import Principal "mo:base/Principal";
+import Cycles "mo:base/ExperimentalCycles";
+import Debug "mo:base/Debug";
 
 // ==================== Types ====================
 
@@ -179,6 +184,141 @@ public type EncryptedSecret = {
 // Encrypted secrets storage
 stable var encryptedSecrets : [EncryptedSecret] = [];
 
+// ==================== Hardening State ====================
+
+let maxHeapSizeBytes : Nat = 64 * 1024 * 1024; // 64 MiB
+let healthCheckIntervalNanos : Int = 5 * 60 * 1_000_000_000; // 5 minutes
+let maxConsecutiveHealthTimeouts : Nat = 3;
+
+stable var ownerPrincipal : ?Principal = null;
+stable var authorizedCallers : [Principal] = [];
+stable var upgradesLocked : Bool = true;
+stable var frozenMode : Bool = true;
+stable var canisterKilled : Bool = false;
+stable var lastHealthCheckAt : Int = 0;
+stable var lastHealthCheckOkAt : Int = 0;
+stable var consecutiveHealthTimeouts : Nat = 0;
+
+private func ensureOwnerInitialized(caller : Principal) {
+  switch (ownerPrincipal) {
+    case null {
+      ownerPrincipal := ?caller;
+      authorizedCallers := [caller];
+    };
+    case (_) {};
+  }
+};
+
+private func isAuthorized(caller : Principal) : Bool {
+  switch (ownerPrincipal) {
+    case (?owner) {
+      if (caller == owner) {
+        true
+      } else {
+        Option.isSome(Array.find<Principal>(authorizedCallers, func(p : Principal) : Bool { p == caller }))
+      }
+    };
+    case null { false };
+  }
+};
+
+private func assertAuthorized(caller : Principal) : Result.Result<(), Text> {
+  ensureOwnerInitialized(caller);
+  if (canisterKilled) {
+    return #err("Canister is killed due to failed health checks");
+  };
+  if (Memory.heapSize() > maxHeapSizeBytes) {
+    canisterKilled := true;
+    return #err("Heap limit exceeded (64 MiB). Canister moved to killed state");
+  };
+  if (isAuthorized(caller)) {
+    #ok(())
+  } else {
+    #err("Unauthorized principal")
+  }
+};
+
+private func checkGuard(caller : Principal) : ?Text {
+  switch (assertAuthorized(caller)) {
+    case (#ok(_)) { null };
+    case (#err(msg)) { ?msg };
+  }
+};
+
+private let ic : actor {
+  http_request : ({
+    url : Text;
+    max_response_bytes : ?Nat;
+    headers : [{ name : Text; value : Text }];
+    body : ?[Nat8];
+    method : { #get; #post; #head };
+    transform : ?{
+      function : shared query ({ status : Nat; headers : [{ name : Text; value : Text }]; body : [Nat8] }) -> async {
+        status : Nat;
+        headers : [{ name : Text; value : Text }];
+        body : [Nat8];
+      };
+      context : [Nat8];
+    };
+  }) -> async { status : Nat; headers : [{ name : Text; value : Text }]; body : [Nat8] };
+} = actor "aaaaa-aa";
+
+public query func transformHealthResponse(resp : {
+  status : Nat;
+  headers : [{ name : Text; value : Text }];
+  body : [Nat8];
+}) : async {
+  status : Nat;
+  headers : [{ name : Text; value : Text }];
+  body : [Nat8];
+} {
+  {
+    status = resp.status;
+    headers = [];
+    body = [];
+  }
+};
+
+private func runHealthCheck() : async Bool {
+  let now = Time.now();
+  if (now - lastHealthCheckAt < healthCheckIntervalNanos) {
+    return true;
+  };
+
+  lastHealthCheckAt := now;
+  try {
+    let response = await ic.http_request({
+      url = "https://api.binance.com/api/v3/ping";
+      max_response_bytes = ?256;
+      headers = [{ name = "User-Agent"; value = "agentvault-canister-health" }];
+      body = null;
+      method = #get;
+      transform = ?{
+        function = transformHealthResponse;
+        context = [];
+      };
+    });
+
+    if (response.status >= 200 and response.status < 300) {
+      consecutiveHealthTimeouts := 0;
+      lastHealthCheckOkAt := now;
+      true
+    } else {
+      consecutiveHealthTimeouts += 1;
+      if (consecutiveHealthTimeouts > maxConsecutiveHealthTimeouts) {
+        canisterKilled := true;
+      };
+      false
+    }
+  } catch (_err) {
+    consecutiveHealthTimeouts += 1;
+    if (consecutiveHealthTimeouts > maxConsecutiveHealthTimeouts) {
+      canisterKilled := true;
+    };
+    false
+  }
+};
+
 // ==================== Transaction Queue Functions (Phase 5B) ====================
 
 /**
@@ -194,10 +334,15 @@ private func generateTransactionId() : Text {
  * @param action - Transaction action to queue
  * @returns Queue result
  */
-public shared func queueTransaction(action : TransactionAction) : async {
+public shared(msg) func queueTransaction(action : TransactionAction) : async {
   #ok : Text;
   #err : Text;
 } {
+  switch (checkGuard(msg.caller)) {
+    case (?reason) { return #err(reason) };
+    case null {};
+  };
+
   let tx : QueuedTransaction = {
     id = generateTransactionId();
     action = action;
@@ -279,10 +424,15 @@ public query func getQueuedTransaction(txId : Text) : async ?QueuedTransaction {
  * @param signature - Signature data
  * @returns Update result
  */
-public shared func markTransactionSigned(txId : Text, signature : Text) : async {
+public shared(msg) func markTransactionSigned(txId : Text, signature : Text) : async {
   #ok : Text;
   #err : Text;
 } {
+  switch (checkGuard(msg.caller)) {
+    case (?reason) { return #err(reason) };
+    case null {};
+  };
+
   var found = false;
 
   transactionQueue := Array.map<QueuedTransaction, QueuedTransaction>(
@@ -322,10 +472,15 @@ public shared func markTransactionSigned(txId : Text, signature : Text) : async 
  * @param txHash - Transaction hash
  * @returns Update result
  */
-public shared func markTransactionCompleted(txId : Text, txHash : Text) : async {
+public shared(msg) func markTransactionCompleted(txId : Text, txHash : Text) : async {
   #ok : Text;
   #err : Text;
 } {
+  switch (checkGuard(msg.caller)) {
+    case (?reason) { return #err(reason) };
+    case null {};
+  };
+
   var found = false;
 
   transactionQueue := Array.map<QueuedTransaction, QueuedTransaction>(
@@ -365,10 +520,15 @@ public shared func markTransactionCompleted(txId : Text, txHash : Text) : async 
  * @param error - Error message
  * @returns Update result
  */
-public shared func markTransactionFailed(txId : Text, error : Text) : async {
+public shared(msg) func markTransactionFailed(txId : Text, error : Text) : async {
   #ok : Text;
   #err : Text;
 } {
+  switch (checkGuard(msg.caller)) {
+    case (?reason) { return #err(reason) };
+    case null {};
+  };
+
   var found = false;
 
   transactionQueue := Array.map<QueuedTransaction, QueuedTransaction>(
@@ -407,10 +567,15 @@ public shared func markTransactionFailed(txId : Text, error : Text) : async {
  * @param txId - Transaction ID
  * @returns Retry result
  */
-public shared func retryTransaction(txId : Text) : async {
+public shared(msg) func retryTransaction(txId : Text) : async {
   #ok : Text;
   #err : Text;
 } {
+  switch (checkGuard(msg.caller)) {
+    case (?reason) { return #err(reason) };
+    case null {};
+  };
+
   var found = false;
 
   transactionQueue := Array.map<QueuedTransaction, QueuedTransaction>(
@@ -450,10 +615,15 @@ public shared func retryTransaction(txId : Text) : async {
  * @param scheduledAt - Scheduled time
  * @returns Update result
  */
-public shared func scheduleTransaction(txId : Text, scheduledAt : Int) : async {
+public shared(msg) func scheduleTransaction(txId : Text, scheduledAt : Int) : async {
   #ok : Text;
   #err : Text;
 } {
+  switch (checkGuard(msg.caller)) {
+    case (?reason) { return #err(reason) };
+    case null {};
+  };
+
   var found = false;
 
   transactionQueue := Array.map<QueuedTransaction, QueuedTransaction>(
@@ -491,7 +661,13 @@ public shared func scheduleTransaction(txId : Text, scheduledAt : Int) : async {
  *
  * @returns Clear result
  */
-public shared func clearCompletedTransactions() : async Text {
+public shared(msg) func clearCompletedTransactions() : async Text {
+  switch (checkGuard(msg.caller)) {
+    case (?reason) { return reason };
+    case null {};
+  };
+
+
   transactionQueue := Array.filter<QueuedTransaction>(
     transactionQueue,
     func(tx : QueuedTransaction) : Bool {
@@ -552,10 +728,15 @@ public query func getTransactionQueueStats() : async {
  * @param walletInfo - Wallet metadata to register
  * @returns Registration result
  */
-public shared func registerWallet(walletInfo : WalletInfo) : async {
+public shared(msg) func registerWallet(walletInfo : WalletInfo) : async {
   #ok : Text;
   #err : Text;
 } {
+  switch (checkGuard(msg.caller)) {
+    case (?reason) { return #err(reason) };
+    case null {};
+  };
+
   // Check if wallet already exists
   for ((id, _) in walletRegistry.vals()) {
     if (id == walletInfo.id) {
@@ -577,10 +758,15 @@ public shared func registerWallet(walletInfo : WalletInfo) : async {
  * @param secret - Encrypted secret data
  * @returns Storage result
  */
-public shared func storeEncryptedSecret(secret : EncryptedSecret) : async {
+public shared(msg) func storeEncryptedSecret(secret : EncryptedSecret) : async {
   #ok : Text;
   #err : Text;
 } {
+  switch (checkGuard(msg.caller)) {
+    case (?reason) { return #err(reason) };
+    case null {};
+  };
+
   encryptedSecrets := Array.append<EncryptedSecret>(encryptedSecrets, [secret]);
 
   #ok("Secret stored: " # secret.id)
@@ -616,10 +802,15 @@ public query func listEncryptedSecrets() : async [EncryptedSecret] {
  * @param secretId - Secret ID to delete
  * @returns Deletion result
  */
-public shared func deleteEncryptedSecret(secretId : Text) : async {
+public shared(msg) func deleteEncryptedSecret(secretId : Text) : async {
   #ok : Text;
   #err : Text;
 } {
+  switch (checkGuard(msg.caller)) {
+    case (?reason) { return #err(reason) };
+    case null {};
+  };
+
   var found = false;
 
   encryptedSecrets := Array.filter<EncryptedSecret>(
@@ -679,10 +870,15 @@ public query func verifyThresholdSignature(transactionId : Text, signature : Tex
  * @param threshold - Threshold number (minimum 2)
  * @returns Derivation result
  */
-public shared func deriveVetKeysKey(seedPhrase : Text, threshold : Nat) : async {
+public shared(msg) func deriveVetKeysKey(seedPhrase : Text, threshold : Nat) : async {
   #ok : Text;
   #err : Text;
 } {
+  switch (checkGuard(msg.caller)) {
+    case (?reason) { return #err(reason) };
+    case null {};
+  };
+
   // Validate inputs
   if (Text.size(seedPhrase) == 0) {
     return #err("Seed phrase cannot be empty");
@@ -720,6 +916,89 @@ public query func getVetKeysStatus() : async {
   }
 };
 
+
+public shared(msg) func addAuthorizedCaller(caller : Principal) : async {
+  #ok : Text;
+  #err : Text;
+} {
+  ensureOwnerInitialized(msg.caller);
+  switch (ownerPrincipal) {
+    case (?owner) {
+      if (msg.caller != owner) {
+        return #err("Only owner can add authorized callers");
+      };
+      if (Option.isSome(Array.find<Principal>(authorizedCallers, func(p : Principal) : Bool { p == caller }))) {
+        return #ok("Caller already authorized");
+      };
+      authorizedCallers := Array.append<Principal>(authorizedCallers, [caller]);
+      #ok("Authorized caller added")
+    };
+    case null { #err("Owner not initialized") };
+  }
+};
+
+public shared(msg) func unlockUpgrades() : async { #ok : Text; #err : Text } {
+  ensureOwnerInitialized(msg.caller);
+  switch (ownerPrincipal) {
+    case (?owner) {
+      if (msg.caller != owner) {
+        return #err("Only owner can unlock upgrades");
+      };
+      upgradesLocked := false;
+      frozenMode := false;
+      #ok("Upgrades unlocked")
+    };
+    case null { #err("Owner not initialized") };
+  }
+};
+
+public shared(msg) func lockUpgrades() : async { #ok : Text; #err : Text } {
+  ensureOwnerInitialized(msg.caller);
+  switch (ownerPrincipal) {
+    case (?owner) {
+      if (msg.caller != owner) {
+        return #err("Only owner can lock upgrades");
+      };
+      upgradesLocked := true;
+      frozenMode := true;
+      #ok("Upgrades locked")
+    };
+    case null { #err("Owner not initialized") };
+  }
+};
+
+public query func getHardeningStatus() : async {
+  owner : ?Principal;
+  authorizedCallerCount : Nat;
+  frozen : Bool;
+  upgradesLocked : Bool;
+  killed : Bool;
+  heapLimitBytes : Nat;
+  heapSizeBytes : Nat;
+  lastHealthCheckAt : Int;
+  lastHealthCheckOkAt : Int;
+  consecutiveHealthTimeouts : Nat;
+} {
+  {
+    owner = ownerPrincipal;
+    authorizedCallerCount = authorizedCallers.size();
+    frozen = frozenMode;
+    upgradesLocked = upgradesLocked;
+    killed = canisterKilled;
+    heapLimitBytes = maxHeapSizeBytes;
+    heapSizeBytes = Memory.heapSize();
+    lastHealthCheckAt = lastHealthCheckAt;
+    lastHealthCheckOkAt = lastHealthCheckOkAt;
+    consecutiveHealthTimeouts = consecutiveHealthTimeouts;
+  }
+};
+
+system func preupgrade() {
+  if (upgradesLocked or frozenMode) {
+    Debug.trap("Canister is frozen; unlockUpgrades must be called before upgrades");
+  };
+};
+
 // ==================== System Functions ====================
 
 /**
@@ -728,12 +1007,20 @@ public query func getVetKeysStatus() : async {
 public query func getCanisterStatus() : async {
   status : { #running; #stopping; #stopped };
   memorySize : Nat;
+  memoryLimit : Nat;
   cycles : Nat;
+  frozen : Bool;
+  upgradesLocked : Bool;
+  killed : Bool;
 } {
   {
-    status = #running;
+    status = if (canisterKilled) { #stopped } else { #running };
     memorySize = Memory.heapSize();
+    memoryLimit = maxHeapSizeBytes;
     cycles = Cycles.balance();
+    frozen = frozenMode;
+    upgradesLocked = upgradesLocked;
+    killed = canisterKilled;
   }
 };
 
@@ -754,9 +1041,27 @@ public query func getMetrics() : async {
 };
 
 /**
- * Heartbeat for maintenance
+ * Manual health check trigger (owner/authorized only)
  */
-public shared func heartbeat() : async Bool {
-  // Perform any necessary maintenance tasks
-  true
+public shared(msg) func triggerHealthCheck() : async Bool {
+  switch (checkGuard(msg.caller)) {
+    case (?_) { return false };
+    case null {};
+  };
+
+  if (canisterKilled) {
+    return false;
+  };
+
+  await runHealthCheck()
+};
+
+/**
+ * Automatic heartbeat health check
+ */
+system func heartbeat() : async () {
+  if (canisterKilled) {
+    return;
+  };
+  ignore await runHealthCheck();
 };
