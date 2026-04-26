@@ -305,6 +305,77 @@ actor CLIBridge {
         )
     }
 
+    // MARK: - Orchestration Operations
+
+    /// Run Claude Code orchestration via `agentvault orchestrate --claude`
+    func runClaudeOrchestration(
+        task: String,
+        canisterId: String? = nil,
+        network: String = "local",
+        dryRun: Bool = false,
+        requireApproval: Bool = false,
+        reviewers: [String] = [],
+        model: String? = nil,
+        timeoutSeconds: Int = 1800,
+        apiKey: String? = nil
+    ) async throws -> String {
+        let root = try requireProjectRoot()
+
+        var args: [String] = ["orchestrate", "--claude", "--task", task, "--network", network]
+        if let canisterId, !canisterId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            args.append(contentsOf: ["--canister-id", canisterId])
+        }
+        if dryRun {
+            args.append("--dry-run")
+        }
+        if requireApproval {
+            args.append("--approve")
+        }
+        if !reviewers.isEmpty {
+            args.append(contentsOf: ["--reviewers", reviewers.joined(separator: ",")])
+        }
+        if let model, !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            args.append(contentsOf: ["--model", model])
+        }
+        if timeoutSeconds > 0 {
+            args.append(contentsOf: ["--timeout", String(timeoutSeconds)])
+        }
+        if let apiKey, !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            args.append(contentsOf: ["--api-key", apiKey])
+        }
+
+        return try await runCLI(root: root, args: args)
+    }
+
+    /// Scaffold a Google ADK / A2A agent via `agentvault mint agent ... --google-adk-*`
+    func mintGoogleA2AAgent(
+        name: String,
+        type: GoogleA2AAgentType,
+        network: String = "local",
+        outputDir: String? = nil,
+        canisterId: String? = nil,
+        skipBackup: Bool = false,
+        yes: Bool = true
+    ) async throws -> String {
+        let root = try requireProjectRoot()
+
+        var args: [String] = ["mint", "agent", name, type.cliFlag, "--network", network]
+        if let outputDir, !outputDir.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            args.append(contentsOf: ["--output-dir", outputDir])
+        }
+        if let canisterId, !canisterId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            args.append(contentsOf: ["--canister-id", canisterId])
+        }
+        if skipBackup {
+            args.append("--no-backup")
+        }
+        if yes {
+            args.append("--yes")
+        }
+
+        return try await runCLI(root: root, args: args)
+    }
+
     // MARK: - Process Execution
 
     private func requireProjectRoot() throws -> String {
@@ -345,68 +416,97 @@ actor CLIBridge {
     /// Execute a process and capture its stdout
     @discardableResult
     private func run(_ command: String, args: [String] = [], cwd: String? = nil) async throws -> String {
-        try await withCheckedThrowingContinuation { continuation in
-            let process = Process()
-            let stdoutPipe = Pipe()
-            let stderrPipe = Pipe()
+        let timeoutNanoseconds: UInt64 = 60 * 1_000_000_000
 
-            // Resolve command path
-            if command.hasPrefix("/") || command.hasPrefix(".") {
-                process.executableURL = URL(fileURLWithPath: command)
-            } else {
-                process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-                process.arguments = [command] + args
-            }
+        return try await withThrowingTaskGroup(of: String.self) { group in
+            group.addTask {
+                try await withCheckedThrowingContinuation { continuation in
+                    let process = Process()
+                    let stdoutPipe = Pipe()
+                    let stderrPipe = Pipe()
+                    var hasResumed = false
 
-            if process.executableURL?.lastPathComponent != "env" {
-                process.arguments = args
-            }
+                    // Resolve command path
+                    if command.hasPrefix("/") || command.hasPrefix(".") {
+                        process.executableURL = URL(fileURLWithPath: command)
+                    } else {
+                        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+                        process.arguments = [command] + args
+                    }
 
-            if let cwd = cwd {
-                process.currentDirectoryURL = URL(fileURLWithPath: cwd)
-            }
+                    if process.executableURL?.lastPathComponent != "env" {
+                        process.arguments = args
+                    }
 
-            // Inherit PATH from user environment
-            var env = ProcessInfo.processInfo.environment
-            let additionalPaths = [
-                "/usr/local/bin",
-                "/opt/homebrew/bin",
-                NSHomeDirectory() + "/.nvm/versions/node/current/bin",
-                NSHomeDirectory() + "/.volta/bin",
-                NSHomeDirectory() + "/.fnm/current/bin",
-            ]
-            let currentPath = env["PATH"] ?? "/usr/bin:/bin"
-            env["PATH"] = (additionalPaths + [currentPath]).joined(separator: ":")
-            process.environment = env
+                    if let cwd = cwd {
+                        process.currentDirectoryURL = URL(fileURLWithPath: cwd)
+                    }
 
-            process.standardOutput = stdoutPipe
-            process.standardError = stderrPipe
+                    // Inherit PATH from user environment
+                    var env = ProcessInfo.processInfo.environment
+                    let additionalPaths = [
+                        "/usr/local/bin",
+                        "/opt/homebrew/bin",
+                        NSHomeDirectory() + "/.nvm/versions/node/current/bin",
+                        NSHomeDirectory() + "/.volta/bin",
+                        NSHomeDirectory() + "/.fnm/current/bin",
+                    ]
+                    let currentPath = env["PATH"] ?? "/usr/bin:/bin"
+                    env["PATH"] = (additionalPaths + [currentPath]).joined(separator: ":")
+                    process.environment = env
 
-            process.terminationHandler = { proc in
-                let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-                let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-                let stdout = String(data: stdoutData, encoding: .utf8) ?? ""
-                let stderr = String(data: stderrData, encoding: .utf8) ?? ""
+                    process.standardOutput = stdoutPipe
+                    process.standardError = stderrPipe
 
-                if proc.terminationStatus == 0 {
-                    continuation.resume(returning: stdout)
-                } else {
-                    let combined = [stderr, stdout]
-                        .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-                        .joined(separator: "\n")
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                    let message = combined.isEmpty
-                        ? "Process exited with status \(proc.terminationStatus)"
-                        : combined
-                    continuation.resume(throwing: CLIError.commandFailed(message))
+                    process.terminationHandler = { proc in
+                        guard !hasResumed else { return }
+                        hasResumed = true
+
+                        let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+                        let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+                        let stdout = String(data: stdoutData, encoding: .utf8) ?? ""
+                        let stderr = String(data: stderrData, encoding: .utf8) ?? ""
+
+                        if proc.terminationStatus == 0 {
+                            continuation.resume(returning: stdout)
+                        } else {
+                            let combined = [stderr, stdout]
+                                .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                                .joined(separator: "\n")
+                                .trimmingCharacters(in: .whitespacesAndNewlines)
+                            let message = combined.isEmpty
+                                ? "Process exited with status \(proc.terminationStatus)"
+                                : combined
+                            continuation.resume(throwing: CLIError.commandFailed(message))
+                        }
+                    }
+
+                    do {
+                        try process.run()
+                    } catch {
+                        guard !hasResumed else { return }
+                        hasResumed = true
+                        continuation.resume(throwing: CLIError.commandFailed(error.localizedDescription))
+                        return
+                    }
+
+                    Task {
+                        try? await Task.sleep(nanoseconds: timeoutNanoseconds)
+                        guard process.isRunning, !hasResumed else { return }
+
+                        process.terminate()
+                        guard !hasResumed else { return }
+                        hasResumed = true
+                        continuation.resume(throwing: CLIError.timeout)
+                    }
                 }
             }
 
-            do {
-                try process.run()
-            } catch {
-                continuation.resume(throwing: CLIError.commandFailed(error.localizedDescription))
+            guard let first = try await group.next() else {
+                throw CLIError.commandFailed("No CLI output produced")
             }
+            group.cancelAll()
+            return first
         }
     }
 
@@ -510,4 +610,22 @@ struct CLIWalletResult {
     let privateKey: String?
     let publicKey: String?
     let chain: Chain
+}
+
+enum GoogleA2AAgentType: String, CaseIterable, Identifiable {
+    case loop
+    case workflow
+    case sequential
+    case parallel
+
+    var id: String { rawValue }
+
+    var cliFlag: String {
+        switch self {
+        case .loop: return "--google-adk-loop-agent"
+        case .workflow: return "--google-adk-workflow-agent"
+        case .sequential: return "--google-adk-sequential-agent"
+        case .parallel: return "--google-adk-parallel-agent"
+        }
+    }
 }
