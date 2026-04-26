@@ -8,17 +8,20 @@ import {
   listBackups,
   deleteBackup,
   formatBackupSize,
+  restoreFromEncryptedZip,
 } from '../../src/backup/index.js';
+import { VaultClient } from '../../src/vault/index.js';
 
 const backupCmd = new Command('backup');
 
 backupCmd
   .description('Export and import agent backups')
   .action(async () => {
-    console.log(chalk.yellow('Please specify a subcommand: export, import, list, delete, or preview'));
+    console.log(chalk.yellow('Please specify a subcommand: export, import, restore, list, delete, or preview'));
     console.log(chalk.gray(`\nExamples:
   ${chalk.cyan('agentvault backup export <agent-name> --output backup.json')}${chalk.gray('    Export agent config to file')}
   ${chalk.cyan('agentvault backup import <file>')}${chalk.gray('           Import agent from backup file')}
+  ${chalk.cyan('agentvault backup restore --zip ./backup.zip.enc --passphrase <secret>')}${chalk.gray('  Restore encrypted zip backup')}
   ${chalk.cyan('agentvault backup list')}${chalk.gray('                 List all backups')}
   ${chalk.cyan('agentvault backup delete <backup-path>')}${chalk.gray('      Delete a backup')}
   ${chalk.cyan('agentvault backup preview <backup-path>')}${chalk.gray('       Preview backup contents')}`));
@@ -28,21 +31,30 @@ backupCmd
   .command('export')
   .description('Export agent configuration and data to a backup file')
   .argument('<agent-name>', 'Agent name to backup')
-  .option('-o, --output <path>', 'Output file path', './backup.json')
+  .option('-o, --output <path>', 'Output encrypted zip path', './backup.zip.enc')
   .option('-c, --canister-id <id>', 'Canister ID to include live canister state')
   .option('--no-canister-state', 'Skip fetching canister state even if canister ID provided')
+  .option('--passphrase <value>', 'Passphrase used to encrypt the backup zip')
+  .option('--vault-passphrase-key <key>', 'Vault key to read backup passphrase from', 'backup-passphrase')
+  .option('--arweave-jwk <path>', 'Path to Arweave JWK for manifest upload')
+  .option('--wasm <path>', 'Optional WASM path to include for fresh-canister restore')
   .action(async (agentName, options) => {
-    const outputPath = options.output.endsWith('.json') ? options.output : `${options.output}.json`;
+    const outputPath = options.output.endsWith('.enc') ? options.output : `${options.output}.zip.enc`;
     const includeCanisterState = options.canisterId ? options.canisterState !== false : false;
     const spinner = ora(`Exporting backup for ${agentName}...`).start();
 
     try {
+      const passphrase = options.passphrase || await readBackupPassphraseFromVault(agentName, options.vaultPassphraseKey);
+
       const result = await exportBackup({
         agentName,
         outputPath,
         includeConfig: true,
         canisterId: options.canisterId,
         includeCanisterState,
+        passphrase,
+        arweaveJwkPath: options.arweaveJwk,
+        wasmPath: options.wasm,
       });
 
       if (result.success && result.path && result.manifest) {
@@ -50,12 +62,56 @@ backupCmd
         const sizeBytes = result.sizeBytes || result.manifest.size;
         console.log(chalk.gray(`Size: ${formatBackupSize(sizeBytes)}`));
         console.log(chalk.gray(`Components: ${result.manifest.components.join(', ')}`));
+        if (result.manifest.arweaveManifestTxId) {
+          console.log(chalk.gray(`Arweave manifest tx: ${result.manifest.arweaveManifestTxId}`));
+        }
       } else {
         spinner.fail(chalk.red('Backup export failed'));
         process.exit(1);
       }
     } catch (error) {
       spinner.fail(chalk.red('Backup export failed'));
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.error(chalk.red(message));
+      process.exit(1);
+    }
+  });
+
+backupCmd
+  .command('restore')
+  .description('Decrypt an encrypted backup zip and deploy a fresh canister')
+  .requiredOption('--zip <path>', 'Path to encrypted backup zip (.zip.enc)')
+  .option('--passphrase <value>', 'Backup passphrase used for decryption')
+  .option('--agent <name>', 'Agent name used to fetch passphrase from Vault')
+  .option('--vault-passphrase-key <key>', 'Vault key to read backup passphrase from', 'backup-passphrase')
+  .option('--network <name>', 'Network to deploy fresh canister to', 'local')
+  .action(async (options) => {
+    const spinner = ora(`Restoring encrypted backup ${options.zip}...`).start();
+
+    try {
+      const passphrase = options.passphrase || await readBackupPassphraseFromVault(
+        options.agent,
+        options.vaultPassphraseKey,
+      );
+
+      const result = await restoreFromEncryptedZip({
+        zipPath: options.zip,
+        passphrase,
+        network: options.network,
+      });
+
+      if (!result.success) {
+        spinner.fail(chalk.red('Backup restore failed'));
+        console.error(chalk.red(result.error || 'Unknown restore error'));
+        process.exit(1);
+      }
+
+      spinner.succeed(chalk.green('Backup restored and fresh canister deployed'));
+      if (result.deployedCanisterId) {
+        console.log(chalk.gray(`Canister ID: ${result.deployedCanisterId}`));
+      }
+    } catch (error) {
+      spinner.fail(chalk.red('Backup restore failed'));
       const message = error instanceof Error ? error.message : 'Unknown error';
       console.error(chalk.red(message));
       process.exit(1);
@@ -179,3 +235,26 @@ backupCmd
   });
 
 export { backupCmd };
+
+async function readBackupPassphraseFromVault(agentName: string | undefined, secretKey: string): Promise<string> {
+  if (!agentName) {
+    throw new Error('Passphrase not provided and --agent was not set for Vault lookup');
+  }
+
+  const vault = VaultClient.create(agentName);
+  const result = await vault.getSecret(secretKey);
+  if (!result.success || !result.data) {
+    throw new Error(result.error || `Failed to read Vault secret "${secretKey}"`);
+  }
+
+  const secretValue = result.data.value;
+  if (typeof secretValue === 'string') {
+    return secretValue;
+  }
+
+  const value = secretValue.value;
+  if (!value) {
+    throw new Error(`Vault secret "${secretKey}" does not contain a "value" field`);
+  }
+  return value;
+}
