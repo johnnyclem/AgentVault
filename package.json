@@ -35,7 +35,8 @@
     "typecheck:webapp": "npm --prefix webapp run typecheck",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "lint:webapp": "npm --prefix webapp run lint"
+    "lint:webapp": "npm --prefix webapp run lint",
+    "audio:catfish": "tsx scripts/generate-catfish-audio.ts"
   },
   "keywords": [
     "agent",
