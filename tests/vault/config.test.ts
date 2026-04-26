@@ -156,6 +156,18 @@ describe('Vault Configuration', () => {
       expect(errors.some(e => e.includes('Timeout'))).toBe(true);
     });
 
+
+    it('should accept bitwarden backend without vault address or token', () => {
+      const config: VaultConfig = {
+        backend: 'bitwarden',
+        address: 'bitwarden://local',
+        authMethod: 'token',
+      };
+
+      const errors = validateVaultConfig(config);
+      expect(errors).toHaveLength(0);
+    });
+
     it('should accept config with optional fields', () => {
       const config: VaultConfig = {
         address: 'https://vault.example.com',

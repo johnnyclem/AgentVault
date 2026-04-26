@@ -10,6 +10,11 @@
 export type VaultAuthMethod = 'token' | 'approle' | 'kubernetes' | 'userpass';
 
 /**
+ * Secret backend provider
+ */
+export type VaultBackend = 'hashicorp' | 'bitwarden';
+
+/**
  * Vault secret engine type
  */
 export type VaultSecretEngine = 'kv-v2' | 'kv-v1' | 'transit';
@@ -18,6 +23,8 @@ export type VaultSecretEngine = 'kv-v2' | 'kv-v1' | 'transit';
  * Vault connection configuration
  */
 export interface VaultConfig {
+  /** Secret backend provider */
+  backend?: VaultBackend;
   /** Vault server address (e.g. http://127.0.0.1:8200) */
   address: string;
   /** Authentication method */

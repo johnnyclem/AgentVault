@@ -41,6 +41,18 @@ describe('Vault CLI Command', () => {
     expect(putSubcommand?.description()).toContain('Store');
   });
 
+  it('should have store subcommand', () => {
+    const storeSubcommand = vaultCmd.commands.find((cmd) => cmd.name() === 'store');
+    expect(storeSubcommand).toBeDefined();
+    expect(storeSubcommand?.description()).toContain('Store');
+  });
+
+  it('should have fetch subcommand', () => {
+    const fetchSubcommand = vaultCmd.commands.find((cmd) => cmd.name() === 'fetch');
+    expect(fetchSubcommand).toBeDefined();
+    expect(fetchSubcommand?.description()).toContain('Fetch');
+  });
+
   it('should have list subcommand', () => {
     const listSubcommand = vaultCmd.commands.find((cmd) => cmd.name() === 'list');
     expect(listSubcommand).toBeDefined();
@@ -59,9 +71,9 @@ describe('Vault CLI Command', () => {
     expect(policySubcommand?.description()).toContain('policy');
   });
 
-  it('should have all 7 subcommands', () => {
-    expect(vaultCmd.commands).toHaveLength(7);
+  it('should have all 9 subcommands', () => {
+    expect(vaultCmd.commands).toHaveLength(9);
     const subcommandNames = vaultCmd.commands.map(c => c.name()).sort();
-    expect(subcommandNames).toEqual(['delete', 'get', 'health', 'init', 'list', 'policy', 'put']);
+    expect(subcommandNames).toEqual(['delete', 'fetch', 'get', 'health', 'init', 'list', 'policy', 'put', 'store']);
   });
 });
