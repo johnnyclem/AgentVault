@@ -305,6 +305,56 @@ actor CLIBridge {
         )
     }
 
+    /// Run a Claude Code orchestration session.
+    func orchestrateWithClaude(options: CLIOrchestrateOptions) async throws -> String {
+        let root = try requireProjectRoot()
+
+        var args = ["orchestrate", "--claude", "--task", options.task, "--network", options.network]
+
+        if let canisterId = options.canisterId, !canisterId.isEmpty {
+            args += ["--canister-id", canisterId]
+        }
+        if options.dryRun {
+            args.append("--dry-run")
+        }
+        if options.approve {
+            args.append("--approve")
+            if !options.reviewers.isEmpty {
+                args += ["--reviewers", options.reviewers.joined(separator: ",")]
+            }
+        }
+        if let model = options.model, !model.isEmpty {
+            args += ["--model", model]
+        }
+        if let timeoutSeconds = options.timeoutSeconds, timeoutSeconds > 0 {
+            args += ["--timeout", String(timeoutSeconds)]
+        }
+        if let apiKey = options.apiKey, !apiKey.isEmpty {
+            args += ["--api-key", apiKey]
+        }
+
+        return try await runCLI(root: root, args: args)
+    }
+
+    /// Mint a Google ADK agent scaffold with A2A compatibility.
+    func mintGoogleA2AAgent(options: CLIMintGoogleA2AOptions) async throws -> String {
+        let root = try requireProjectRoot()
+
+        var args = ["mint", "agent", options.name, "--google-adk-workflow-agent", "--yes", "--network", options.network]
+
+        if let outputDir = options.outputDir, !outputDir.isEmpty {
+            args += ["--output-dir", outputDir]
+        }
+        if let canisterId = options.canisterId, !canisterId.isEmpty {
+            args += ["--canister-id", canisterId]
+        }
+        if options.skipBackup {
+            args.append("--no-backup")
+        }
+
+        return try await runCLI(root: root, args: args)
+    }
+
     // MARK: - Process Execution
 
     private func requireProjectRoot() throws -> String {
@@ -345,68 +395,98 @@ actor CLIBridge {
     /// Execute a process and capture its stdout
     @discardableResult
     private func run(_ command: String, args: [String] = [], cwd: String? = nil) async throws -> String {
-        try await withCheckedThrowingContinuation { continuation in
-            let process = Process()
-            let stdoutPipe = Pipe()
-            let stderrPipe = Pipe()
+        let timeoutNanoseconds: UInt64 = 60 * 1_000_000_000
 
-            // Resolve command path
-            if command.hasPrefix("/") || command.hasPrefix(".") {
-                process.executableURL = URL(fileURLWithPath: command)
-            } else {
-                process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-                process.arguments = [command] + args
-            }
+        return try await withThrowingTaskGroup(of: String.self) { group in
+            group.addTask {
+                try await withCheckedThrowingContinuation { continuation in
+                    let process = Process()
+                    let stdoutPipe = Pipe()
+                    let stderrPipe = Pipe()
+                    let resumeLock = NSLock()
+                    var hasResumed = false
 
-            if process.executableURL?.lastPathComponent != "env" {
-                process.arguments = args
-            }
+                    func resumeOnce(with result: Result<String, Error>) {
+                        resumeLock.lock()
+                        defer { resumeLock.unlock() }
+                        guard !hasResumed else { return }
+                        hasResumed = true
+                        continuation.resume(with: result)
+                    }
 
-            if let cwd = cwd {
-                process.currentDirectoryURL = URL(fileURLWithPath: cwd)
-            }
+                    // Resolve command path
+                    if command.hasPrefix("/") || command.hasPrefix(".") {
+                        process.executableURL = URL(fileURLWithPath: command)
+                    } else {
+                        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+                        process.arguments = [command] + args
+                    }
 
-            // Inherit PATH from user environment
-            var env = ProcessInfo.processInfo.environment
-            let additionalPaths = [
-                "/usr/local/bin",
-                "/opt/homebrew/bin",
-                NSHomeDirectory() + "/.nvm/versions/node/current/bin",
-                NSHomeDirectory() + "/.volta/bin",
-                NSHomeDirectory() + "/.fnm/current/bin",
-            ]
-            let currentPath = env["PATH"] ?? "/usr/bin:/bin"
-            env["PATH"] = (additionalPaths + [currentPath]).joined(separator: ":")
-            process.environment = env
+                    if process.executableURL?.lastPathComponent != "env" {
+                        process.arguments = args
+                    }
 
-            process.standardOutput = stdoutPipe
-            process.standardError = stderrPipe
+                    if let cwd = cwd {
+                        process.currentDirectoryURL = URL(fileURLWithPath: cwd)
+                    }
 
-            process.terminationHandler = { proc in
-                let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-                let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-                let stdout = String(data: stdoutData, encoding: .utf8) ?? ""
-                let stderr = String(data: stderrData, encoding: .utf8) ?? ""
+                    var env = ProcessInfo.processInfo.environment
+                    let additionalPaths = [
+                        "/usr/local/bin",
+                        "/opt/homebrew/bin",
+                        NSHomeDirectory() + "/.nvm/versions/node/current/bin",
+                        NSHomeDirectory() + "/.volta/bin",
+                        NSHomeDirectory() + "/.fnm/current/bin",
+                    ]
+                    let currentPath = env["PATH"] ?? "/usr/bin:/bin"
+                    env["PATH"] = (additionalPaths + [currentPath]).joined(separator: ":")
+                    process.environment = env
 
-                if proc.terminationStatus == 0 {
-                    continuation.resume(returning: stdout)
-                } else {
-                    let combined = [stderr, stdout]
-                        .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-                        .joined(separator: "\n")
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                    let message = combined.isEmpty
-                        ? "Process exited with status \(proc.terminationStatus)"
-                        : combined
-                    continuation.resume(throwing: CLIError.commandFailed(message))
+                    process.standardOutput = stdoutPipe
+                    process.standardError = stderrPipe
+
+                    process.terminationHandler = { proc in
+                        let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+                        let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+                        let stdout = String(data: stdoutData, encoding: .utf8) ?? ""
+                        let stderr = String(data: stderrData, encoding: .utf8) ?? ""
+
+                        if proc.terminationStatus == 0 {
+                            resumeOnce(with: .success(stdout))
+                        } else {
+                            let combined = [stderr, stdout]
+                                .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                                .joined(separator: "\n")
+                                .trimmingCharacters(in: .whitespacesAndNewlines)
+                            let message = combined.isEmpty
+                                ? "Process exited with status \(proc.terminationStatus)"
+                                : combined
+                            resumeOnce(with: .failure(CLIError.commandFailed(message)))
+                        }
+                    }
+
+                    do {
+                        try process.run()
+                    } catch {
+                        resumeOnce(with: .failure(CLIError.commandFailed(error.localizedDescription)))
+                        return
+                    }
+
+                    Task {
+                        try? await Task.sleep(nanoseconds: timeoutNanoseconds)
+                        guard process.isRunning else { return }
+
+                        process.terminate()
+                        resumeOnce(with: .failure(CLIError.timeout))
+                    }
                 }
             }
 
-            do {
-                try process.run()
-            } catch {
-                continuation.resume(throwing: CLIError.commandFailed(error.localizedDescription))
+            guard let first = try await group.next() else {
+                throw CLIError.commandFailed("No CLI output produced")
             }
+            group.cancelAll()
+            return first
         }
     }
 
@@ -501,6 +581,28 @@ actor CLIBridge {
             chain: chain
         )
     }
+}
+
+
+
+struct CLIOrchestrateOptions {
+    var task: String
+    var canisterId: String?
+    var network: String = "local"
+    var dryRun: Bool = false
+    var approve: Bool = false
+    var reviewers: [String] = []
+    var model: String?
+    var timeoutSeconds: Int?
+    var apiKey: String?
+}
+
+struct CLIMintGoogleA2AOptions {
+    var name: String
+    var network: String = "local"
+    var outputDir: String?
+    var canisterId: String?
+    var skipBackup: Bool = false
 }
 
 /// Parsed result from CLI wallet operations
