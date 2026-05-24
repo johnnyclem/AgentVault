@@ -12,7 +12,7 @@ import type { TraceFilter } from '../../src/debugging/types.js';
 export const traceCmd = new Command('trace');
 
 traceCmd
-  .description('[Experimental] View execution traces from instrumented canisters')
+  .description('[Stub] View execution traces from instrumented canisters (Phase 3, not yet implemented)')
   .argument('<canister-id>', 'Canister ID')
   .option('-f, --filter <method>', 'Filter by method name')
   .option('-d, --min-duration <ms>', 'Minimum duration in milliseconds')

@@ -14,6 +14,7 @@
  * 3. Optionally rotate the leaked secret
  */
 
+import * as crypto from 'node:crypto';
 import type { LeakDetectionEvent, LeakSeverity } from './safehouse-types.js';
 
 export type LeakEventCallback = (event: LeakDetectionEvent) => void;
@@ -74,7 +75,6 @@ export class SecretLeakDetector {
    * The plaintext is fingerprinted and NOT stored.
    */
   track(key: string, value: string): void {
-    const crypto = require('node:crypto') as typeof import('node:crypto');
     this.tracked.set(key, {
       key,
       fingerprint: crypto.createHash('sha256').update(value).digest('hex'),
@@ -187,29 +187,27 @@ export class SecretLeakDetector {
     this.originalStdoutWrite = process.stdout.write.bind(process.stdout);
     this.originalStderrWrite = process.stderr.write.bind(process.stderr);
 
-    const self = this;
-
-    process.stdout.write = function (chunk: unknown, ...args: unknown[]): boolean {
+    process.stdout.write = ((chunk: unknown, ...args: unknown[]): boolean => {
       const str = typeof chunk === 'string' ? chunk : Buffer.isBuffer(chunk) ? chunk.toString() : String(chunk);
-      const redacted = self.redactSecrets(str, secretValues);
+      const redacted = this.redactSecrets(str, secretValues);
 
       if (redacted !== str) {
         // Leak detected in stdout
         for (const [secretKey, secretValue] of secretValues) {
           if (str.includes(secretValue)) {
-            self.createEvent('warning', secretKey, `Secret "${secretKey}" redacted from stdout`, 'stdout');
+            this.createEvent('warning', secretKey, `Secret "${secretKey}" redacted from stdout`, 'stdout');
           }
         }
       }
 
-      return self.originalStdoutWrite!.call(process.stdout, redacted, ...(args as []));
-    } as typeof process.stdout.write;
+      return this.originalStdoutWrite!.call(process.stdout, redacted, ...(args as []));
+    }) as typeof process.stdout.write;
 
-    process.stderr.write = function (chunk: unknown, ...args: unknown[]): boolean {
+    process.stderr.write = ((chunk: unknown, ...args: unknown[]): boolean => {
       const str = typeof chunk === 'string' ? chunk : Buffer.isBuffer(chunk) ? chunk.toString() : String(chunk);
-      const redacted = self.redactSecrets(str, secretValues);
-      return self.originalStderrWrite!.call(process.stderr, redacted, ...(args as []));
-    } as typeof process.stderr.write;
+      const redacted = this.redactSecrets(str, secretValues);
+      return this.originalStderrWrite!.call(process.stderr, redacted, ...(args as []));
+    }) as typeof process.stderr.write;
   }
 
   /**

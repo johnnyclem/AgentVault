@@ -12,7 +12,7 @@ export function statsCommand(): Command {
   const command = new Command('stats');
 
   command
-    .description('Display resource usage statistics')
+    .description('[Partial] Display resource usage statistics (current only; historical not yet implemented)')
     .argument('<canister-id>', 'Canister ID to analyze')
     .option('-p, --period <duration>', 'Time period (e.g. 24h, 7d)')
     .option('--snapshots <n>', 'Number of snapshots to analyze');

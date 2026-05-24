@@ -85,7 +85,7 @@ describe('BitwardenProvider – constructor', () => {
 describe('BitwardenProvider – healthCheck', () => {
   it('reports healthy when bw status returns unlocked', async () => {
     const execFile = await getMockedExecFile();
-    execFile.mockImplementation((_bin: string, _args: string[], _opts: unknown, cb: Function) => {
+    execFile.mockImplementation((_bin: string, _args: string[], _opts: unknown, cb: (err: Error | null, stdout?: string, stderr?: string) => void) => {
       cb(null, JSON.stringify({
         status: 'unlocked',
         userEmail: 'user@example.com',
@@ -104,7 +104,7 @@ describe('BitwardenProvider – healthCheck', () => {
 
   it('reports unhealthy when bw status returns locked', async () => {
     const execFile = await getMockedExecFile();
-    execFile.mockImplementation((_bin: string, _args: string[], _opts: unknown, cb: Function) => {
+    execFile.mockImplementation((_bin: string, _args: string[], _opts: unknown, cb: (err: Error | null, stdout?: string, stderr?: string) => void) => {
       cb(null, JSON.stringify({ status: 'locked', userEmail: '', userId: '', serverUrl: null, lastSync: '' }), '');
     });
 
@@ -117,7 +117,7 @@ describe('BitwardenProvider – healthCheck', () => {
 
   it('reports unhealthy and provides install hint when bw is missing', async () => {
     const execFile = await getMockedExecFile();
-    execFile.mockImplementation((_bin: string, _args: string[], _opts: unknown, cb: Function) => {
+    execFile.mockImplementation((_bin: string, _args: string[], _opts: unknown, cb: (err: Error | null, stdout?: string, stderr?: string) => void) => {
       const err = new Error('ENOENT: bw not found') as Error & { stderr?: string };
       err.stderr = 'ENOENT: bw not found';
       cb(err, '', '');
@@ -137,7 +137,7 @@ describe('BitwardenProvider – item name convention', () => {
     const execFile = await getMockedExecFile();
     const capturedArgs: string[][] = [];
 
-    execFile.mockImplementation((_bin: string, args: string[], _opts: unknown, cb: Function) => {
+    execFile.mockImplementation((_bin: string, args: string[], _opts: unknown, cb: (err: Error | null, stdout?: string, stderr?: string) => void) => {
       capturedArgs.push(args);
       // Return "not found" to simulate a missing item on the initial get
       const err = new Error('Not found') as Error & { stderr?: string };
@@ -157,7 +157,7 @@ describe('BitwardenProvider – item name convention', () => {
 describe('BitwardenProvider – listSecrets', () => {
   it('returns keys stripped of the agent namespace prefix', async () => {
     const execFile = await getMockedExecFile();
-    execFile.mockImplementation((_bin: string, _args: string[], _opts: unknown, cb: Function) => {
+    execFile.mockImplementation((_bin: string, _args: string[], _opts: unknown, cb: (err: Error | null, stdout?: string, stderr?: string) => void) => {
       const items = [
         { id: '1', name: 'agentvault/my-agent/api_binance', type: 2, notes: 'val1', object: 'item' },
         { id: '2', name: 'agentvault/my-agent/openai_key', type: 2, notes: 'val2', object: 'item' },
@@ -178,7 +178,7 @@ describe('BitwardenProvider – listSecrets', () => {
 
   it('returns empty array when bw returns no items', async () => {
     const execFile = await getMockedExecFile();
-    execFile.mockImplementation((_bin: string, _args: string[], _opts: unknown, cb: Function) => {
+    execFile.mockImplementation((_bin: string, _args: string[], _opts: unknown, cb: (err: Error | null, stdout?: string, stderr?: string) => void) => {
       cb(null, '[]', '');
     });
 

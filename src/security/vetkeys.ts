@@ -262,22 +262,28 @@ export class VetKeysImplementation {
 
     const secretBuffer = Buffer.from(secret, 'utf-8');
     const iv = algorithm === 'aes-256-gcm' ? crypto.randomBytes(12) : crypto.randomBytes(16);
-    const algorithmName = algorithm.replace('-', '');
+    // SEC-10: use an independent random salt for PBKDF2 rather than
+    // reusing the IV. The salt is prepended to the encrypted output so
+    // that any future decrypt path can recover it.
+    const salt = crypto.randomBytes(16);
 
     const encryptionKey = crypto.pbkdf2Sync(
       secretBuffer,
-      iv,
+      salt,
       100000,
       32,
       'sha256'
     );
 
-    const cipher = crypto.createCipheriv(algorithmName, encryptionKey, iv);
+    const cipher = crypto.createCipheriv(algorithm, encryptionKey, iv);
 
-    const encryptedShare = Buffer.concat([
+    const ciphertext = Buffer.concat([
       cipher.update(secretBuffer),
       cipher.final(),
     ]);
+
+    // On-disk layout v2: salt(16) || iv(12 or 16) || ciphertext
+    const encryptedShare = Buffer.concat([salt, iv, ciphertext]);
 
     const commitmentHash = crypto.createHash('sha256')
       .update(encryptedShare)

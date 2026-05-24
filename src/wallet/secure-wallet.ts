@@ -295,7 +295,7 @@ export class SecureWallet {
 
     // 2. Generate fresh key material
     const newEntropy = crypto.randomBytes(32);
-    let newPrivateKeyBytes: Uint8Array = newEntropy;
+    const newPrivateKeyBytes: Uint8Array = newEntropy;
     let newPublicKeyBytes: Uint8Array;
 
     if (state.curve === 'secp256k1') {
