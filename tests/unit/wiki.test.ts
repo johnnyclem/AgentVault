@@ -29,7 +29,6 @@ import type { WikiPage, RawSource, WikiSchema } from '../../src/backbone/types.j
 import type { WikiLLMAdapter, SynthesisResult } from '../../src/wiki/ingest.js';
 import type { WikiQueryLLMAdapter } from '../../src/wiki/query.js';
 import type { WikiLintLLMAdapter } from '../../src/wiki/lint.js';
-import type { WikiStore } from '../../src/wiki/wiki-store.js';
 
 // Mock the archive-manager to avoid filesystem dependencies
 vi.mock('../../src/archival/archive-manager.js', () => ({
@@ -115,8 +114,8 @@ class MockLintLLM implements WikiLintLLMAdapter {
     if (pages.length >= 2) {
       return [
         {
-          slugA: pages[0].slug,
-          slugB: pages[1].slug,
+          slugA: pages[0]!.slug,
+          slugB: pages[1]!.slug,
           description: 'Test contradiction detected',
           suggestedFix: 'Reconcile the two pages',
         },
@@ -207,7 +206,7 @@ describe('InMemoryWikiStore', () => {
     it('should filter by category', async () => {
       const pages = await store.listPages(WIKI_ID, { category: 'architecture' });
       expect(pages).toHaveLength(1);
-      expect(pages[0].slug).toBe('arch-1');
+      expect(pages[0]!.slug).toBe('arch-1');
     });
 
     it('should filter by status', async () => {
@@ -218,19 +217,19 @@ describe('InMemoryWikiStore', () => {
     it('should filter by staleness', async () => {
       const pages = await store.listPages(WIKI_ID, { staleness: 'stale' });
       expect(pages).toHaveLength(1);
-      expect(pages[0].slug).toBe('policy-1');
+      expect(pages[0]!.slug).toBe('policy-1');
     });
 
     it('should filter by search term', async () => {
       const pages = await store.listPages(WIKI_ID, { search: 'security' });
       expect(pages).toHaveLength(1);
-      expect(pages[0].slug).toBe('policy-1');
+      expect(pages[0]!.slug).toBe('policy-1');
     });
 
     it('should filter by tags', async () => {
       const pages = await store.listPages(WIKI_ID, { tags: ['system'] });
       expect(pages).toHaveLength(1);
-      expect(pages[0].slug).toBe('arch-1');
+      expect(pages[0]!.slug).toBe('arch-1');
     });
 
     it('should not return pages from different wikis', async () => {
@@ -251,13 +250,13 @@ describe('InMemoryWikiStore', () => {
     it('should find backlinks for a page', async () => {
       const backlinks = await store.getBacklinks(WIKI_ID, 'page-b');
       expect(backlinks).toHaveLength(1);
-      expect(backlinks[0].slug).toBe('page-a');
+      expect(backlinks[0]!.slug).toBe('page-a');
     });
 
     it('should find orphan pages', async () => {
       const orphans = await store.getOrphans(WIKI_ID);
       expect(orphans).toHaveLength(1);
-      expect(orphans[0].slug).toBe('orphan');
+      expect(orphans[0]!.slug).toBe('orphan');
     });
   });
 
@@ -444,8 +443,8 @@ describe('WikiQueryService', () => {
     const result = await service.query('transformer architecture');
 
     expect(result.citations.length).toBeGreaterThan(0);
-    expect(result.citations[0].slug).toBeDefined();
-    expect(result.citations[0].title).toBeDefined();
+    expect(result.citations[0]!.slug).toBeDefined();
+    expect(result.citations[0]!.title).toBeDefined();
   });
 
   it('should log query operations', async () => {
@@ -520,8 +519,8 @@ describe('WikiLintService', () => {
     const deadRefIssues = report.issues.filter((i) => i.type === 'missing-crossref');
 
     expect(deadRefIssues.length).toBe(1);
-    expect(deadRefIssues[0].pageSlug).toBe('has-dead-ref');
-    expect(deadRefIssues[0].description).toContain('nonexistent-page');
+    expect(deadRefIssues[0]!.pageSlug).toBe('has-dead-ref');
+    expect(deadRefIssues[0]!.description).toContain('nonexistent-page');
   });
 
   it('should detect stale pages', async () => {
@@ -536,7 +535,7 @@ describe('WikiLintService', () => {
     const staleIssues = report.issues.filter((i) => i.type === 'stale');
 
     expect(staleIssues.length).toBe(1);
-    expect(staleIssues[0].pageSlug).toBe('old-page');
+    expect(staleIssues[0]!.pageSlug).toBe('old-page');
   });
 
   it('should calculate health score', async () => {
@@ -591,7 +590,7 @@ describe('WikiLintService', () => {
     const contradictions = report.issues.filter((i) => i.type === 'contradiction');
 
     expect(contradictions.length).toBe(1);
-    expect(contradictions[0].description).toContain('contradiction');
+    expect(contradictions[0]!.description).toContain('contradiction');
   });
 
   it('should log lint operations', async () => {
@@ -678,7 +677,7 @@ describe('Wiki MCP Tools', () => {
       );
 
       expect(result.isError).toBeUndefined();
-      expect(result.content[0].text).toContain('initialized');
+      expect(result.content[0]!.text).toContain('initialized');
 
       const schema = await store.getSchema(WIKI_ID);
       expect(schema?.name).toBe('Test Wiki');
@@ -694,7 +693,7 @@ describe('Wiki MCP Tools', () => {
       );
 
       expect(result.isError).toBeUndefined();
-      const parsed = JSON.parse(result.content[0].text!);
+      const parsed = JSON.parse(result.content[0]!.text!);
       expect(parsed.title).toBe('Readable Page');
     });
 
@@ -718,7 +717,7 @@ describe('Wiki MCP Tools', () => {
         {},
       );
 
-      const parsed = JSON.parse(result.content[0].text!);
+      const parsed = JSON.parse(result.content[0]!.text!);
       expect(parsed).toHaveLength(2);
     });
 
@@ -746,7 +745,7 @@ describe('Wiki MCP Tools', () => {
         { slug: 'target' },
       );
 
-      const parsed = JSON.parse(result.content[0].text!);
+      const parsed = JSON.parse(result.content[0]!.text!);
       expect(parsed).toHaveLength(1);
       expect(parsed[0].slug).toBe('linker');
     });
@@ -764,7 +763,7 @@ describe('Wiki MCP Tools', () => {
         { limit: 10 },
       );
 
-      const parsed = JSON.parse(result.content[0].text!);
+      const parsed = JSON.parse(result.content[0]!.text!);
       expect(parsed).toHaveLength(1);
     });
 
@@ -777,7 +776,7 @@ describe('Wiki MCP Tools', () => {
         {},
       );
 
-      const parsed = JSON.parse(result.content[0].text!);
+      const parsed = JSON.parse(result.content[0]!.text!);
       expect(parsed.issues.length).toBeGreaterThan(0);
       expect(parsed.healthScore).toBeDefined();
     });
@@ -800,7 +799,7 @@ describe('Wiki MCP Tools', () => {
       );
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('No LLM adapter');
+      expect(result.content[0]!.text).toContain('No LLM adapter');
     });
 
     it('should handle wiki_ingest with LLM adapter', async () => {
@@ -811,7 +810,7 @@ describe('Wiki MCP Tools', () => {
       );
 
       expect(result.isError).toBeUndefined();
-      expect(result.content[0].text).toContain('Ingested');
+      expect(result.content[0]!.text).toContain('Ingested');
     });
   });
 });

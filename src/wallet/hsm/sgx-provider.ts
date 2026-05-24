@@ -298,7 +298,7 @@ export class SgxHsmProvider implements HsmProvider {
         let parsed: SgxResponse;
         try {
           parsed = JSON.parse(bodyStr) as SgxResponse;
-        } catch (err) {
+        } catch {
           return reject(new Error(`Invalid JSON from enclave: ${bodyStr}`));
         }
 

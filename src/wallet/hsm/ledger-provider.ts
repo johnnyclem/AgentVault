@@ -103,7 +103,7 @@ export class LedgerHsmProvider implements HsmProvider {
     try {
       const mod = await import('@ledgerhq/hw-transport-node-hid' as any);
       TransportNodeHid = mod.default ?? mod;
-    } catch (err) {
+    } catch {
       throw new HsmNotAvailableError(
         'ledger',
         'Package @ledgerhq/hw-transport-node-hid is not installed. ' +

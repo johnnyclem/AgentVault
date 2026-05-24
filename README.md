@@ -223,11 +223,27 @@ npm run test
 | Feature | Status |
 |---------|--------|
 | Core flow (init → package → deploy → exec → fetch) | ✅ Working |
-| Wallet crypto (real elliptic curves) | ⚠️ Basic SHA-256 |
-| VetKeys threshold signatures | ⚠️ Simulated |
+| Wallet crypto (real elliptic curves) | ✅ secp256k1 / ed25519 via `@noble/curves` |
+| Wallet at-rest encryption | ✅ AES-256-GCM via `encryptWalletSecrets` |
+| Backup atomic writes | ✅ write→fsync→rename via `atomicWriteFileSync` |
+| Vault TLS CA cert | ✅ honoured via `undici.Agent` dispatcher |
+| VetKeys threshold signatures | ⚠️ Simulated (real canister integration pending) |
 | Bittensor inference | ⚠️ Requires API access |
 | Arweave archival | ⚠️ Requires wallet setup |
-| Backup/restore | ⚠️ Manifest only |
+| `trace` / `profile` CLI | ⚠️ Stub — Phase 3 not yet implemented |
+| `stats` CLI historical analysis | ⚠️ Partial — current values only |
+
+See [`SECURITY_AUDIT_AND_COMPLETION_PLAN.md`](./SECURITY_AUDIT_AND_COMPLETION_PLAN.md) for the current security posture and audit history.
+
+### Wallet secrets
+
+Mnemonics, private keys, and keystore passwords are **never** accepted as
+CLI arguments (they would leak through `ps aux` and shell history). Use:
+
+- `AGENTVAULT_MNEMONIC` env var for `wallet import`
+- `AGENTVAULT_PRIVATE_KEY` env var for `wallet import`
+- `AGENTVAULT_PASSWORD` env var or interactive `inquirer` prompt for
+  `--keystore` decryption
 
 ## Contributing
 

@@ -25,33 +25,13 @@ import {
 
 /**
  * Create wallet command
+ *
+ * SEC-5: secrets (mnemonic, private key, keystore password) are read from
+ * environment variables or, for `import`, interactively via inquirer
+ * prompts when the chain flag is supplied but no env-var is set.
+ * They are never accepted as CLI flags because `ps aux`, shell history,
+ * and child processes leak any such arguments.
  */
-/**
- * Print security warning for sensitive CLI options
- * SECURITY: Secrets passed via CLI are visible in process list and shell history
- */
-function warnIfSensitiveOptions(options: WalletCommandOptions): void {
-  const sensitiveOptions: Array<keyof WalletCommandOptions> = ['mnemonic', 'privateKey', 'password'];
-  const usedSensitive = sensitiveOptions.filter(opt => options[opt]);
-
-  if (usedSensitive.length > 0) {
-    console.warn(chalk.yellow('\n⚠️  SECURITY WARNING:'));
-    console.warn(chalk.yellow('    Passing secrets via CLI arguments is insecure.'));
-    console.warn(chalk.yellow('    Arguments are visible in `ps aux` and shell history.'));
-    console.warn(chalk.yellow('    Consider using environment variables instead:'));
-    if (options.mnemonic) {
-      console.warn(chalk.yellow('      AGENTVAULT_MNEMONIC=... agentvault wallet import --chain eth'));
-    }
-    if (options.privateKey) {
-      console.warn(chalk.yellow('      AGENTVAULT_PRIVATE_KEY=... agentvault wallet import --chain eth'));
-    }
-    if (options.password) {
-      console.warn(chalk.yellow('      AGENTVAULT_PASSWORD=... agentvault wallet import --keystore ...'));
-    }
-    console.warn('');
-  }
-}
-
 export function walletCommand(): Command {
   const command = new Command('wallet');
 
@@ -63,13 +43,12 @@ export function walletCommand(): Command {
     .option('--chain <chain>', 'chain (eth, cketh, polkadot, solana, icp, arweave)')
     .option('--name <name>', 'wallet label (used by GUI clients)')
     .option('--json', 'output as JSON')
-    // SECURITY NOTE: These options expose secrets in process list and shell history
-    // Prefer using environment variables: AGENTVAULT_MNEMONIC, AGENTVAULT_PRIVATE_KEY
-    .option('--mnemonic <phrase>', '[INSECURE] mnemonic phrase (prefer AGENTVAULT_MNEMONIC env var)')
-    .option('--private-key <key>', '[INSECURE] private key (prefer AGENTVAULT_PRIVATE_KEY env var)')
+    // SEC-5: secrets ONLY via env vars (AGENTVAULT_MNEMONIC,
+    // AGENTVAULT_PRIVATE_KEY, AGENTVAULT_PASSWORD) or interactive
+    // prompts. CLI flags for secrets were removed because they're
+    // visible in `ps aux` and shell history.
     .option('--address <address>', 'wallet address for non-interactive balance query')
-    .option('--keystore <path>', 'Ethereum keystore JSON file')
-    .option('--password <password>', '[INSECURE] password (prefer AGENTVAULT_PASSWORD env var)')
+    .option('--keystore <path>', 'Ethereum keystore JSON file (password via AGENTVAULT_PASSWORD env var or prompt)')
     .option('--pem-file <path>', 'PEM file path (not yet supported in wallet import)')
     .option('--jwk-file <path>', 'JWK file path (not yet supported in wallet import)')
     .option(
@@ -79,8 +58,6 @@ export function walletCommand(): Command {
     )
     .option('--hsm-path <derivation>', 'BIP32/SLIP10 derivation path override for HSM keygen')
     .action(async (subcommand, options) => {
-      // Show security warning if sensitive options are used
-      warnIfSensitiveOptions(options);
       await executeWalletCommand(subcommand, options);
     });
 
@@ -93,11 +70,8 @@ type WalletCommandOptions = {
   chain?: string;
   name?: string;
   json?: boolean;
-  mnemonic?: string;
-  privateKey?: string;
   address?: string;
   keystore?: string;
-  password?: string;
   pemFile?: string;
   jwkFile?: string;
   hsm?: string;
@@ -105,10 +79,11 @@ type WalletCommandOptions = {
 };
 
 function isNonInteractiveImport(options: WalletCommandOptions): boolean {
+  // SEC-5: env-var presence is what makes import non-interactive now.
   return Boolean(
     options.chain ||
-    options.mnemonic ||
-    options.privateKey ||
+    process.env.AGENTVAULT_MNEMONIC ||
+    process.env.AGENTVAULT_PRIVATE_KEY ||
     options.keystore ||
     options.pemFile ||
     options.jwkFile
@@ -221,24 +196,44 @@ async function executeWalletCommand(
     case 'queue':
       await handleQueue(options.agentId!);
       break;
+    case 'multi-send': {
+      const { handleMultiSend: multiSendHandler } = await import('./wallet-multi-send.js');
+      await multiSendHandler(options.agentId!);
+      break;
+    }
+    case 'process-queue': {
+      const { handleProcessQueue: processQueueHandler } = await import('./wallet-process-queue.js');
+      const { canisterId } = await inquirer.prompt<{ canisterId: string }>([
+        {
+          type: 'input',
+          name: 'canisterId',
+          message: 'Canister ID:',
+          validate: (input: string) => input.trim().length > 0 || 'Canister ID is required',
+        },
+      ]);
+      await processQueueHandler(options.agentId!, canisterId);
+      break;
+    }
     default:
       console.error(chalk.red(`Unknown subcommand: ${subcommand}`));
       console.log();
       console.log(chalk.cyan('Available subcommands:'));
-      console.log('  create     - Create a wallet (supports --hsm ledger|sgx for air-gapped keygen)');
-      console.log('  connect    - Connect or create a wallet (interactive)');
-      console.log('  disconnect - Disconnect wallet');
-      console.log('  balance   - Check wallet balance');
-      console.log('  send      - Send transaction');
-      console.log('  list      - List all wallets');
-      console.log('  sign      - Sign transaction');
-      console.log('  history   - Get transaction history');
-      console.log('  export    - Export wallets to backup file');
-      console.log('  import    - Import wallets from backup file');
-      console.log('  sync      - Sync wallets to canister (Phase 5)');
-      console.log('  status    - Get wallet sync status (Phase 5)');
-      console.log('  vetkeys    - VetKeys operations (Phase 5)');
-      console.log('  queue     - Transaction queue operations (Phase 5)');
+      console.log('  create        - Create a wallet (supports --hsm ledger|sgx for air-gapped keygen)');
+      console.log('  connect       - Connect or create a wallet (interactive)');
+      console.log('  disconnect    - Disconnect wallet');
+      console.log('  balance       - Check wallet balance');
+      console.log('  send          - Send transaction');
+      console.log('  list          - List all wallets');
+      console.log('  sign          - Sign transaction');
+      console.log('  history       - Get transaction history');
+      console.log('  export        - Export wallets to backup file');
+      console.log('  import        - Import wallets from backup file');
+      console.log('  multi-send    - Batch-send transactions across wallets');
+      console.log('  process-queue - Process pending transactions queued in a canister');
+      console.log('  sync          - Sync wallets to canister (Phase 5)');
+      console.log('  status        - Get wallet sync status (Phase 5)');
+      console.log('  vetkeys       - VetKeys operations (Phase 5)');
+      console.log('  queue         - Transaction queue operations (Phase 5)');
       process.exit(1);
   }
 }
@@ -374,10 +369,12 @@ export async function handleImportNonInteractive(options: WalletCommandOptions):
   const chain = normalizeChain(options.chain);
   const agentId = getAgentId(options);
 
-  // SECURITY: Prefer environment variables over CLI arguments
-  const mnemonic = options.mnemonic || process.env.AGENTVAULT_MNEMONIC;
-  const privateKey = options.privateKey || process.env.AGENTVAULT_PRIVATE_KEY;
-  const password = options.password || process.env.AGENTVAULT_PASSWORD;
+  // SEC-5: secrets come from env vars only (or interactive prompt below
+  // for keystore password). CLI flags were removed because args are
+  // visible in process listings and shell history.
+  const mnemonic = process.env.AGENTVAULT_MNEMONIC;
+  const privateKey = process.env.AGENTVAULT_PRIVATE_KEY;
+  let password = process.env.AGENTVAULT_PASSWORD;
 
   if (mnemonic) {
     const wallet = importWalletFromMnemonic(agentId, chain, mnemonic);
@@ -393,7 +390,20 @@ export async function handleImportNonInteractive(options: WalletCommandOptions):
 
   if (options.keystore) {
     if (!password) {
-      throw new Error('--password or AGENTVAULT_PASSWORD is required when using --keystore');
+      // Fall back to an interactive password prompt when running in a TTY.
+      if (process.stdin.isTTY) {
+        const answers = await inquirer.prompt<{ password: string }>([
+          {
+            type: 'password',
+            name: 'password',
+            message: 'Keystore password:',
+            mask: '*',
+          },
+        ]);
+        password = answers.password;
+      } else {
+        throw new Error('AGENTVAULT_PASSWORD env var is required when using --keystore in a non-TTY context');
+      }
     }
     const fs = await import('node:fs/promises');
     const { Wallet } = await import('ethers');
@@ -412,7 +422,7 @@ export async function handleImportNonInteractive(options: WalletCommandOptions):
     throw new Error('JWK import is not supported by the wallet CLI command');
   }
 
-  throw new Error('Provide one of --mnemonic, --private-key, --keystore, or set AGENTVAULT_MNEMONIC/AGENTVAULT_PRIVATE_KEY env var');
+  throw new Error('Set AGENTVAULT_MNEMONIC or AGENTVAULT_PRIVATE_KEY env var, or use --keystore <path>');
 }
 
 /**

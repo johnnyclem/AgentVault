@@ -11,6 +11,10 @@
 - Root configs: `dfx.json`, `icp.yaml`, `tsconfig.json`, `eslint.config.js`.
 
 ## Build, Test, and Development Commands
+- Package manager: **npm** (authoritative `package-lock.json`). Install
+  with `npm install --legacy-peer-deps` — the flag is required because
+  of a peer-dep conflict between the `@dfinity/*` and `@solana/web3.js`
+  trees; it has no runtime effect.
 - `npm run dev`: run the local dev entry with `tsx` watch.
 - `npm run build`: compile TypeScript to `dist/`.
 - `npm run start`: run the built app from `dist/`.
@@ -40,4 +44,15 @@
 
 ## Security & Configuration Tips
 - Do not commit secrets; keep keys and seed phrases out of git.
+- Wallet secrets (mnemonic, private key, keystore password) must NEVER
+  be accepted as CLI flags. Use `AGENTVAULT_MNEMONIC`,
+  `AGENTVAULT_PRIVATE_KEY`, `AGENTVAULT_PASSWORD` env vars, or an
+  interactive `inquirer` prompt.
+- Path components that come from user input (agent IDs, wallet IDs)
+  must pass through `sanitizePathPart()` in `src/utils/path-validation.ts`
+  before being joined into a filesystem path.
+- Use `atomicWriteFileSync()` from the same module when writing files
+  whose corruption would lose data on crash (wallets, backups, keys).
 - Use `dfx` for local canister work and keep `dfx.json` in sync with canister changes.
+- The full security posture is tracked in
+  [`SECURITY_AUDIT_AND_COMPLETION_PLAN.md`](./SECURITY_AUDIT_AND_COMPLETION_PLAN.md).

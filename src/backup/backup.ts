@@ -13,6 +13,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import type { AgentConfig } from '../packaging/types.js';
 import { computeMerkleRoot, computeLeafHashes, type MerkleEntry } from './merkle.js';
+import { atomicWriteFileSync } from '../utils/path-validation.js';
 
 const AGENTVAULT_DIR = path.join(os.homedir(), '.agentvault');
 const BACKUPS_DIR = path.join(AGENTVAULT_DIR, 'backups');
@@ -221,7 +222,9 @@ export async function loadOrCreateSigningKey(
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    fs.writeFileSync(keyPath, privKeyHex, { encoding: 'utf8', mode: 0o600 });
+    // SEC-17: atomic write — a signing key MUST NOT exist in a half-written
+    // state, otherwise subsequent loads would corrupt key material.
+    atomicWriteFileSync(keyPath, privKeyHex, { encoding: 'utf8', mode: 0o600 });
   }
 
   const privateKey = Buffer.from(privKeyHex, 'hex');
@@ -398,7 +401,8 @@ export async function fullBackup(options: FullBackupOptions): Promise<FullBackup
       },
     };
 
-    fs.writeFileSync(filePath, JSON.stringify(archive, null, 2), 'utf8');
+    // SEC-17: atomic write prevents a partial backup file on crash
+    atomicWriteFileSync(filePath, JSON.stringify(archive, null, 2), { encoding: 'utf8' });
 
     const stats = fs.statSync(filePath);
     manifest.size = stats.size;
@@ -462,11 +466,12 @@ export async function exportBackup(options: BackupOptions): Promise<BackupResult
     const checksum = crypto.createHash('sha256').update(content).digest('hex');
     manifest.checksums[filename] = checksum;
     
-    fs.writeFileSync(filePath, JSON.stringify(manifest, null, 2), 'utf8');
-    
+    // SEC-17: atomic write prevents a partial backup file on crash
+    atomicWriteFileSync(filePath, JSON.stringify(manifest, null, 2), { encoding: 'utf8' });
+
     const stats = fs.statSync(filePath);
     manifest.size = stats.size;
-    
+
     return {
       success: true,
       path: filePath,

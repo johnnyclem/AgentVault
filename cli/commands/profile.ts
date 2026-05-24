@@ -13,7 +13,7 @@ import type { ProfileResult } from '../../src/debugging/types.js';
 export const profileCmd = new Command('profile');
 
 profileCmd
-  .description('[Experimental] Profile canister performance')
+  .description('[Stub] Profile canister performance (currently returns mock data)')
   .argument('<canister-id>', 'Canister ID')
   .option('-d, --duration <seconds>', 'Profile duration in seconds', '30')
   .option('--export <file>', 'Export profile data to file')

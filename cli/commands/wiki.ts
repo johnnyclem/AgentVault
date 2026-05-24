@@ -39,7 +39,6 @@ import type { WikiLLMAdapter, SynthesisResult } from '../../src/wiki/ingest.js';
 import type { WikiQueryLLMAdapter } from '../../src/wiki/query.js';
 import type { RawSource, WikiSchema, WikiQueryResult, WikiPage } from '../../src/backbone/types.js';
 import {
-  createWikiPageSchema,
   wikiSchemaValidator,
   rawSourceSchema,
 } from '../../src/backbone/validators.js';
