@@ -207,7 +207,12 @@ describe('encryptSecret() / decryptSecret()', () => {
   it('throws on tampered ciphertext', () => {
     const key = crypto.randomBytes(32);
     const enc = encryptSecret('secret', key);
-    const tampered = { ...enc, ciphertext: enc.ciphertext.slice(0, -2) + 'ff' };
+    // Flip the bits of the last byte so the tamper is always observable.
+    // Substituting a fixed value (e.g. 'ff') is a no-op ~1/256 of the time
+    // when the last byte already happens to be 0xff, producing a flake.
+    const lastByte = parseInt(enc.ciphertext.slice(-2), 16);
+    const flipped = (lastByte ^ 0xff).toString(16).padStart(2, '0');
+    const tampered = { ...enc, ciphertext: enc.ciphertext.slice(0, -2) + flipped };
     expect(() => decryptSecret(tampered, key)).toThrow();
   });
 
