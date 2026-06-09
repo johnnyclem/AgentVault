@@ -31,9 +31,7 @@ jobs:
         with:
           node-version: 20
           cache: 'npm'
-          cache-dependency-path: |
-            package-lock.json
-            webapp/package-lock.json
+          cache-dependency-path: package-lock.json
 
       # The webapp imports shared modules from ../src, which resolve their
       # dependencies from the root node_modules.
@@ -41,8 +39,10 @@ jobs:
         run: npm ci
         working-directory: .
 
+      # The webapp lockfile is gitignored, so a clean install (npm ci) is
+      # not possible here.
       - name: Install webapp dependencies
-        run: npm ci
+        run: npm install
 
       - name: Build
         run: npm run build
