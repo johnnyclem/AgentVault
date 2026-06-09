@@ -205,7 +205,7 @@ async function startReplica(config: PrivateReplicaConfig, steps: PilotStep[]): P
     ];
 
     // Compose environment overrides from proxy config
-    const env: Record<string, string> = { ...process.env as Record<string, string> };
+    const env: NodeJS.ProcessEnv = { ...process.env };
     if (config.proxy.anthropicProxy) {
       env['ANTHROPIC_BASE_URL'] = config.proxy.anthropicProxy;
     }
@@ -257,8 +257,8 @@ async function deployGuildCanisters(
       args.push('--identity', config.identityPath);
     }
 
-    const env: Record<string, string> = {
-      ...(process.env as Record<string, string>),
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
       DFX_NETWORK: 'private',
       AGENTVAULT_REPLICA_URL: replicaUrl,
     };

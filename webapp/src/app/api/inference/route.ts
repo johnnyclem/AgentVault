@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAuthToken, unauthorizedResponse } from '@/lib/server/auth'
-import { InferenceFallbackChain, type FallbackInferenceRequest, type InferenceProvider } from '@/inference/fallback-chain.js'
+import { InferenceFallbackChain, type FallbackInferenceRequest, type InferenceProvider } from '@/inference/fallback-chain'
 
 interface AVInferRequest {
   prompt: string

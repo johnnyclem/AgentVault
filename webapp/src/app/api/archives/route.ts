@@ -4,7 +4,7 @@ export async function GET(
   request: NextRequest
 ): Promise<NextResponse> {
   try {
-    const archives = []
+    const archives: unknown[] = []
     return NextResponse.json({ success: true, data: archives })
   } catch (_error) {
     return NextResponse.json({ success: false, error: { message: 'Failed to fetch archives' } }, { status: 500 })
@@ -26,7 +26,7 @@ export async function DELETE(
   request: NextRequest
 ): Promise< NextResponse> {
   try {
-    const { searchParams } = new URL(request.url).searchParams
+    const { searchParams } = new URL(request.url)
     const archiveId = searchParams.get('id')
     return NextResponse.json({ success: true, data: { id: archiveId } })
   } catch (_error) {

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAuthToken, unauthorizedResponse } from '@/lib/server/auth'
 import { getKnowledgeService } from '@/lib/server/backbone'
-import { createKnowledgeEntrySchema } from '../../../../../../../../src/backbone/validators.js'
-import type { KnowledgeCategory, KnowledgeStatus } from '../../../../../../../../src/backbone/constants.js'
+import { createKnowledgeEntrySchema } from '@/backbone/validators'
+import type { KnowledgeCategory, KnowledgeStatus } from '@/backbone/constants'
 
 const DEFAULT_COMPANY_ID = process.env.COMPANY_ID || 'default'
 

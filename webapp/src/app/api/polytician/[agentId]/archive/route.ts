@@ -3,18 +3,18 @@ import { validateAuthToken, unauthorizedResponse } from '@/lib/server/auth'
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { agentId: string } }
+  { params }: { params: Promise<{ agentId: string }> }
 ): Promise<NextResponse> {
   const authResult = validateAuthToken(request)
   if (!authResult.authorized) {
     return unauthorizedResponse(authResult.error ?? 'Unauthorized')
   }
 
-  const { agentId } = params
+  const { agentId } = await params
 
   try {
     const body = await request.json()
-    const { conceptId } = body.conceptId
+    const { conceptId } = body
 
     if (!conceptId) {
       return NextResponse.json(
@@ -29,11 +29,12 @@ export async function POST(
         {
           success: false,
           error: { message: 'Polytician entry point not configured', code: 'NOT_CONFIGURED' },
+        },
         { status: 503 }
       )
     }
 
-    const { PolyticianMCPClient } = await import('@/orchestration/mcp-client.js')
+    const { PolyticianMCPClient } = await import('@/orchestration/mcp-client')
     const client = new PolyticianMCPClient({
       namespace: 'polytician',
       entryPoint: polyticianEntry,

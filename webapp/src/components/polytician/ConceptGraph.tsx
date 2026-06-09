@@ -36,7 +36,7 @@ export function ConceptGraph({
   const [loading, setLoading] = useState(false)
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
-  const animationRef = useRef<number>()
+  const animationRef = useRef<number | undefined>(undefined)
 
   const fetchGraphData = useCallback(async () => {
     if (!conceptId) return

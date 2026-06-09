@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAuthToken, unauthorizedResponse } from '@/lib/server/auth'
-import { ArweaveClient } from '@/archival/arweave-client.js'
+import { ArweaveClient } from '@/archival/arweave-client'
 
 interface UploadRequest {
   data: string

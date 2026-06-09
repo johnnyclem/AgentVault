@@ -33,7 +33,7 @@ export function statsCommand(): Command {
       console.log(`  Current Memory: ${statusInfo.memorySize ? `${(Number(statusInfo.memorySize) / (1024 * 1024)).toFixed(2)} MB` : 'N/A'}`);
       console.log();
       console.log(chalk.yellow('Historical data not yet implemented'));
-      console.log(chalk.gray('Use --period and --snapshots to analyze trends over time'));
+      console.log(chalk.gray('The --period and --snapshots options will enable trend analysis once historical data lands'));
     });
 
   return command;
