@@ -24,6 +24,7 @@ import {
   type Commitment,
 } from '@solana/web3.js';
 import { Buffer } from 'buffer';
+import { debugLog } from '../../debugging/debug-logger.js';
 
 /**
  * Solana provider configuration
@@ -64,7 +65,7 @@ export class SolanaProvider extends BaseWalletProvider {
       const slot = await this.connection.getSlot();
 
       this.connected = true;
-      console.log(`Connected to Solana ${this.network} at slot ${slot}`);
+      debugLog(`Connected to Solana ${this.network} at slot ${slot}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       throw new Error(`Failed to connect to Solana network: ${message}`);
@@ -266,7 +267,7 @@ export class SolanaProvider extends BaseWalletProvider {
               : '0',
           });
         } catch (error) {
-          console.warn(`Failed to fetch transaction ${sig.signature}:`, error);
+          debugLog(`Failed to fetch transaction ${sig.signature}:`, error);
           continue;
         }
       }
@@ -274,7 +275,7 @@ export class SolanaProvider extends BaseWalletProvider {
       return transactions;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      console.warn(`Failed to get transaction history: ${message}`);
+      debugLog(`Failed to get transaction history: ${message}`);
       return [];
     }
   }
@@ -406,8 +407,7 @@ export class SolanaProvider extends BaseWalletProvider {
       );
       this.keypair = Keypair.fromSecretKey(privateKeyBytes);
 
-      console.log('Solana keypair initialized for derivation:', path);
-      console.log('Address:', this.getAddress());
+      debugLog('Solana keypair initialized for derivation:', path);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       throw new Error(`Failed to initialize Solana keypair: ${message}`);
@@ -421,8 +421,7 @@ export class SolanaProvider extends BaseWalletProvider {
     try {
       this.keypair = this.createKeypairFromPrivateKey(privateKey);
 
-      console.log('Solana keypair initialized from private key');
-      console.log('Address:', this.getAddress());
+      debugLog('Solana keypair initialized from private key');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       throw new Error(`Failed to initialize Solana keypair from private key: ${message}`);

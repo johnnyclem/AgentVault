@@ -15,14 +15,22 @@ import {
   importWalletFromPrivateKey,
   importWalletFromMnemonic,
   importWalletFromSeed,
+  createWalletWithHsm,
   getWallet,
   listAgentWallets,
   normalizeWalletChain,
   removeWallet,
+  isHsmAvailable,
 } from '../../src/wallet/index.js';
 
 /**
  * Create wallet command
+ *
+ * SEC-5: secrets (mnemonic, private key, keystore password) are read from
+ * environment variables or, for `import`, interactively via inquirer
+ * prompts when the chain flag is supplied but no env-var is set.
+ * They are never accepted as CLI flags because `ps aux`, shell history,
+ * and child processes leak any such arguments.
  */
 export function walletCommand(): Command {
   const command = new Command('wallet');
@@ -35,13 +43,20 @@ export function walletCommand(): Command {
     .option('--chain <chain>', 'chain (eth, cketh, polkadot, solana, icp, arweave)')
     .option('--name <name>', 'wallet label (used by GUI clients)')
     .option('--json', 'output as JSON')
-    .option('--mnemonic <phrase>', 'mnemonic phrase for non-interactive import')
-    .option('--private-key <key>', 'private key for non-interactive import')
+    // SEC-5: secrets ONLY via env vars (AGENTVAULT_MNEMONIC,
+    // AGENTVAULT_PRIVATE_KEY, AGENTVAULT_PASSWORD) or interactive
+    // prompts. CLI flags for secrets were removed because they're
+    // visible in `ps aux` and shell history.
     .option('--address <address>', 'wallet address for non-interactive balance query')
-    .option('--keystore <path>', 'Ethereum keystore JSON file')
-    .option('--password <password>', 'password for keystore decryption')
+    .option('--keystore <path>', 'Ethereum keystore JSON file (password via AGENTVAULT_PASSWORD env var or prompt)')
     .option('--pem-file <path>', 'PEM file path (not yet supported in wallet import)')
     .option('--jwk-file <path>', 'JWK file path (not yet supported in wallet import)')
+    .option(
+      '--hsm <backend>',
+      'hardware secure module backend: "ledger" (Ledger device) or "sgx" (Intel SGX TEE). ' +
+        'Private key never enters host memory.',
+    )
+    .option('--hsm-path <derivation>', 'BIP32/SLIP10 derivation path override for HSM keygen')
     .action(async (subcommand, options) => {
       await executeWalletCommand(subcommand, options);
     });
@@ -55,20 +70,20 @@ type WalletCommandOptions = {
   chain?: string;
   name?: string;
   json?: boolean;
-  mnemonic?: string;
-  privateKey?: string;
   address?: string;
   keystore?: string;
-  password?: string;
   pemFile?: string;
   jwkFile?: string;
+  hsm?: string;
+  hsmPath?: string;
 };
 
 function isNonInteractiveImport(options: WalletCommandOptions): boolean {
+  // SEC-5: env-var presence is what makes import non-interactive now.
   return Boolean(
     options.chain ||
-    options.mnemonic ||
-    options.privateKey ||
+    process.env.AGENTVAULT_MNEMONIC ||
+    process.env.AGENTVAULT_PRIVATE_KEY ||
     options.keystore ||
     options.pemFile ||
     options.jwkFile
@@ -128,6 +143,9 @@ async function executeWalletCommand(
   }
 
   switch (subcommand) {
+    case 'create':
+      await handleCreate(options);
+      break;
     case 'generate':
       await handleGenerateNonInteractive(options);
       break;
@@ -178,25 +196,155 @@ async function executeWalletCommand(
     case 'queue':
       await handleQueue(options.agentId!);
       break;
+    case 'multi-send': {
+      const { handleMultiSend: multiSendHandler } = await import('./wallet-multi-send.js');
+      await multiSendHandler(options.agentId!);
+      break;
+    }
+    case 'process-queue': {
+      const { handleProcessQueue: processQueueHandler } = await import('./wallet-process-queue.js');
+      const { canisterId } = await inquirer.prompt<{ canisterId: string }>([
+        {
+          type: 'input',
+          name: 'canisterId',
+          message: 'Canister ID:',
+          validate: (input: string) => input.trim().length > 0 || 'Canister ID is required',
+        },
+      ]);
+      await processQueueHandler(options.agentId!, canisterId);
+      break;
+    }
     default:
       console.error(chalk.red(`Unknown subcommand: ${subcommand}`));
       console.log();
       console.log(chalk.cyan('Available subcommands:'));
-      console.log('  connect    - Connect or create a wallet');
-      console.log('  disconnect - Disconnect wallet');
-      console.log('  balance   - Check wallet balance');
-      console.log('  send      - Send transaction');
-      console.log('  list      - List all wallets');
-      console.log('  sign      - Sign transaction');
-      console.log('  history   - Get transaction history');
-      console.log('  export    - Export wallets to backup file');
-      console.log('  import    - Import wallets from backup file');
-      console.log('  sync      - Sync wallets to canister (Phase 5)');
-      console.log('  status    - Get wallet sync status (Phase 5)');
-      console.log('  vetkeys    - VetKeys operations (Phase 5)');
-      console.log('  queue     - Transaction queue operations (Phase 5)');
+      console.log('  create        - Create a wallet (supports --hsm ledger|sgx for air-gapped keygen)');
+      console.log('  connect       - Connect or create a wallet (interactive)');
+      console.log('  disconnect    - Disconnect wallet');
+      console.log('  balance       - Check wallet balance');
+      console.log('  send          - Send transaction');
+      console.log('  list          - List all wallets');
+      console.log('  sign          - Sign transaction');
+      console.log('  history       - Get transaction history');
+      console.log('  export        - Export wallets to backup file');
+      console.log('  import        - Import wallets from backup file');
+      console.log('  multi-send    - Batch-send transactions across wallets');
+      console.log('  process-queue - Process pending transactions queued in a canister');
+      console.log('  sync          - Sync wallets to canister (Phase 5)');
+      console.log('  status        - Get wallet sync status (Phase 5)');
+      console.log('  vetkeys       - VetKeys operations (Phase 5)');
+      console.log('  queue         - Transaction queue operations (Phase 5)');
       process.exit(1);
   }
+}
+
+/**
+ * Create wallet – supports both software keygen and HSM/TEE keygen.
+ *
+ * Examples:
+ *   # Software keygen (default)
+ *   agentvault wallet create --chain cketh --agent-id my-agent
+ *
+ *   # Ledger hardware wallet (private key never leaves the device)
+ *   agentvault wallet create --chain cketh --agent-id my-agent --hsm ledger
+ *
+ *   # Intel SGX TEE (private key sealed inside enclave)
+ *   agentvault wallet create --chain cketh --agent-id my-agent --hsm sgx
+ *
+ *   # Custom derivation path on Ledger
+ *   agentvault wallet create --chain solana --agent-id my-agent \
+ *     --hsm ledger --hsm-path "m/44'/501'/0'/0'/0'"
+ */
+export async function handleCreate(options: WalletCommandOptions): Promise<void> {
+  const chain = normalizeChain(options.chain);
+  const agentId = getAgentId(options);
+
+  // ── HSM / TEE path ────────────────────────────────────────────────────────
+  if (options.hsm) {
+    const backend = options.hsm.toLowerCase();
+    if (backend !== 'ledger' && backend !== 'sgx') {
+      console.error(chalk.red(`Error: --hsm must be "ledger" or "sgx", got "${options.hsm}"`));
+      process.exit(1);
+    }
+
+    const spinner = ora(
+      backend === 'ledger'
+        ? 'Connecting to Ledger device… (unlock device and open the correct app)'
+        : 'Connecting to Intel SGX enclave…',
+    ).start();
+
+    // Probe availability before committing
+    const available = await isHsmAvailable(backend as 'ledger' | 'sgx');
+    if (!available) {
+      spinner.fail(
+        backend === 'ledger'
+          ? 'No Ledger device detected. Connect your Ledger, unlock it, and open the relevant app.'
+          : 'Intel SGX AESM daemon not found at /var/run/aesmd/aesm.socket. ' +
+              'Ensure the SGX driver and platform software are installed.',
+      );
+      process.exit(1);
+    }
+
+    spinner.text =
+      backend === 'ledger'
+        ? 'Deriving public key on Ledger (key never leaves device)…'
+        : 'Requesting public key from SGX enclave (key sealed inside TEE)…';
+
+    let wallet;
+    try {
+      wallet = await createWalletWithHsm({
+        agentId,
+        chain: chain as any,
+        hsmBackend: backend as 'ledger' | 'sgx',
+        derivationPath: options.hsmPath,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      spinner.fail(`HSM keygen failed: ${message}`);
+      process.exit(1);
+    }
+
+    spinner.succeed(
+      backend === 'ledger'
+        ? 'Public key received from Ledger — private key is air-gapped on device'
+        : 'Public key received from SGX enclave — private key is sealed in TEE',
+    );
+
+    const hsmMeta = wallet.chainMetadata?.hsm;
+    if (options.json) {
+      console.log(
+        JSON.stringify({
+          id: wallet.id,
+          chain: wallet.chain,
+          address: wallet.address,
+          publicKey: hsmMeta?.publicKeyHex ?? null,
+          privateKey: null,
+          mnemonic: null,
+          hsmBackend: backend,
+          hsmDeviceId: hsmMeta?.deviceId ?? null,
+          derivationPath: wallet.seedDerivationPath,
+        }),
+      );
+      return;
+    }
+
+    console.log();
+    console.log(chalk.green('✓ HSM wallet created'));
+    console.log(`  ID:              ${wallet.id}`);
+    console.log(`  Chain:           ${wallet.chain}`);
+    console.log(`  Address:         ${wallet.address}`);
+    console.log(`  Public key:      ${hsmMeta?.publicKeyHex ?? '(unavailable)'}`);
+    console.log(`  Backend:         ${backend}`);
+    console.log(`  Device ID:       ${hsmMeta?.deviceId ?? '(unavailable)'}`);
+    console.log(`  Derivation path: ${wallet.seedDerivationPath}`);
+    console.log();
+    console.log(chalk.dim('  Private key and mnemonic were never present in this process.'));
+    return;
+  }
+
+  // ── Software keygen (fallback) ─────────────────────────────────────────────
+  const wallet = generateWallet(agentId, chain);
+  printWalletResult(wallet, options.json);
 }
 
 /**
@@ -210,31 +358,57 @@ export async function handleGenerateNonInteractive(options: WalletCommandOptions
 
 /**
  * Non-interactive wallet import for GUI clients
+ *
+ * SECURITY: Supports reading secrets from environment variables (preferred)
+ * or CLI arguments (with warning). Environment variables are:
+ * - AGENTVAULT_MNEMONIC: BIP39 mnemonic phrase
+ * - AGENTVAULT_PRIVATE_KEY: Hex private key
+ * - AGENTVAULT_PASSWORD: Keystore password
  */
 export async function handleImportNonInteractive(options: WalletCommandOptions): Promise<void> {
   const chain = normalizeChain(options.chain);
   const agentId = getAgentId(options);
 
-  if (options.mnemonic) {
-    const wallet = importWalletFromMnemonic(agentId, chain, options.mnemonic);
+  // SEC-5: secrets come from env vars only (or interactive prompt below
+  // for keystore password). CLI flags were removed because args are
+  // visible in process listings and shell history.
+  const mnemonic = process.env.AGENTVAULT_MNEMONIC;
+  const privateKey = process.env.AGENTVAULT_PRIVATE_KEY;
+  let password = process.env.AGENTVAULT_PASSWORD;
+
+  if (mnemonic) {
+    const wallet = importWalletFromMnemonic(agentId, chain, mnemonic);
     printWalletResult(wallet, options.json);
     return;
   }
 
-  if (options.privateKey) {
-    const wallet = importWalletFromPrivateKey(agentId, chain, options.privateKey);
+  if (privateKey) {
+    const wallet = importWalletFromPrivateKey(agentId, chain, privateKey);
     printWalletResult(wallet, options.json);
     return;
   }
 
   if (options.keystore) {
-    if (!options.password) {
-      throw new Error('--password is required when using --keystore');
+    if (!password) {
+      // Fall back to an interactive password prompt when running in a TTY.
+      if (process.stdin.isTTY) {
+        const answers = await inquirer.prompt<{ password: string }>([
+          {
+            type: 'password',
+            name: 'password',
+            message: 'Keystore password:',
+            mask: '*',
+          },
+        ]);
+        password = answers.password;
+      } else {
+        throw new Error('AGENTVAULT_PASSWORD env var is required when using --keystore in a non-TTY context');
+      }
     }
     const fs = await import('node:fs/promises');
     const { Wallet } = await import('ethers');
     const encryptedJson = await fs.readFile(options.keystore, 'utf8');
-    const decrypted = await Wallet.fromEncryptedJson(encryptedJson, options.password);
+    const decrypted = await Wallet.fromEncryptedJson(encryptedJson, password);
     const wallet = importWalletFromPrivateKey(agentId, chain, decrypted.privateKey);
     printWalletResult(wallet, options.json);
     return;
@@ -248,7 +422,7 @@ export async function handleImportNonInteractive(options: WalletCommandOptions):
     throw new Error('JWK import is not supported by the wallet CLI command');
   }
 
-  throw new Error('Provide one of --mnemonic, --private-key, or --keystore');
+  throw new Error('Set AGENTVAULT_MNEMONIC or AGENTVAULT_PRIVATE_KEY env var, or use --keystore <path>');
 }
 
 /**

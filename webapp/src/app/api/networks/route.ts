@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { listNetworkConfigs } from '@/network/network-config.js';
+import { listNetworkConfigs } from '@/network/network-config';
 
 export async function GET() {
   try {

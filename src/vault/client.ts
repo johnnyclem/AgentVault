@@ -6,6 +6,8 @@
  * enforced by policy.
  */
 
+import * as fs from 'node:fs';
+import { Agent as UndiciAgent } from 'undici';
 import type {
   VaultConfig,
   AgentVaultPolicy,
@@ -21,6 +23,56 @@ import {
   getOrCreateAgentPolicy,
   validateVaultConfig,
 } from './config.js';
+
+/**
+ * SEC-6: Convert a glob pattern (supporting `*` and `?` wildcards only)
+ * to an anchored RegExp safely. All other characters are escaped so they
+ * cannot inject regex metacharacters that would cause ReDoS or unintended
+ * matches.
+ *
+ * `*`  → `.*`  (greedy)
+ * `?`  → `.`   (single char)
+ * everything else is regex-escaped
+ */
+function globToSafeRegex(pattern: string): RegExp {
+  let out = '';
+  for (const ch of pattern) {
+    if (ch === '*') out += '.*';
+    else if (ch === '?') out += '.';
+    else out += ch.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  }
+  return new RegExp(`^${out}$`);
+}
+
+/**
+ * SEC-2: build an undici dispatcher that honours TLS configuration.
+ * Returns undefined when neither caCertPath nor tlsSkipVerify are set,
+ * so plaintext-HTTP test setups keep working with no dispatcher attached.
+ */
+function buildVaultDispatcher(config: VaultConfig): unknown | undefined {
+  const tlsOpts: { ca?: string | Buffer; rejectUnauthorized?: boolean } = {};
+
+  if (config.caCertPath) {
+    try {
+      tlsOpts.ca = fs.readFileSync(config.caCertPath);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      throw new Error(
+        `Vault TLS CA certificate not readable at ${config.caCertPath}: ${msg}`
+      );
+    }
+  }
+
+  if (config.tlsSkipVerify) {
+    tlsOpts.rejectUnauthorized = false;
+  }
+
+  if (tlsOpts.ca === undefined && tlsOpts.rejectUnauthorized === undefined) {
+    return undefined;
+  }
+
+  return new UndiciAgent({ connect: tlsOpts });
+}
 
 /**
  * HTTP response from Vault API
@@ -54,10 +106,19 @@ export class VaultClient {
   private config: VaultConfig;
   private policy: AgentVaultPolicy;
   private clientToken: string | null = null;
+  /**
+   * SEC-2: undici Agent that pins the configured CA certificate (and
+   * optionally disables verification when `tlsSkipVerify` is set). Used
+   * as the `dispatcher` on every fetch so TLS is actually validated
+   * against the user-supplied CA — the prior implementation loaded
+   * `caCertPath` but never wired it to fetch, leaving MITM possible.
+   */
+  private dispatcher: unknown | undefined;
 
   constructor(config: VaultConfig, policy: AgentVaultPolicy) {
     this.config = config;
     this.policy = policy;
+    this.dispatcher = buildVaultDispatcher(config);
   }
 
   /**
@@ -225,7 +286,7 @@ export class VaultClient {
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
     try {
-      const fetchOptions: RequestInit = {
+      const fetchOptions: RequestInit & Record<string, unknown> = {
         method,
         headers,
         signal: controller.signal,
@@ -233,6 +294,13 @@ export class VaultClient {
 
       if (body && method !== 'GET') {
         fetchOptions.body = JSON.stringify(body);
+      }
+
+      // SEC-2: attach the TLS-configured dispatcher so the CA cert is
+      // actually used when validating the Vault server certificate.
+      if (this.dispatcher) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (fetchOptions as any).dispatcher = this.dispatcher;
       }
 
       const response = await fetch(url, fetchOptions);
@@ -315,11 +383,12 @@ export class VaultClient {
     }
 
     if (this.policy.allowedKeyPatterns && this.policy.allowedKeyPatterns.length > 0) {
+      // SEC-6: escape regex metachars in the user-supplied pattern before
+      // expanding `*`/`?`. The previous implementation only substituted
+      // those two and left `.` / `(` / etc. raw, enabling ReDoS and
+      // unintended matches.
       const matches = this.policy.allowedKeyPatterns.some(pattern => {
-        const regex = new RegExp(
-          '^' + pattern.replace(/\*/g, '.*').replace(/\?/g, '.') + '$'
-        );
-        return regex.test(key);
+        return globToSafeRegex(pattern).test(key);
       });
 
       if (!matches) {
@@ -351,10 +420,16 @@ export class VaultClient {
    */
   async health(): Promise<VaultOperationResult<VaultHealthStatus>> {
     try {
-      const response = await fetch(`${this.config.address}/v1/sys/health`, {
+      const fetchOptions: RequestInit & Record<string, unknown> = {
         method: 'GET',
         signal: AbortSignal.timeout(this.config.timeoutMs ?? 5000),
-      });
+      };
+      // SEC-2: honour the pinned CA on the health probe too
+      if (this.dispatcher) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (fetchOptions as any).dispatcher = this.dispatcher;
+      }
+      const response = await fetch(`${this.config.address}/v1/sys/health`, fetchOptions);
 
       const data = await response.json() as {
         initialized: boolean;

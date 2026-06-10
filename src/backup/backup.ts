@@ -1,7 +1,12 @@
 /**
  * Backup System
  *
- * Portable backup utilities for AgentVault.
+ * Portable JSON format backup with embedded manifest and checksums
+ * Stores backups in ~/.agentvault/backups/
+ * CLE-101: Enhanced to include real canister state
+ * CLE-MRB: Full backup adds SHA-256 Merkle root and ed25519-signed AES-256-GCM key
+ * Encrypted full-state export: zip.enc (AES-256-GCM + PBKDF2) with optional
+ * Arweave manifest upload and a restore flow that redeploys a fresh canister.
  */
 
 import fs from 'node:fs';
@@ -10,6 +15,8 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { execa } from 'execa';
 import type { AgentConfig } from '../packaging/types.js';
+import { computeMerkleRoot, computeLeafHashes, type MerkleEntry } from './merkle.js';
+import { atomicWriteFileSync } from '../utils/path-validation.js';
 import { ArweaveClient, type JWKInterface } from '../archival/arweave-client.js';
 import { deployAgent } from '../deployment/deployer.js';
 
@@ -104,6 +111,15 @@ export interface CanisterState {
   context?: unknown;
 }
 
+export interface EncryptedKeyEnvelope {
+  /** AES-256-GCM-wrapped data-encryption key: hex-encoded ciphertext */
+  ciphertext: string;
+  /** 12-byte IV used to wrap the key: hex */
+  iv: string;
+  /** 16-byte GCM auth tag: hex */
+  tag: string;
+}
+
 export interface BackupManifest {
   version: string;
   agentName: string;
@@ -115,9 +131,35 @@ export interface BackupManifest {
   checksums: Record<string, string>;
   size: number;
   components: string[];
+  /** Path to the local encrypted full-state zip (encrypted exports only). */
   localEncryptedZipPath?: string;
+  /** Arweave transaction ID of the uploaded manifest (encrypted exports only). */
   arweaveManifestTxId?: string;
+  /** SHA-256 of the encrypted zip payload (encrypted exports only). */
   encryptedZipSha256?: string;
+  /**
+   * SHA-256 Merkle root of all backup entries (sorted by path).
+   * Present only in full backups (--full flag).
+   */
+  merkleRoot?: string;
+  /**
+   * AES-256-GCM data-encryption key wrapped with a key derived from
+   * the ed25519 signing key via HKDF-SHA256.
+   * Present only in full backups.
+   */
+  encryptedKey?: EncryptedKeyEnvelope;
+  /**
+   * ed25519 signature (hex) over the raw bytes of encryptedKey
+   * (ciphertext || iv || tag). Allows verifying the key has not been
+   * swapped without decrypting it.
+   * Present only in full backups.
+   */
+  keySignature?: string;
+  /**
+   * ed25519 public key (hex) corresponding to the signing key.
+   * Present only in full backups.
+   */
+  ed25519PublicKey?: string;
 }
 
 export interface BackupOptions {
@@ -126,8 +168,23 @@ export interface BackupOptions {
   includeConfig?: boolean;
   canisterId?: string;
   includeCanisterState?: boolean;
+}
+
+export interface FullBackupOptions extends BackupOptions {
+  /**
+   * Path to the 32-byte ed25519 private key stored as hex.
+   * Defaults to ~/.agentvault/backup-signing.key.
+   * If the file does not exist, a new keypair is generated and saved.
+   */
+  signingKeyPath?: string;
+}
+
+export interface EncryptedBackupOptions extends BackupOptions {
+  /** Passphrase used to derive the AES-256-GCM key (PBKDF2-SHA256). */
   passphrase: string;
+  /** Path to an Arweave JWK; when set, the manifest is uploaded to Arweave. */
   arweaveJwkPath?: string;
+  /** Optional WASM module to bundle so restore can redeploy a canister. */
   wasmPath?: string;
 }
 
@@ -149,6 +206,13 @@ export interface BackupResult {
   error?: string;
   sizeBytes?: number;
   manifest?: BackupManifest;
+}
+
+export interface FullBackupResult extends BackupResult {
+  /** SHA-256 Merkle root of all backup entries */
+  merkleRoot?: string;
+  /** ed25519 public key (hex) used to sign the wrapped AES key */
+  ed25519PublicKey?: string;
 }
 
 export interface FullRestoreResult {
@@ -215,6 +279,33 @@ async function fetchCanisterState(canisterId: string): Promise<CanisterState | n
       fetchedAt: new Date().toISOString(),
     };
 
+    try {
+      const tasksResult = await client.callAgentMethod(canisterId, 'getTasks', []);
+      if (tasksResult) {
+        state.tasks = tasksResult as unknown[];
+      }
+    } catch {
+      // Tasks not available
+    }
+
+    try {
+      const memoryResult = await client.callAgentMethod(canisterId, 'getMemory', []);
+      if (memoryResult) {
+        state.memory = memoryResult;
+      }
+    } catch {
+      // Memory not available
+    }
+
+    try {
+      const contextResult = await client.callAgentMethod(canisterId, 'getContext', []);
+      if (contextResult) {
+        state.context = contextResult;
+      }
+    } catch {
+      // Context not available
+    }
+
     return state;
   } catch (error) {
     console.warn('Failed to fetch canister state:', error);
@@ -222,7 +313,311 @@ async function fetchCanisterState(canisterId: string): Promise<CanisterState | n
   }
 }
 
+// ---------------------------------------------------------------------------
+// Full-backup cryptographic helpers
+// ---------------------------------------------------------------------------
+
+const SIGNING_KEY_FILENAME = 'backup-signing.key';
+
+/**
+ * Load or create an ed25519 private key (32 raw bytes) stored as hex at
+ * `keyPath`.  Returns { privateKey, publicKey } as Buffers.
+ */
+export async function loadOrCreateSigningKey(
+  keyPath: string
+): Promise<{ privateKey: Buffer; publicKey: Buffer }> {
+  const { ed25519 } = await import('@noble/curves/ed25519');
+
+  let privKeyHex: string;
+
+  if (fs.existsSync(keyPath)) {
+    privKeyHex = fs.readFileSync(keyPath, 'utf8').trim();
+    if (!/^[0-9a-f]{64}$/i.test(privKeyHex)) {
+      throw new Error(`Signing key at ${keyPath} is not valid 32-byte hex`);
+    }
+  } else {
+    // Generate new key and persist it
+    const raw = crypto.randomBytes(32);
+    privKeyHex = raw.toString('hex');
+    const dir = path.dirname(keyPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    // SEC-17: atomic write — a signing key MUST NOT exist in a half-written
+    // state, otherwise subsequent loads would corrupt key material.
+    atomicWriteFileSync(keyPath, privKeyHex, { encoding: 'utf8', mode: 0o600 });
+  }
+
+  const privateKey = Buffer.from(privKeyHex, 'hex');
+  const publicKey = Buffer.from(ed25519.getPublicKey(privateKey));
+  return { privateKey, publicKey };
+}
+
+/**
+ * Derive a 32-byte AES key-wrapping key from an ed25519 private key using
+ * HKDF-SHA256.  Using a separate wrapping key means the signing key is never
+ * used directly for symmetric encryption.
+ */
+function deriveWrappingKey(privateKey: Buffer): Buffer {
+  return Buffer.from(crypto.hkdfSync(
+    'sha256',
+    privateKey,
+    Buffer.from('agentvault-backup-key-wrapping'),
+    Buffer.from('backup-key-wrapping-v1'),
+    32
+  ));
+}
+
+/**
+ * Encrypt `plaintext` with AES-256-GCM using `key`.
+ * Returns { ciphertext, iv, tag } all as Buffers.
+ */
+function aesGcmEncrypt(
+  plaintext: Buffer,
+  key: Buffer
+): { ciphertext: Buffer; iv: Buffer; tag: Buffer } {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return { ciphertext, iv, tag };
+}
+
+/**
+ * Create a full encrypted backup zip.
+ *
+ * Steps:
+ *  1. Collect backup entries (logical files).
+ *  2. Compute SHA-256 Merkle root of all entries.
+ *  3. Generate a random 32-byte AES-256-GCM data-encryption key.
+ *  4. Encrypt the backup payload with that key.
+ *  5. Wrap (encrypt) the data key with a key derived from the ed25519 signing key.
+ *  6. Sign the wrapped-key bytes (ciphertext || iv || tag) with ed25519.
+ *  7. Write a JSON-envelope backup file containing the manifest + ciphertext.
+ */
+export async function fullBackup(options: FullBackupOptions): Promise<FullBackupResult> {
+  try {
+    ensureBackupsDir();
+
+    const {
+      agentName,
+      outputPath,
+      includeConfig = true,
+      canisterId,
+      includeCanisterState = false,
+      signingKeyPath = path.join(AGENTVAULT_DIR, SIGNING_KEY_FILENAME),
+    } = options;
+
+    const { ed25519 } = await import('@noble/curves/ed25519');
+
+    // ------------------------------------------------------------------
+    // 1. Load or create ed25519 signing key
+    // ------------------------------------------------------------------
+    const { privateKey, publicKey } = await loadOrCreateSigningKey(signingKeyPath);
+
+    // ------------------------------------------------------------------
+    // 2. Collect backup entries
+    // ------------------------------------------------------------------
+    const entries: MerkleEntry[] = [];
+    const components: string[] = [];
+
+    // Config / agent identity entry (stub – real config loader can be wired in)
+    if (includeConfig) {
+      const configPayload = JSON.stringify({ agentName, canisterId: canisterId ?? agentName }, null, 2);
+      entries.push({ path: 'config.json', content: Buffer.from(configPayload, 'utf8') });
+      components.push('config');
+    }
+
+    // Optional live canister state
+    let canisterState: CanisterState | undefined;
+    if (includeCanisterState && canisterId) {
+      const state = await fetchCanisterState(canisterId);
+      if (state) {
+        canisterState = state;
+        const statePayload = JSON.stringify(state, null, 2);
+        entries.push({ path: 'canister-state.json', content: Buffer.from(statePayload, 'utf8') });
+        components.push('canister-state');
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // 3. Compute Merkle root & per-file leaf hashes
+    // ------------------------------------------------------------------
+    const merkleRoot = computeMerkleRoot(entries);
+    const leafHashes = computeLeafHashes(entries);
+
+    // ------------------------------------------------------------------
+    // 4. Build manifest (without size yet)
+    // ------------------------------------------------------------------
+    const now = new Date();
+    const manifest: BackupManifest = {
+      version: '2.0',
+      agentName,
+      timestamp: now,
+      created: now,
+      canisterId: canisterId ?? agentName,
+      canisterState,
+      checksums: leafHashes,
+      size: 0,
+      components,
+      merkleRoot,
+      ed25519PublicKey: publicKey.toString('hex'),
+    };
+
+    // ------------------------------------------------------------------
+    // 5. Encrypt the payload (all entries as a single JSON bundle)
+    // ------------------------------------------------------------------
+    const payloadObj: Record<string, string> = {};
+    for (const entry of entries) {
+      payloadObj[entry.path] = entry.content.toString('base64');
+    }
+    const payloadJson = Buffer.from(JSON.stringify(payloadObj), 'utf8');
+
+    const dataKey = crypto.randomBytes(32);
+    const {
+      ciphertext: encPayload,
+      iv: payloadIv,
+      tag: payloadTag,
+    } = aesGcmEncrypt(payloadJson, dataKey);
+
+    // ------------------------------------------------------------------
+    // 6. Wrap the data key with HKDF-derived wrapping key
+    // ------------------------------------------------------------------
+    const wrappingKey = deriveWrappingKey(privateKey);
+    const {
+      ciphertext: wrappedKeyCt,
+      iv: wrapIv,
+      tag: wrapTag,
+    } = aesGcmEncrypt(dataKey, wrappingKey);
+
+    // ------------------------------------------------------------------
+    // 7. Sign the wrapped-key envelope bytes with ed25519
+    // ------------------------------------------------------------------
+    const wrappedKeyBytes = Buffer.concat([wrappedKeyCt, wrapIv, wrapTag]);
+    const signature = Buffer.from(ed25519.sign(wrappedKeyBytes, privateKey));
+
+    manifest.encryptedKey = {
+      ciphertext: wrappedKeyCt.toString('hex'),
+      iv: wrapIv.toString('hex'),
+      tag: wrapTag.toString('hex'),
+    };
+    manifest.keySignature = signature.toString('hex');
+
+    // ------------------------------------------------------------------
+    // 8. Serialise to disk as a JSON-envelope ".zip" file
+    // ------------------------------------------------------------------
+    const timestamp = now.toISOString().replace(/[:.]/g, '-');
+    const filename = outputPath
+      ? path.basename(outputPath)
+      : `${agentName}-${timestamp}-full.zip`;
+    const filePath = outputPath || path.join(BACKUPS_DIR, filename);
+
+    const archive = {
+      format: 'agentvault-full-backup-v1',
+      manifest,
+      encryptedPayload: {
+        ciphertext: encPayload.toString('hex'),
+        iv: payloadIv.toString('hex'),
+        tag: payloadTag.toString('hex'),
+      },
+    };
+
+    // SEC-17: atomic write prevents a partial backup file on crash
+    atomicWriteFileSync(filePath, JSON.stringify(archive, null, 2), { encoding: 'utf8' });
+
+    const stats = fs.statSync(filePath);
+    manifest.size = stats.size;
+
+    return {
+      success: true,
+      path: filePath,
+      sizeBytes: stats.size,
+      manifest,
+      merkleRoot,
+      ed25519PublicKey: publicKey.toString('hex'),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
 export async function exportBackup(options: BackupOptions): Promise<BackupResult> {
+  try {
+    ensureBackupsDir();
+
+    const { agentName, outputPath, includeConfig = true, canisterId, includeCanisterState = true } = options;
+
+    const timestamp = new Date();
+    const created = new Date();
+    const filename = `${agentName}-${timestamp.toISOString().replace(/[:.]/g, '-')}.json`;
+    const filePath = outputPath || path.join(BACKUPS_DIR, filename);
+
+    const components: string[] = [];
+    if (includeConfig) {
+      components.push('config');
+    }
+
+    const manifest: BackupManifest = {
+      version: '1.1',
+      agentName,
+      timestamp,
+      created,
+      checksums: {},
+      size: 0,
+      components,
+    };
+
+    if (includeConfig) {
+      manifest.canisterId = canisterId || agentName;
+    }
+
+    if (includeCanisterState && canisterId) {
+      const canisterState = await fetchCanisterState(canisterId);
+      if (canisterState) {
+        manifest.canisterState = canisterState;
+        manifest.canisterId = canisterId;
+        components.push('canister-state');
+      }
+    }
+
+    const content = JSON.stringify(manifest, null, 2);
+    const checksum = crypto.createHash('sha256').update(content).digest('hex');
+    manifest.checksums[filename] = checksum;
+
+    // SEC-17: atomic write prevents a partial backup file on crash
+    atomicWriteFileSync(filePath, JSON.stringify(manifest, null, 2), { encoding: 'utf8' });
+
+    const stats = fs.statSync(filePath);
+    manifest.size = stats.size;
+
+    return {
+      success: true,
+      path: filePath,
+      sizeBytes: stats.size,
+      manifest,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+/**
+ * Export a full-state encrypted backup (.zip.enc).
+ *
+ * Stages agent state, encrypted keys, logs, dependencies and an optional WASM
+ * module, zips the payload, encrypts it with AES-256-GCM (PBKDF2-SHA256 key
+ * derivation) and writes SHA-256 checksums.  The encrypted zip stays local;
+ * when an Arweave JWK is provided only the manifest + zip hash are uploaded.
+ * A plaintext sidecar manifest (.manifest.json) is written next to the zip so
+ * listing/preview keep working.
+ */
+export async function exportEncryptedBackup(options: EncryptedBackupOptions): Promise<BackupResult> {
   try {
     ensureBackupsDir();
 
@@ -366,13 +761,6 @@ export async function restoreFromEncryptedZip(options: FullRestoreOptions): Prom
           .map((entry) => path.join(deploymentDir, entry.name))
         : [];
 
-      if (wasmCandidates.length === 0) {
-        return {
-          success: false,
-          error: 'No WASM module found in decrypted backup; cannot deploy fresh canister',
-        };
-      }
-
       const wasmPath = wasmCandidates[0];
       if (!wasmPath) {
         return {
@@ -478,7 +866,7 @@ export async function listBackups(agentName?: string): Promise<BackupManifest[]>
 
   const files = fs.readdirSync(BACKUPS_DIR);
   for (const file of files) {
-    if ((!agentName || file.startsWith(agentName)) && file.endsWith('.manifest.json')) {
+    if ((!agentName || file.startsWith(agentName)) && file.endsWith('.json')) {
       const filePath = path.join(BACKUPS_DIR, file);
       try {
         const manifest = await previewBackup(filePath);

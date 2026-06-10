@@ -70,8 +70,13 @@ export interface VetKeysDerivedKey {
   key: string;
   /** Key derivation method used */
   method: KeyDerivationMethod;
-  /** Seed phrase used for derivation */
-  seedPhrase: SeedPhrase;
+  /**
+   * Seed phrase used for derivation (optional for security)
+   * SECURITY: seedPhrase is intentionally optional - it should NOT be retained
+   * in memory after key derivation to prevent exposure via memory dumps.
+   * See SEC-3 in SECURITY_AUDIT_AND_COMPLETION_PLAN.md
+   */
+  seedPhrase?: SeedPhrase;
   /** Threshold for reconstruction (t out of n) */
   threshold?: number;
   /** Total participants */
@@ -312,26 +317,34 @@ export class VetKeysClient {
   ): Promise<{ encryptedShare: string; commitment: string }> {
     const crypto = await import('node:crypto');
 
-    let secretBuffer: Buffer;
-    let iv: Buffer;
+    // SEC-10: the previous implementation used the raw secret as the
+    // encryption key with an all-zero IV, which is catastrophic for
+    // confidentiality. Derive an actual key with PBKDF2 over a random
+    // salt, use a fresh random IV, and prepend salt||iv to the ciphertext
+    // (layout v2) so verification stays deterministic per encryption.
+    const secretBuffer = Buffer.from(secret, 'utf-8');
+    const iv = algorithm === 'aes-256-gcm'
+      ? crypto.randomBytes(12)
+      : crypto.randomBytes(16);
+    const salt = crypto.randomBytes(16);
 
-    if (algorithm === 'aes-256-gcm') {
-      secretBuffer = Buffer.from(secret, 'utf-8');
-      iv = Buffer.alloc(12, 0);
-    } else {
-      secretBuffer = Buffer.from(secret, 'utf-8');
-      iv = Buffer.alloc(16, 0);
-    }
+    const encryptionKey = crypto.pbkdf2Sync(
+      secretBuffer,
+      salt,
+      100000,
+      32,
+      'sha256'
+    );
 
-    const algorithmName = algorithm.replace('-', '');
-    const cipher = crypto.createCipheriv(algorithmName, secretBuffer, iv);
+    const cipher = crypto.createCipheriv(algorithm, encryptionKey, iv);
 
-    const encryptedShare = Buffer.concat([
+    const ciphertext = Buffer.concat([
       cipher.update(secretBuffer),
       cipher.final(),
     ]);
 
-    // Generate commitment hash
+    const encryptedShare = Buffer.concat([salt, iv, ciphertext]);
+
     const commitmentHash = crypto.createHash('sha256')
       .update(encryptedShare)
       .digest();

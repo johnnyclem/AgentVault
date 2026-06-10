@@ -26,6 +26,14 @@ const AGENT_PATTERNS: Record<AgentType, { files: string[]; dirs: string[] }> = {
     files: ['cline.json', 'cline.config.json', '.cline'],
     dirs: ['.cline'],
   },
+  polytician: {
+    files: ['polytician.json', '.polytician.json'],
+    dirs: [],
+  },
+  nemoclaw: {
+    files: ['nemoclaw.json', 'nemoclaw.config.json', '.nemoclaw.json'],
+    dirs: ['.nemoclaw'],
+  },
   generic: {
     files: ['agent.json', 'agent.yaml', 'agent.yml', 'agentvault.json'],
     dirs: [],
@@ -60,7 +68,7 @@ function directoryExists(dirPath: string): boolean {
 export function detectAgentType(sourcePath: string): AgentType {
   const absolutePath = path.resolve(sourcePath);
 
-  for (const agentType of ['clawdbot', 'goose', 'cline'] as AgentType[]) {
+  for (const agentType of ['clawdbot', 'goose', 'cline', 'polytician', 'nemoclaw'] as AgentType[]) {
     const patterns = AGENT_PATTERNS[agentType];
 
     for (const file of patterns.files) {
@@ -138,6 +146,10 @@ function detectEntryPoint(sourcePath: string, agentType: AgentType): string | un
     entryPoints.unshift('goose.ts', 'goose.js');
   } else if (agentType === 'cline') {
     entryPoints.unshift('cline.ts', 'cline.js');
+  } else if (agentType === 'polytician') {
+    entryPoints.unshift('polytician.ts', 'polytician.js', 'server.ts', 'server.js', 'src/server.ts', 'src/server.js');
+  } else if (agentType === 'nemoclaw') {
+    entryPoints.unshift('nemoclaw.ts', 'nemoclaw.js', 'openclaw.ts', 'openclaw.js');
   }
 
   for (const entry of entryPoints) {

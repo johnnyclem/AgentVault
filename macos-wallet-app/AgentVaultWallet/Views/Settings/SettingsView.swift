@@ -245,6 +245,7 @@ struct SettingsView: View {
                 KeychainService.shared.purgeAll()
                 walletStore.wallets.removeAll()
                 walletStore.saveWallets()
+                appState.setCLIPath("")
                 appState.hasCompletedOnboarding = false
                 appState.isFirstLaunch = true
             }

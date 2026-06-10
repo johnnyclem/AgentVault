@@ -16,12 +16,14 @@ export function buildProxyConfig(options: {
   anthropicProxy?: string;
   arweaveProxy?: string;
   bittensorProxy?: string;
+  binanceProxy?: string;
   extraEnv?: Record<string, string>;
 }): ProxyConfig {
   return {
     anthropicProxy: options.anthropicProxy,
     arweaveProxy: options.arweaveProxy,
     bittensorProxy: options.bittensorProxy,
+    binanceProxy: options.binanceProxy,
     extraEnv: options.extraEnv,
   };
 }
@@ -50,6 +52,13 @@ export function proxyConfigToEnv(config: ProxyConfig): Record<string, string> {
   if (config.bittensorProxy) {
     env['BITTENSOR_ENDPOINT'] = config.bittensorProxy;
     env['AGENTVAULT_BITTENSOR_PROXY'] = config.bittensorProxy;
+  }
+
+  if (config.binanceProxy) {
+    // BINANCE_PROXY_URL is read by the trading module to route all Binance
+    // REST and WebSocket calls through the VPS firewall proxy.
+    env['BINANCE_PROXY_URL'] = config.binanceProxy;
+    env['AGENTVAULT_BINANCE_PROXY'] = config.binanceProxy;
   }
 
   if (config.extraEnv) {
@@ -81,6 +90,7 @@ export function validateProxyConfig(config: ProxyConfig): string[] {
   validateUrl('Anthropic', config.anthropicProxy);
   validateUrl('Arweave', config.arweaveProxy);
   validateUrl('Bittensor', config.bittensorProxy);
+  validateUrl('Binance', config.binanceProxy);
 
   return warnings;
 }
@@ -93,6 +103,7 @@ export function describeProxyConfig(config: ProxyConfig): string[] {
   if (config.anthropicProxy) lines.push(`Anthropic → ${config.anthropicProxy}`);
   if (config.arweaveProxy) lines.push(`Arweave   → ${config.arweaveProxy}`);
   if (config.bittensorProxy) lines.push(`Bittensor → ${config.bittensorProxy}`);
+  if (config.binanceProxy) lines.push(`Binance   → ${config.binanceProxy}`);
   if (lines.length === 0) lines.push('None (using default endpoints)');
   return lines;
 }

@@ -117,6 +117,15 @@ function getSourcePaths(
     });
   }
 
+  if (options.customSources) {
+    for (const custom of options.customSources) {
+      sources.push({
+        label: custom.label,
+        absPath: custom.path,
+      });
+    }
+  }
+
   return sources;
 }
 
@@ -368,12 +377,8 @@ export function restoreFromCloud(
 
       const component = fileEntry.relativePath.slice(0, slashIdx);
       const restOfPath = fileEntry.relativePath.slice(slashIdx + 1);
-      const vaultSubdir = componentDirMap[component];
-
-      if (!vaultSubdir) {
-        warnings.push(`Unknown component "${component}" for ${fileEntry.relativePath}`);
-        continue;
-      }
+      // Known components map to vault subdirs; custom sources restore under their label
+      const vaultSubdir = componentDirMap[component] ?? component;
 
       const destFile = path.join(effectiveVaultDir, vaultSubdir, restOfPath);
 

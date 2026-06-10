@@ -1,0 +1,22 @@
+{
+  "name": "nemoclaw-demo",
+  "type": "nemoclaw",
+  "version": "1.0.0",
+  "description": "Example NemoClaw agent using NVIDIA Nemotron models with OpenShell runtime",
+  "entryPoint": "index.js",
+  "model": "nemotron-4-340b",
+  "runtime": "local",
+  "sandboxLevel": "standard",
+  "privacyRouter": true,
+  "platform": "auto",
+  "skills": [
+    "code-generation",
+    "code-review",
+    "file-management"
+  ],
+  "policies": {
+    "networkAccess": false,
+    "filesystemWrite": true,
+    "dataRetention": "session"
+  }
+}
