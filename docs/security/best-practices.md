@@ -180,32 +180,57 @@ export ETHERSCAN_API_KEY=$(cat ~/.secrets/etherscan-key)
 
 ### Exchange API Hardening (Binance Example)
 
-```bash
-# Example: run trading worker from hardened VPS only
-ufw default deny outgoing
-ufw allow out to any port 443 proto tcp
+For exchange-connected agents and automated trading workloads:
 
-# Store and rotate Binance keys weekly
+- Rotate Binance API keys weekly (or immediately after any incident).
+- Enable API key IP whitelisting so keys only work from approved egress addresses.
+- Disable withdrawal permissions for trading-only keys.
+- Use separate keys per environment (dev/staging/prod) and rotate each on a weekly cadence.
+- Route trading traffic through a hardened VPS and enforce firewall rules to only allow required exchange endpoints.
+
+```bash
+# Store keys outside the repo and load them at runtime
 export BINANCE_API_KEY=$(cat ~/.secrets/binance-key)
 export BINANCE_API_SECRET=$(cat ~/.secrets/binance-secret)
 ```
 
-- Enable Binance API key IP restriction and set it to your VPS egress IP.
-- Disable withdrawal permissions for trading-only keys.
-- Use separate keys per environment (dev/staging/prod) and rotate each on a weekly cadence.
-
-### OpenClaw Skill Sandboxing
+Example operations runbook:
 
 ```bash
-# Run skill in isolated user namespace/container (example)
-# - no root
-# - writable path limited to /tmp
-docker run --read-only --tmpfs /tmp:rw,noexec,nosuid,nodev --user 65534:65534 <image>
+# 1) Restrict outbound traffic to Binance hosts only (example, adjust to your distro/firewall)
+sudo ufw default deny outgoing
+sudo ufw allow out to api.binance.com port 443 proto tcp
+sudo ufw allow out to fapi.binance.com port 443 proto tcp
+
+# 2) Restrict SSH administration to trusted source IPs
+sudo ufw allow from <trusted-admin-ip>/32 to any port 22 proto tcp
+
+# 3) Confirm firewall policy
+sudo ufw status verbose
 ```
 
-- Do not run OpenClaw skills as root.
-- Mount project directories read-only when possible.
-- Deny writes outside `/tmp` and drop unnecessary Linux capabilities.
+> Keep API keys off developer laptops. Store and use them only on the VPS runtime where egress IP and firewall policy are controlled.
+
+## Skill Runtime Sandboxing
+
+For OpenClaw/Claw-style skill execution:
+
+- Run skills as a non-root user.
+- Deny writes outside `/tmp`.
+- Mount runtime directories read-only unless a specific writable path is required.
+- Apply process-level isolation (container/chroot/namespace) for any untrusted skill.
+
+Minimum container policy example:
+
+```bash
+docker run --rm \
+  --user 10001:10001 \
+  --read-only \
+  --tmpfs /tmp:rw,noexec,nosuid,size=256m \
+  --cap-drop ALL \
+  --security-opt no-new-privileges \
+  <openclaw-skill-image>
+```
 
 ## Monitoring & Alerting
 
@@ -250,7 +275,7 @@ agentvault logs --canister-id <id> --level error --follow
 
 ### Regular Maintenance
 
-- [ ] Rotate exchange API keys (weekly)
+- [ ] Rotate exchange API keys, e.g. Binance (weekly)
 - [ ] Review access logs (weekly)
 - [ ] Test recovery procedures (monthly)
 - [ ] Update dependencies (as needed)
