@@ -97,10 +97,11 @@ function generateProofRecord(vaultId: string): ProofRecord {
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
-    const proof = generateProofRecord(params.id)
+    const { id } = await params
+    const proof = generateProofRecord(id)
     return NextResponse.json({ success: true, data: proof })
   } catch (_error) {
     return NextResponse.json(

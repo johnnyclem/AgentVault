@@ -83,33 +83,49 @@ describe('wallet command chain support', () => {
     logSpy.mockRestore();
   });
 
-  it('imports mnemonic wallet for icp chain', async () => {
+  it('imports mnemonic wallet for icp chain via env var', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const mnemonic = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
+    const original = process.env.AGENTVAULT_MNEMONIC;
+    process.env.AGENTVAULT_MNEMONIC = mnemonic;
 
-    await handleImportNonInteractive({
-      agentId: 'agent-1',
-      chain: 'icp',
-      mnemonic,
-      json: true,
-    });
-
-    expect(walletMocks.importWalletFromMnemonic).toHaveBeenCalledWith('agent-1', 'icp', mnemonic);
-    logSpy.mockRestore();
+    try {
+      await handleImportNonInteractive({
+        agentId: 'agent-1',
+        chain: 'icp',
+        json: true,
+      });
+      expect(walletMocks.importWalletFromMnemonic).toHaveBeenCalledWith('agent-1', 'icp', mnemonic);
+    } finally {
+      if (original === undefined) {
+        delete process.env.AGENTVAULT_MNEMONIC;
+      } else {
+        process.env.AGENTVAULT_MNEMONIC = original;
+      }
+      logSpy.mockRestore();
+    }
   });
 
-  it('imports private-key wallet for arweave chain', async () => {
+  it('imports private-key wallet for arweave chain via env var', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const privateKey = '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
+    const original = process.env.AGENTVAULT_PRIVATE_KEY;
+    process.env.AGENTVAULT_PRIVATE_KEY = privateKey;
 
-    await handleImportNonInteractive({
-      agentId: 'agent-1',
-      chain: 'arweave',
-      privateKey,
-      json: true,
-    });
-
-    expect(walletMocks.importWalletFromPrivateKey).toHaveBeenCalledWith('agent-1', 'arweave', privateKey);
-    logSpy.mockRestore();
+    try {
+      await handleImportNonInteractive({
+        agentId: 'agent-1',
+        chain: 'arweave',
+        json: true,
+      });
+      expect(walletMocks.importWalletFromPrivateKey).toHaveBeenCalledWith('agent-1', 'arweave', privateKey);
+    } finally {
+      if (original === undefined) {
+        delete process.env.AGENTVAULT_PRIVATE_KEY;
+      } else {
+        process.env.AGENTVAULT_PRIVATE_KEY = original;
+      }
+      logSpy.mockRestore();
+    }
   });
 });

@@ -40,8 +40,12 @@ export function serializeWallet(
       agentId: wallet.agentId,
       chain: wallet.chain,
       address: wallet.address,
-      privateKey: wallet.privateKey,
-      mnemonic: wallet.mnemonic,
+      // Only include plaintext secrets when no encrypted bundle is present.
+      // When encryptedSecrets is set, privateKey and mnemonic must be
+      // undefined so sensitive material is never committed to disk in clear.
+      privateKey: wallet.encryptedSecrets ? undefined : wallet.privateKey,
+      mnemonic: wallet.encryptedSecrets ? undefined : wallet.mnemonic,
+      encryptedSecrets: wallet.encryptedSecrets,
       seedDerivationPath: wallet.seedDerivationPath,
       createdAt: wallet.createdAt,
       updatedAt: wallet.updatedAt,
@@ -99,6 +103,7 @@ export function deserializeWallet(data: Uint8Array): WalletData {
       address: decoded.address || '',
       privateKey: decoded.privateKey,
       mnemonic: decoded.mnemonic,
+      encryptedSecrets: decoded.encryptedSecrets,
       seedDerivationPath: decoded.seedDerivationPath,
       createdAt: decoded.createdAt || Date.now(),
       updatedAt: decoded.updatedAt || Date.now(),

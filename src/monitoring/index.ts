@@ -10,6 +10,7 @@ export {
   generateHealthAlerts,
   checkHealth,
   checkMultipleHealth,
+  checkThoughtFormHealth,
 } from './health.js';
 
 // Info
@@ -35,4 +36,6 @@ export type {
   MonitoringAlert,
   AlertSeverity,
   ResourceUsageSnapshot,
+  ThoughtFormHealthStatus,
+  ThoughtFormHealthOptions,
 } from './types.js';

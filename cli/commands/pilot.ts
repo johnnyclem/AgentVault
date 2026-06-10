@@ -227,6 +227,11 @@ deployCmd
       }
     }
 
+    if (!company) {
+      console.error(chalk.red('Company could not be determined.'));
+      process.exit(1);
+    }
+
     const config = loadPilotConfig(company);
     if (!config) {
       console.error(chalk.red(`No pilot config found for company "${company}".`));
@@ -369,6 +374,11 @@ statusCmd
         }]);
         company = chosen;
       }
+    }
+
+    if (!company) {
+      console.log(chalk.yellow('No company selected.'));
+      return;
     }
 
     const spinner = ora(`Checking status for "${company}"...`).start();

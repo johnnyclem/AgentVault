@@ -4,6 +4,75 @@ All notable changes to AgentVault will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.0.4] - 2026-05-24 - Security & build hygiene refresh
+
+### Security
+- **SEC-2 (HIGH):** Vault client now actually validates TLS against the
+  configured `caCertPath`. An `undici.Agent` is attached as the fetch
+  dispatcher with `ca` (and optional `rejectUnauthorized`) on every
+  request from `VaultClient`. Previously the cert was loaded and ignored.
+- **SEC-5 (HIGH):** Removed `--mnemonic`, `--private-key`, and
+  `--password` CLI options from `agentvault wallet`. Secrets are now read
+  from `AGENTVAULT_MNEMONIC`, `AGENTVAULT_PRIVATE_KEY`, and
+  `AGENTVAULT_PASSWORD` env vars, or via an interactive `inquirer`
+  password prompt for keystore decryption in TTY contexts. CLI args are
+  visible in `ps aux` and shell history and should never carry secrets.
+- **SEC-6 (MED):** Vault key-pattern matching escapes regex
+  metacharacters before expanding `*` and `?` globs. Removes ReDoS
+  exposure and stops `.` / `+` / `(` etc. in user patterns from
+  triggering unintended regex matches.
+- **SEC-10 (MED):** `encryptShare()` in both VetKeys clients now
+  generates an independent random salt for PBKDF2 instead of reusing the
+  IV. Share blob layout is now `salt(16) || iv(12 or 16) || ciphertext`.
+  Also fixed an algorithm-name bug (`aes-256-gcm` was being mangled to
+  `aes256-gcm` by `String.replace('-','')`).
+- **SEC-12 (MED):** New `sanitizePathPart()` rejects `..`, separators,
+  NUL, and out-of-alphabet input on every agent-id / wallet-id path
+  segment used by `wallet-storage.ts`.
+- **SEC-15 (MED):** `DEFAULT_WASMEDGE_OPTIONS.debug` and `.sourcemap`
+  now default to `false`. Shipped WASM no longer leaks debug symbols
+  unless `--debug` is explicitly passed.
+- **SEC-17 (MED):** New `atomicWriteFileSync()` (write→fsync→rename)
+  is used for backup envelopes, the ed25519 signing-key file, and wallet
+  files. A crash mid-write can no longer corrupt these artefacts.
+
+### Changed
+- CLI: `agentvault wallet multi-send` and `agentvault wallet
+  process-queue` are now wired up (handlers previously existed but were
+  not reachable from the dispatcher).
+- CLI help: `trace` and `profile` are labelled `[Stub]` (Phase 3 not
+  implemented / mock data) and `stats` is labelled `[Partial]` (current
+  values only; historical analysis pending).
+- Tests: `tests/cli/commands/wallet.test.ts` exercises the env-var
+  import flow instead of the now-removed CLI options.
+
+### Added
+- `src/utils/path-validation.ts` — `sanitizePathPart`, `sanitizePathParts`,
+  `atomicWriteFileSync`.
+- `tests/unit/path-validation.test.ts` — 15 cases for the new utilities.
+- `tests/vault/glob-pattern.test.ts` — 4 cases verifying SEC-6 behaviour.
+
+### Dependencies
+- Added `undici` (^7.25.0) as a direct dep for the TLS dispatcher.
+- Added `overrides` block pinning `brace-expansion`, `uuid`, `ws`, and
+  `postcss` to vulnerability-free ranges without forcing breaking
+  upgrades of `@solana/web3.js` or `ethers`.
+- `npm audit` now reports **0 vulnerabilities** (was 8 moderate).
+
+### Build
+- TypeScript: 0 errors (was 24, all in tests/`wiki.test.ts` non-null
+  narrowing and `cli/commands/wiki.ts` unused import).
+- ESLint: 0 errors (was 13, mostly `Function`-typed callback params and
+  a stray `require()`).
+- Removed `pnpm-lock.yaml`; `package-lock.json` is authoritative.
+
+### Documentation
+- `SECURITY_AUDIT_AND_COMPLETION_PLAN.md` rewritten as a living document
+  with per-finding status (FIXED / OPEN) and links to the resolving
+  commits.
+- `README.md` Known Limitations table updated to reflect that wallet
+  encryption is now real.
+
 ## [1.0.0] - 2025-02-12 - v1.0.0 Final Release
 
 ### Added

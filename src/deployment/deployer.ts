@@ -6,6 +6,7 @@
  */
 
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import type {
   DeployOptions,
@@ -72,11 +73,66 @@ export function validateDeployOptions(options: DeployOptions): {
     warnings.push(`Upgrading existing canister: ${options.canisterId}`);
   }
 
+  // ARM64 16KB page size check: the ICP local replica uses jemalloc which
+  // requires 4KB pages. ARM64 Linux kernels (Pi 5, Graviton, Ampere) commonly
+  // use 16KB pages, causing the replica to crash immediately.
+  if (options.network === 'local') {
+    const pageSize = getSystemPageSize();
+    if (pageSize > 4096) {
+      warnings.push(
+        `Your system uses ${pageSize / 1024}KB pages. The ICP local replica (jemalloc) requires 4KB pages and will crash on startup. ` +
+        `Options: deploy to mainnet (--network ic), use a Docker-based x86_64 replica, or use PocketIC for local testing.`
+      );
+    }
+
+    // Disk space preflight: detect low space in the project directory to
+    // catch tmpfs exhaustion that silently corrupts node_modules.
+    const projectDir = options.projectRoot ?? process.cwd();
+    const availMB = getAvailableDiskSpaceMB(projectDir);
+    if (availMB !== null && availMB < 500) {
+      warnings.push(
+        `Low disk space: ${Math.round(availMB)}MB available in ${projectDir} (recommended: 500MB+). ` +
+        `If /tmp is a tmpfs, npm install may silently corrupt packages.`
+      );
+    }
+  }
+
   return {
     valid: errors.length === 0,
     errors,
     warnings,
   };
+}
+
+/**
+ * Get the system memory page size in bytes.
+ * Returns 4096 as a safe default if detection fails.
+ */
+function getSystemPageSize(): number {
+  try {
+    // os.pageSize is available as a number property (not a function) in
+    // recent Node.js versions; fall back to 4096 when unavailable.
+    const pageSize = (os as Record<string, unknown>).pageSize;
+    if (typeof pageSize === 'number' && pageSize > 0) {
+      return pageSize;
+    }
+  } catch {
+    // Ignore — fall through to default
+  }
+  return 4096;
+}
+
+/**
+ * Get available disk space in MB for the filesystem containing `dir`.
+ * Returns null if detection is unavailable.
+ */
+function getAvailableDiskSpaceMB(dir: string): number | null {
+  try {
+    const { bavail, bsize } = fs.statfsSync(dir);
+    return (Number(bavail) * Number(bsize)) / (1024 * 1024);
+  } catch {
+    return null;
+  }
 }
 
 /**

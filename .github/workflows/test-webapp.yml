@@ -5,10 +5,14 @@ on:
     branches: ['main', 'develop']
     paths:
       - 'webapp/**'
+      - 'src/**'
+      - '.github/workflows/test-webapp.yml'
   pull_request:
     branches: ['main', 'develop']
     paths:
       - 'webapp/**'
+      - 'src/**'
+      - '.github/workflows/test-webapp.yml'
 
 defaults:
   run:
@@ -26,20 +30,24 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 8
+      # The webapp imports shared modules from ../src, which resolve their
+      # dependencies from the root node_modules.
+      - name: Install root dependencies
+        run: npm ci
+        working-directory: .
 
-      - name: Install dependencies
-        run: pnpm install
-
-      - name: TypeScript check
-        run: pnpm tsc --noEmit
+      # The webapp lockfile is gitignored, so a clean install (npm ci) is
+      # not possible here.
+      - name: Install webapp dependencies
+        run: npm install
 
       - name: Build
-        run: pnpm build
+        run: npm run build
 
-      - name: Run tests
-        run: pnpm test
+      # After the build so Next's generated route types (.next/types) are
+      # included in the check.
+      - name: TypeScript check
+        run: npm run typecheck

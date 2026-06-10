@@ -19,6 +19,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
 import { ClaudeOrchestrator } from '../../src/orchestration/claude.js';
+import type { MCPServerConfig } from '../../src/orchestration/mcp-client.js';
 
 // ---------------------------------------------------------------------------
 // Options interface
@@ -35,6 +36,10 @@ export interface OrchestrateCommandOptions {
   model?: string;
   timeout?: string;
   apiKey?: string;
+  polyticianEntry?: string;
+  polyticianNamespace?: string;
+  noEnrichment?: boolean;
+  noSaveConcept?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -62,6 +67,11 @@ export function orchestrateCmd(): Command {
     .option('--model <model>', 'Override the Claude model (default: claude-opus-4-6)')
     .option('--timeout <seconds>', 'Session timeout in seconds (default: 1800)', '1800')
     .option('--api-key <key>', 'Anthropic API key (overrides ANTHROPIC_API_KEY env var)')
+    // Polytician semantic memory integration
+    .option('--polytician-entry <command>', 'Polytician MCP server entry point (e.g., "node server.js")')
+    .option('--polytician-namespace <name>', 'Polytician namespace for concept storage', 'polytician')
+    .option('--no-semantic-enrichment', 'Disable semantic context enrichment')
+    .option('--no-save-concept', 'Disable saving orchestration result as concept')
     .action(async (options: OrchestrateCommandOptions) => {
       // ----------------------------------------------------------------
       // Header
@@ -137,6 +147,14 @@ export function orchestrateCmd(): Command {
       try {
         const orchestrator = new ClaudeOrchestrator(process.cwd());
 
+        let polyticianServer: MCPServerConfig | undefined;
+        if (options.polyticianEntry) {
+          polyticianServer = {
+            namespace: options.polyticianNamespace ?? 'polytician',
+            entryPoint: options.polyticianEntry,
+          };
+        }
+
         const result = await orchestrator.orchestrate({
           task,
           canisterId: options.canisterId,
@@ -148,6 +166,9 @@ export function orchestrateCmd(): Command {
           model: options.model,
           timeoutMs,
           onProgress,
+          polyticianServer,
+          enableSemanticEnrichment: !options.noEnrichment,
+          saveResultAsConcept: !options.noSaveConcept,
         });
 
         // ----------------------------------------------------------------

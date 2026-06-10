@@ -1,5 +1,7 @@
 'use client'
 
+import { Clock, CheckCircle2, XCircle } from 'lucide-react'
+
 interface TaskStatusBadgeProps {
   status: 'pending' | 'running' | 'completed' | 'failed'
   className?: string

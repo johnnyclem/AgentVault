@@ -147,6 +147,15 @@ agentvault rebuild --canister-id <id> --dry-run
 
 ## Network Security
 
+### Compromised-By-Default Threat Model
+
+When operating automated trading agents, assume host and credential exposure is possible and layer controls accordingly:
+
+- Treat API keys as short-lived credentials and automate weekly rotation for exchange keys (for example, Binance).
+- Restrict exchange API keys with provider-side IP whitelists so leaked keys are not useful from arbitrary networks.
+- Route bot traffic through a dedicated VPS egress IP and enforce host firewall rules to allow only required outbound destinations.
+- Run skill/tool execution with least privilege. OpenClaw skills should run without root and with filesystem writes constrained to `/tmp` only.
+
 ### HTTPS Only
 
 - Always use HTTPS for mainnet
@@ -166,14 +175,24 @@ agentvault deploy --timeout 60000
 # Use API keys securely
 export ETHERSCAN_API_KEY=$(cat ~/.secrets/etherscan-key)
 
-# Rotate keys regularly
+# Rotate keys regularly (weekly for exchange trading keys)
 ```
+
+### Exchange API Hardening (Binance Example)
 
 For exchange-connected agents and automated trading workloads:
 
 - Rotate Binance API keys weekly (or immediately after any incident).
 - Enable API key IP whitelisting so keys only work from approved egress addresses.
+- Disable withdrawal permissions for trading-only keys.
+- Use separate keys per environment (dev/staging/prod) and rotate each on a weekly cadence.
 - Route trading traffic through a hardened VPS and enforce firewall rules to only allow required exchange endpoints.
+
+```bash
+# Store keys outside the repo and load them at runtime
+export BINANCE_API_KEY=$(cat ~/.secrets/binance-key)
+export BINANCE_API_SECRET=$(cat ~/.secrets/binance-secret)
+```
 
 Example operations runbook:
 
@@ -256,7 +275,7 @@ agentvault logs --canister-id <id> --level error --follow
 
 ### Regular Maintenance
 
-- [ ] Rotate Binance API keys (weekly)
+- [ ] Rotate exchange API keys, e.g. Binance (weekly)
 - [ ] Review access logs (weekly)
 - [ ] Test recovery procedures (monthly)
 - [ ] Update dependencies (as needed)
