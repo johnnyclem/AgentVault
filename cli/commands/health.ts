@@ -7,8 +7,8 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
-import { checkHealth, getRecentAlerts } from '../../src/monitoring/index.js';
-import type { MonitoringOptions } from '../../src/monitoring/types.js';
+import { checkHealth, checkThoughtFormHealth, getRecentAlerts } from '../../src/monitoring/index.js';
+import type { MonitoringOptions, ThoughtFormHealthStatus } from '../../src/monitoring/types.js';
 
 export function healthCommand(): Command {
   const command = new Command('health');
@@ -20,10 +20,18 @@ export function healthCommand(): Command {
     .option('-i, --interval <ms>', 'Polling interval in milliseconds')
     .option('--max-alerts <n>', 'Maximum alerts to display')
     .option('--clear', 'Clear all alerts for canister')
-    .option('-w, --watch', 'Watch canister health continuously');
+    .option('-w, --watch', 'Watch canister health continuously')
+    .option('--health <type>', 'Health check type (e.g. "thoughtform")')
+    .option('--stale-hours <hours>', 'Stale threshold in hours for ThoughtForm check (default: 24)')
+    .option('--host <url>', 'ICP host URL override');
 
   command
     .action(async (canisterId: string, options: any) => {
+      if (options.health === 'thoughtform') {
+        await runThoughtFormHealthCheck(canisterId, options);
+        return;
+      }
+
       const thresholds = options.thresholds ? JSON.parse(options.thresholds) : undefined;
       const monitoringOpts: MonitoringOptions = {
         canister: canisterId,
@@ -70,6 +78,57 @@ export function healthCommand(): Command {
     });
 
   return command;
+}
+
+async function runThoughtFormHealthCheck(canisterId: string, options: any): Promise<void> {
+  const staleHours = options.staleHours ? parseInt(options.staleHours) : 24;
+  const spinner = ora('Checking ThoughtForm store health...').start();
+
+  try {
+    const result: ThoughtFormHealthStatus = await checkThoughtFormHealth({
+      canisterId,
+      staleThresholdHours: staleHours,
+      host: options.host,
+    });
+
+    if (result.status === 'OK') {
+      spinner.succeed('ThoughtForm health check passed');
+    } else if (result.status === 'WARN') {
+      spinner.warn('ThoughtForm health check warning');
+    } else {
+      spinner.fail('ThoughtForm health check failed');
+    }
+
+    displayThoughtFormHealth(result);
+
+    if (result.status !== 'OK') {
+      process.exitCode = 1;
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    spinner.fail(`ThoughtForm health check failed: ${message}`);
+    throw error;
+  }
+}
+
+function displayThoughtFormHealth(result: ThoughtFormHealthStatus): void {
+  console.log();
+  const statusColor =
+    result.status === 'OK' ? chalk.green
+    : result.status === 'WARN' ? chalk.yellow
+    : chalk.red;
+  console.log(chalk.cyan('Status:'), statusColor(result.status));
+  console.log(chalk.cyan('Canister:'), chalk.bold(result.canisterId));
+  console.log(chalk.cyan('Entry Count:'), chalk.bold(result.count.toString()));
+  if (result.latestTimestamp > 0) {
+    const tsMs = result.latestTimestamp > 1e15 ? result.latestTimestamp / 1e6 : result.latestTimestamp;
+    console.log(chalk.cyan('Latest Timestamp:'), chalk.bold(new Date(tsMs).toISOString()));
+  } else {
+    console.log(chalk.cyan('Latest Timestamp:'), chalk.gray('N/A'));
+  }
+  if (result.message) {
+    console.log(chalk.cyan('Message:'), chalk.yellow(result.message));
+  }
 }
 
 function displayHealth(statusInfo: any): void {

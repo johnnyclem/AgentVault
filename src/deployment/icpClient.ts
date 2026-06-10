@@ -564,6 +564,10 @@ export class ICPClient {
         return 0 as T;
       case 'getWasmInfo':
         return { hash: new Uint8Array([0, 0, 0, 0]), size: 1024, functionNameCount: 14 } as T;
+      case 'store_thoughtform':
+        return { ok: 'stored' } as T;
+      case 'fetch_thoughtforms':
+        return new Uint8Array([]) as T;
       default:
         throw new Error(`Unknown method: ${methodName}`);
     }

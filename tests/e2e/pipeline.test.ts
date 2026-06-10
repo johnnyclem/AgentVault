@@ -16,20 +16,23 @@ vi.mock('execa', () => ({
   default: vi.fn().mockResolvedValue({ stdout: 'dfx 0.15.0', stderr: '' }),
 }));
 
-vi.mock('@dfinity/agent', () => ({
-  HttpAgent: vi.fn().mockImplementation(() => ({
-    fetchRootKey: vi.fn().mockResolvedValue(undefined),
-    status: vi.fn().mockResolvedValue({}),
-  })),
-  Actor: {
-    createActor: vi.fn().mockReturnValue({
-      getState: vi.fn().mockResolvedValue({ ok: {} }),
-      getTasks: vi.fn().mockResolvedValue({ ok: [] }),
-      getMemory: vi.fn().mockResolvedValue({ ok: {} }),
-      execute: vi.fn().mockResolvedValue({ ok: new Uint8Array() }),
-    }),
-  },
-}));
+vi.mock('@dfinity/agent', () => {
+  class MockHttpAgent {
+    fetchRootKey = vi.fn().mockResolvedValue(undefined);
+    status = vi.fn().mockResolvedValue({});
+  }
+  return {
+    HttpAgent: MockHttpAgent,
+    Actor: {
+      createActor: vi.fn().mockReturnValue({
+        getState: vi.fn().mockResolvedValue({ ok: {} }),
+        getTasks: vi.fn().mockResolvedValue({ ok: [] }),
+        getMemory: vi.fn().mockResolvedValue({ ok: {} }),
+        execute: vi.fn().mockResolvedValue({ ok: new Uint8Array() }),
+      }),
+    },
+  };
+});
 
 describe('E2E Pipeline: init → package → deploy → exec → show → fetch', () => {
   beforeEach(() => {

@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
-    const tasks = []
+    const tasks: unknown[] = []
     return NextResponse.json({ success: true, data: tasks })
   } catch (_error) {
     return NextResponse.json({ success: false, error: { message: 'Failed to fetch tasks' } }, { status: 500 })
@@ -14,7 +14,7 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
     const body = await request.json()

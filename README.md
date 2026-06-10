@@ -136,6 +136,45 @@ agentvault fetch --canister-id <your-canister-id>
 | `profile` | Profile canister performance | Experimental |
 | `trace` | View execution traces | Experimental |
 
+### Memory, Knowledge & Identity Commands
+
+| Command | Description |
+|---------|-------------|
+| `memory` | Git-style memory repository for agent identity and versioned memory |
+| `rebase` | Fetch on-chain commits and merge with a local bundle file |
+| `wiki` | LLM-maintained knowledge base (archivist) |
+| `polytician` | Manage Polytician semantic memory integration |
+| `skills` | Manage domain-specific agent skill files |
+| `decrypt` | Decrypt agent state using a seed phrase |
+
+### Security & Secrets Commands
+
+| Command | Description |
+|---------|-------------|
+| `vault` | Manage agent secrets and API keys (HashiCorp Vault or Bitwarden) |
+| `safehouse` | Agent Safehouse secret management layer (deny-first sandboxing) |
+| `repo` | Repository security, audit, and integrity commands |
+
+### Fault Tolerance & Operations Commands
+
+| Command | Description |
+|---------|-------------|
+| `mirror` | Mirror agent state to a second ICP canister for fault tolerance |
+| `cron` | Fault-tolerance automation: daily liveness check and auto-restore |
+| `cloud-backup` | Detect available cloud storage providers on this machine |
+| `network` | Manage ICP networks |
+| `test` | Run tests against canisters |
+| `instrument` | Instrument WASM file for debugging |
+
+### Orchestration & Scaffolding Commands
+
+| Command | Description |
+|---------|-------------|
+| `orchestrate` | Orchestrate an AI-assisted development session governed by AgentVault |
+| `mcp` | Manage MCP (Model Context Protocol) server registrations |
+| `mint` | Scaffold a new Google ADK agent with on-chain canister and birthday backup |
+| `pilot` | Initialize a private ICP replica and deploy Guild canisters |
+
 ## Environment Variables
 
 ### ICP Configuration
@@ -223,11 +262,27 @@ npm run test
 | Feature | Status |
 |---------|--------|
 | Core flow (init → package → deploy → exec → fetch) | ✅ Working |
-| Wallet crypto (real elliptic curves) | ⚠️ Basic SHA-256 |
-| VetKeys threshold signatures | ⚠️ Simulated |
+| Wallet crypto (real elliptic curves) | ✅ secp256k1 / ed25519 via `@noble/curves` |
+| Wallet at-rest encryption | ✅ AES-256-GCM via `encryptWalletSecrets` |
+| Backup atomic writes | ✅ write→fsync→rename via `atomicWriteFileSync` |
+| Vault TLS CA cert | ✅ honoured via `undici.Agent` dispatcher |
+| VetKeys threshold signatures | ⚠️ Simulated (real canister integration pending) |
 | Bittensor inference | ⚠️ Requires API access |
 | Arweave archival | ⚠️ Requires wallet setup |
-| Backup/restore | ⚠️ Manifest only |
+| `trace` / `profile` CLI | ⚠️ Stub — Phase 3 not yet implemented |
+| `stats` CLI historical analysis | ⚠️ Partial — current values only |
+
+See [`SECURITY_AUDIT_AND_COMPLETION_PLAN.md`](./SECURITY_AUDIT_AND_COMPLETION_PLAN.md) for the current security posture and audit history.
+
+### Wallet secrets
+
+Mnemonics, private keys, and keystore passwords are **never** accepted as
+CLI arguments (they would leak through `ps aux` and shell history). Use:
+
+- `AGENTVAULT_MNEMONIC` env var for `wallet import`
+- `AGENTVAULT_PRIVATE_KEY` env var for `wallet import`
+- `AGENTVAULT_PASSWORD` env var or interactive `inquirer` prompt for
+  `--keystore` decryption
 
 ## Contributing
 

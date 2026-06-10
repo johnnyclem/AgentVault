@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { exportBackup, previewBackup, importBackup, listBackups } from '@/backup/index.js';
+import { exportBackup, previewBackup, importBackup, listBackups } from '@/backup/index';
 
 export async function GET(request: Request) {
   try {

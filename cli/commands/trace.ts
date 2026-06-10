@@ -12,7 +12,7 @@ import type { TraceFilter } from '../../src/debugging/types.js';
 export const traceCmd = new Command('trace');
 
 traceCmd
-  .description('[Experimental] View execution traces from instrumented canisters')
+  .description('[Stub] View execution traces from instrumented canisters (Phase 3, not yet implemented)')
   .argument('<canister-id>', 'Canister ID')
   .option('-f, --filter <method>', 'Filter by method name')
   .option('-d, --min-duration <ms>', 'Minimum duration in milliseconds')
@@ -51,8 +51,8 @@ traceCmd
       console.log(chalk.gray('  3. Canister will emit traces to stable memory'));
       console.log();
 
-      if (options.method) {
-        console.log(chalk.bold(`Filter: method = ${options.method}`));
+      if (options.filter) {
+        console.log(chalk.bold(`Filter: method = ${options.filter}`));
       }
       if (options.minDuration) {
         console.log(chalk.bold(`Filter: min duration = ${options.minDuration}ms`));

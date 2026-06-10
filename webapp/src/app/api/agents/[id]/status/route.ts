@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { canisterStatus } from '@/icp/icpcli.js';
+import { canisterStatus } from '@/icp/icpcli';
 
 interface RouteContext {
   params: Promise<{ id: string }>;

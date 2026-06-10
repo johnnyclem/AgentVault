@@ -83,6 +83,34 @@ export interface ResourceUsageSnapshot {
 }
 
 /**
+ * ThoughtForm health check result
+ */
+export interface ThoughtFormHealthStatus {
+  /** Overall status */
+  status: 'OK' | 'WARN' | 'CRITICAL' | 'ERROR';
+  /** Timestamp of most recent ThoughtForm entry */
+  latestTimestamp: number;
+  /** Total ThoughtForm entry count */
+  count: number;
+  /** Canister ID that was checked */
+  canisterId: string;
+  /** Human-readable message (set on failure) */
+  message?: string;
+}
+
+/**
+ * ThoughtForm health check options
+ */
+export interface ThoughtFormHealthOptions {
+  /** Canister ID to query */
+  canisterId: string;
+  /** Maximum age of latest entry before alerting, in hours (default: 24) */
+  staleThresholdHours?: number;
+  /** ICP host URL override */
+  host?: string;
+}
+
+/**
  * Monitoring query options
  */
 export interface MonitoringOptions {

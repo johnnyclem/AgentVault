@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { promoteCanister } from '@/deployment/promotion.js';
+import { promoteCanister } from '@/deployment/promotion';
 
 export async function POST(request: Request) {
   try {

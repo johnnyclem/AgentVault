@@ -8,13 +8,23 @@ import ora from 'ora';
 import inquirer from 'inquirer';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as zlib from 'node:zlib';
+import { promisify } from 'node:util';
 import type { NetworkType } from '../../src/deployment/types.js';
 import { createICPClient } from '../../src/deployment/icpClient.js';
+import { THOUGHTFORM_BUNDLE_FORMAT } from '../../src/backup/thoughtform-bundle.js';
+import type { ThoughtformBundle } from '../../src/backup/thoughtform-bundle.js';
+
+const gzipAsync = promisify(zlib.gzip);
+
+export type FetchType = 'default' | 'thoughtform-bundle';
 
 export interface FetchCommandOptions {
   network?: NetworkType;
   output?: string;
   decrypt?: boolean;
+  type?: FetchType;
+  compress?: boolean;
 }
 
 export interface FetchAnswers {
@@ -39,9 +49,21 @@ export async function executeFetch(
     );
   }
 
+  // Validate type flag
+  const fetchType = options.type ?? 'default';
+  if (fetchType !== 'default' && fetchType !== 'thoughtform-bundle') {
+    throw new Error(
+      `Invalid fetch type: '${fetchType}'. Supported types: default, thoughtform-bundle`
+    );
+  }
+
   // Determine output path
+  const useCompress = options.compress ?? (fetchType === 'thoughtform-bundle');
+  const defaultExt = fetchType === 'thoughtform-bundle'
+    ? (useCompress ? '.thoughtform-bundle.json.gz' : '.thoughtform-bundle.json')
+    : '.state.json';
   const outputPath =
-    options.output ?? path.resolve(process.cwd(), `${resolvedCanisterId}.state.json`);
+    options.output ?? path.resolve(process.cwd(), `${resolvedCanisterId}${defaultExt}`);
 
   // Check if output already exists
   if (fs.existsSync(outputPath) && !options.decrypt) {
@@ -112,9 +134,66 @@ export async function executeFetch(
 
     // Write state to file
     if (!options.decrypt) {
-      fs.writeFileSync(outputPath, JSON.stringify(stateData, null, 2), 'utf-8');
-      console.log();
-      console.log(chalk.green('✓'), 'State saved to:', chalk.bold(outputPath));
+      if (fetchType === 'thoughtform-bundle') {
+        // Fetch thoughtform data from canister via dedicated method
+        spinner.text = 'Fetching thoughtforms from canister...';
+        let thoughtformData: Uint8Array | null = null;
+        try {
+          thoughtformData = await client.callAgentMethod<Uint8Array>(
+            resolvedCanisterId,
+            'fetch_thoughtforms'
+          );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          console.log(chalk.yellow(`\nWarning: fetch_thoughtforms call failed (${message}), using state data as fallback`));
+        }
+
+        // Build the bundle from fetched thoughtform data or fall back to state
+        const now = new Date();
+        const entries: Record<string, string> = {
+          'state.json': Buffer.from(JSON.stringify(stateData, null, 2), 'utf8').toString('base64'),
+        };
+        if (thoughtformData && thoughtformData.length > 0) {
+          entries['thoughtforms.bin'] = Buffer.from(thoughtformData).toString('base64');
+        }
+        const bundle: ThoughtformBundle = {
+          format: THOUGHTFORM_BUNDLE_FORMAT,
+          createdAt: now.toISOString(),
+          manifest: {
+            version: '1.0',
+            agentName: stateData.canisterId,
+            timestamp: now,
+            created: now,
+            canisterId: stateData.canisterId,
+            checksums: {},
+            size: 0,
+            components: thoughtformData && thoughtformData.length > 0
+              ? ['fetched-state', 'thoughtforms']
+              : ['fetched-state'],
+          },
+          entries,
+        };
+
+        const jsonBuf = Buffer.from(JSON.stringify(bundle, null, 2), 'utf8');
+        if (useCompress) {
+          const compressed = await gzipAsync(jsonBuf);
+          fs.writeFileSync(outputPath, compressed);
+        } else {
+          fs.writeFileSync(outputPath, jsonBuf, 'utf-8');
+        }
+        console.log();
+        console.log(
+          chalk.green('✓'),
+          `Thoughtform-bundle saved to:`,
+          chalk.bold(outputPath),
+          useCompress ? chalk.gray('(compressed)') : chalk.gray('(JSON)')
+        );
+      } else {
+        fs.writeFileSync(outputPath, JSON.stringify(stateData, null, 2), 'utf-8');
+        console.log();
+        console.log(chalk.green('✓'), 'State saved to:', chalk.bold(outputPath));
+      }
+
       console.log();
       console.log(chalk.cyan('Next steps:'));
       console.log('  1. Decrypt the state:', chalk.bold('agentvault decrypt'), `<${outputPath}>`);
@@ -192,6 +271,8 @@ export function fetchCommand(): Command {
     .option('-n, --network <network>', 'network (local or ic)', 'local')
     .option('-o, --output <path>', 'output file path')
     .option('-d, --decrypt', 'decrypt state after fetching')
+    .option('-t, --type <type>', 'output type (default, thoughtform-bundle)', 'default')
+    .option('--compress', 'compress output as gzip (default for thoughtform-bundle)')
     .action(async (canisterId: string, options: FetchCommandOptions) => {
       console.log(chalk.bold('\n📥 AgentVault Fetch\n'));
 
