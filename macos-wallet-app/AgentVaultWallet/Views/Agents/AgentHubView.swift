@@ -53,6 +53,22 @@ struct AgentHubView: View {
             if selectedAgentId == nil {
                 selectedAgentId = agentStore.primaryAgents.first?.id
             }
+            agentStore.selectedAgentId = selectedAgentId
+        }
+        .onChange(of: selectedAgentId) { _, newValue in
+            agentStore.selectedAgentId = newValue
+        }
+        .onChange(of: filteredAgents.map(\.id)) { _, visibleIds in
+            guard !visibleIds.isEmpty else {
+                selectedAgentId = nil
+                return
+            }
+
+            if let selectedAgentId, visibleIds.contains(selectedAgentId) {
+                return
+            }
+
+            selectedAgentId = visibleIds.first
         }
     }
 
