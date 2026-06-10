@@ -52,7 +52,32 @@ import { pilotCmd } from './commands/pilot.js';
 import { skillsCmd } from './commands/skills.js';
 // Phase 6 commands
 import { orchestrateCmd } from './commands/orchestrate.js';
+// Google ADK / A2A agent minting
 import { mintCmd } from './commands/mint.js';
+
+// Fault Tolerance commands
+import { cronCmd } from './commands/cron.js';
+import { mirrorCmd } from './commands/mirror.js';
+
+// Security & audit commands
+import { repoCmd } from './commands/repo.js';
+
+// MemoryRepo commands
+import { memoryCmd } from './commands/memory.js';
+
+// Rebase command
+import { rebaseCommand } from './commands/rebase.js';
+// MCP commands (Phase 2)
+import { mcpCmd } from './commands/mcp.js';
+
+// Polytician commands (Phase 5)
+import { polyticianCmd } from './commands/polytician.js';
+
+// Agent Safehouse secret management layer
+import { safehouseCmd } from './commands/safehouse.js';
+
+// Wiki — LLM-maintained knowledge base (archivist)
+import { wikiCmd } from './commands/wiki.js';
 
 export function createProgram(): Command {
   const program = new Command();
@@ -110,7 +135,32 @@ export function createProgram(): Command {
   program.addCommand(skillsCmd);
   // Phase 6 commands
   program.addCommand(orchestrateCmd());
+  // Google ADK / A2A agent minting
   program.addCommand(mintCmd());
+
+  // Fault Tolerance commands
+  program.addCommand(cronCmd());
+  program.addCommand(mirrorCmd());
+
+  // Security & audit commands
+  program.addCommand(repoCmd);
+
+  // MemoryRepo commands
+  program.addCommand(memoryCmd);
+
+  // Rebase command
+  program.addCommand(rebaseCommand());
+  // MCP commands
+  program.addCommand(mcpCmd);
+
+  // Polytician commands
+  program.addCommand(polyticianCmd);
+
+  // Agent Safehouse secret management layer
+  program.addCommand(safehouseCmd);
+
+  // Wiki — LLM-maintained knowledge base (archivist)
+  program.addCommand(wikiCmd);
 
   return program;
 }

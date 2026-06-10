@@ -3,6 +3,11 @@
  *
  * Implements BIP39 seed phrase derivation for wallet keys.
  * Supports multiple derivation paths for different blockchains.
+ *
+ * Curve usage:
+ *   secp256k1 – Ethereum / ckETH / Polkadot  (@noble/curves/secp256k1)
+ *   Ed25519   – ICP / Arweave                (@noble/curves/ed25519)
+ *   Ed25519   – Solana                       (@solana/web3.js Keypair for base58)
  */
 
 import * as bip39 from 'bip39';
@@ -12,6 +17,8 @@ import type { WalletCreationMethod } from './types.js';
 import { Keypair } from '@solana/web3.js';
 import { Principal } from '@dfinity/principal';
 import { HDNodeWallet, SigningKey, computeAddress } from 'ethers';
+import { secp256k1 } from '@noble/curves/secp256k1';
+import { ed25519 } from '@noble/curves/ed25519';
 
 /**
  * Derivation path components
@@ -233,7 +240,8 @@ export function deriveEthKey(
 /**
  * Derive Polkadot-compatible key
  *
- * Uses SR25519 for key derivation and SS58 for address encoding.
+ * Uses secp256k1 (via @noble/curves) for key derivation and SS58 for address
+ * encoding.
  *
  * @param seed - Seed bytes
  * @param derivationPath - Derivation path (default: "//hard//stash")
@@ -245,8 +253,8 @@ export function derivePolkadotKey(
 ): DerivedKey {
   const privateKey = seed.slice(0, 32);
 
-  const publicKey = derivePublicKey(privateKey);
-  
+  const publicKey = deriveSecp256k1PublicKey(privateKey);
+
   const address = derivePolkadotAddress(Buffer.from(publicKey));
 
   return {
@@ -268,17 +276,14 @@ export function deriveSolanaKey(
   seed: Buffer,
   derivationPath: string = DEFAULT_DERIVATION_PATHS.solana!
 ): DerivedKey {
-  // Use BIP44 derivation for Solana
   const derived = deriveKeyFromSeed(seed, derivationPath);
 
   if (!derived || !derived.privateKey) {
     throw new Error('Failed to derive Solana key');
   }
 
-  // Solana uses Ed25519, takes first 32 bytes as seed material
+  // Solana uses Ed25519; Keypair is used here for its base58 address encoding.
   const privateKeyBytes = derived.privateKey.subarray(0, 32);
-
-  // Use Solana's Keypair for proper Ed25519 key generation
   const keypair = Keypair.fromSeed(privateKeyBytes);
 
   return {
@@ -292,6 +297,9 @@ export function deriveSolanaKey(
 /**
  * Derive ICP-compatible key
  *
+ * Uses Ed25519 via @noble/curves to match the ICP identity standard.
+ * Private key stored as 32 bytes (raw scalar); public key 32 bytes.
+ *
  * @param seed - Seed bytes
  * @param derivationPath - Derivation path (default: "m/44'/223'/0'/0/0")
  * @returns Derived key with ICP principal address
@@ -301,13 +309,13 @@ export function deriveIcpKey(
   derivationPath: string = DEFAULT_DERIVATION_PATHS.icp!
 ): DerivedKey {
   const derived = deriveKeyFromSeed(seed, derivationPath);
-  const keypair = Keypair.fromSeed(derived.privateKey.subarray(0, 32));
-  const publicKeyBytes = keypair.publicKey.toBytes();
+  const privateKey = derived.privateKey.subarray(0, 32);
+  const publicKey = ed25519.getPublicKey(privateKey);
 
   return {
-    privateKey: Buffer.from(keypair.secretKey).toString('hex'),
-    publicKey: Buffer.from(publicKeyBytes).toString('hex'),
-    address: deriveIcpPrincipalAddress(publicKeyBytes),
+    privateKey: Buffer.from(privateKey).toString('hex'),
+    publicKey: Buffer.from(publicKey).toString('hex'),
+    address: deriveIcpPrincipalAddress(publicKey),
     derivationPath,
   };
 }
@@ -315,7 +323,8 @@ export function deriveIcpKey(
 /**
  * Derive Arweave-compatible key
  *
- * Arweave uses base64url-encoded address identifiers.
+ * Uses Ed25519 via @noble/curves for key generation; the address is
+ * SHA-256(publicKey) encoded as base64url (43 chars).
  *
  * @param seed - Seed bytes
  * @param derivationPath - Derivation path (default: "m/44'/472'/0'/0/0")
@@ -326,29 +335,23 @@ export function deriveArweaveKey(
   derivationPath: string = DEFAULT_DERIVATION_PATHS.arweave!
 ): DerivedKey {
   const derived = deriveKeyFromSeed(seed, derivationPath);
-  const keypair = Keypair.fromSeed(derived.privateKey.subarray(0, 32));
-  const publicKeyBytes = keypair.publicKey.toBytes();
+  const privateKey = derived.privateKey.subarray(0, 32);
+  const publicKey = ed25519.getPublicKey(privateKey);
 
   return {
-    privateKey: Buffer.from(keypair.secretKey).toString('hex'),
-    publicKey: Buffer.from(publicKeyBytes).toString('hex'),
-    address: deriveArweaveAddress(publicKeyBytes),
+    privateKey: Buffer.from(privateKey).toString('hex'),
+    publicKey: Buffer.from(publicKey).toString('hex'),
+    address: deriveArweaveAddress(publicKey),
     derivationPath,
   };
 }
 
 /**
- * Derive public key from private key (simplified)
- *
- * @param privateKey - Private key bytes
- * @returns Public key bytes
+ * Derive secp256k1 uncompressed public key (65 bytes) from a 32-byte private
+ * key using @noble/curves/secp256k1.
  */
-function derivePublicKey(privateKey: Buffer): Buffer {
-  // Default to secp256k1 for generic key derivation paths.
-  // Chain-specific derivation functions should prefer their own primitives.
-  const privateKeyHex = `0x${privateKey.toString('hex')}`;
-  const publicKeyHex = SigningKey.computePublicKey(privateKeyHex, false);
-  return Buffer.from(stripHexPrefix(publicKeyHex), 'hex');
+function deriveSecp256k1PublicKey(privateKey: Buffer): Buffer {
+  return Buffer.from(secp256k1.getPublicKey(privateKey, false));
 }
 
 /**
@@ -433,7 +436,7 @@ export function deriveWalletKey(
       publicKeyHex = stripHexPrefix(SigningKey.computePublicKey(normalizedPrivateKey, false));
       address = computeAddress(normalizedPrivateKey);
     } else if (normalizedChain === 'polkadot' || normalizedChain === 'dot') {
-      const publicKey = derivePublicKey(privateKeyBuffer);
+      const publicKey = deriveSecp256k1PublicKey(privateKeyBuffer);
       publicKeyHex = publicKey.toString('hex');
       address = derivePolkadotAddress(publicKey);
     } else if (normalizedChain === 'solana' || normalizedChain === 'sol') {
@@ -444,19 +447,17 @@ export function deriveWalletKey(
       publicKeyHex = Buffer.from(keypair.publicKey.toBytes()).toString('hex');
       address = keypair.publicKey.toBase58();
     } else if (normalizedChain === 'icp') {
-      const keypair = privateKeyBuffer.length >= 64
-        ? Keypair.fromSecretKey(privateKeyBuffer.subarray(0, 64))
-        : Keypair.fromSeed(privateKeyBuffer.subarray(0, 32));
-      const publicKeyBytes = keypair.publicKey.toBytes();
-      publicKeyHex = Buffer.from(publicKeyBytes).toString('hex');
-      address = deriveIcpPrincipalAddress(publicKeyBytes);
+      // Ed25519 via @noble/curves – 32-byte seed -> 32-byte public key
+      const seed = privateKeyBuffer.slice(0, 32);
+      const publicKey = ed25519.getPublicKey(seed);
+      publicKeyHex = Buffer.from(publicKey).toString('hex');
+      address = deriveIcpPrincipalAddress(publicKey);
     } else if (normalizedChain === 'arweave' || normalizedChain === 'ar') {
-      const keypair = privateKeyBuffer.length >= 64
-        ? Keypair.fromSecretKey(privateKeyBuffer.subarray(0, 64))
-        : Keypair.fromSeed(privateKeyBuffer.subarray(0, 32));
-      const publicKeyBytes = keypair.publicKey.toBytes();
-      publicKeyHex = Buffer.from(publicKeyBytes).toString('hex');
-      address = deriveArweaveAddress(publicKeyBytes);
+      // Ed25519 via @noble/curves – address is SHA-256(pubkey) in base64url
+      const seed = privateKeyBuffer.slice(0, 32);
+      const publicKey = ed25519.getPublicKey(seed);
+      publicKeyHex = Buffer.from(publicKey).toString('hex');
+      address = deriveArweaveAddress(publicKey);
     } else {
       throw new Error(`Unsupported chain for private key derivation: ${chain}`);
     }

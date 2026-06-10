@@ -3,19 +3,20 @@ import type { ShareProofResult } from '@/lib/types'
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
+    const { id } = await params
     // Generate a time-limited share token (in production this would be signed by the canister)
     const token = Buffer.from(
-      JSON.stringify({ vaultId: params.id, iat: Date.now(), exp: Date.now() + 30 * 24 * 60 * 60 * 1000 })
+      JSON.stringify({ vaultId: id, iat: Date.now(), exp: Date.now() + 30 * 24 * 60 * 60 * 1000 })
     ).toString('base64url')
 
     const host = request.headers.get('host') ?? 'localhost:3000'
     const proto = process.env.NODE_ENV === 'production' ? 'https' : 'http'
 
     const result: ShareProofResult = {
-      shareUrl: `${proto}://${host}/vault/${params.id}/proof?share=${token}`,
+      shareUrl: `${proto}://${host}/vault/${id}/proof?share=${token}`,
       shareToken: token,
       expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
     }

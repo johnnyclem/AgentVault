@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { use, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Activity, Play, Settings, StopCircle, RefreshCw } from 'lucide-react'
 import { StatusBadge } from '@/components/common/StatusBadge'
@@ -11,10 +11,11 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { apiClient } from '@/lib/api-client'
 import { formatBytes, formatCycles, formatTimestamp } from '@/lib/utils'
 
-export default function AgentDetailPage({ params }: { params: { id: string } }) {
-  const { agent, isLoading: agentLoading, error: agentError, refetch: refetchAgent } = useAgent(params.id)
+export default function AgentDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
+  const { agent, isLoading: agentLoading, error: agentError, refetch: refetchAgent } = useAgent(id)
   const { data: canister, isLoading: canisterLoading, error: canisterError } = useCanisterStatus(agent?.canisterId || '')
-  const { deployments, isLoading: deploymentsLoading, refetch: refetchDeployments } = useDeployments({ agentId: params.id })
+  const { deployments, isLoading: deploymentsLoading, refetch: refetchDeployments } = useDeployments({ agentId: id })
   const [isDeploying, setIsDeploying] = useState(false)
   const [deployError, setDeployError] = useState<string | null>(null)
   const [deploySuccess, setDeploySuccess] = useState<string | null>(null)

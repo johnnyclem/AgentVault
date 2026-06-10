@@ -77,7 +77,7 @@ struct ChatBubbleView: View {
                 .textSelection(.enabled)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .background(isUser ? userBubbleBackground : assistantBubbleBackground)
+                .background(isUser ? .primary : .secondary)
                 .overlay(
                     // Streaming cursor
                     message.isStreaming ?
@@ -86,8 +86,9 @@ struct ChatBubbleView: View {
         }
     }
 
-    private var userBubbleBackground: some ShapeStyle {
-        Color.accentColor.gradient
+    private var userBubbleBackground: some View {
+        BubbleShape(isUser: true)
+            .fill(Color.accentColor.gradient)
     }
 
     private var assistantBubbleBackground: some View {

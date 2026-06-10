@@ -45,6 +45,8 @@ export interface CloudArchiveOptions {
   includeWallets: boolean;
   includeBackups: boolean;
   includeNetworks: boolean;
+  /** Additional arbitrary directories to include in the archive. */
+  customSources?: Array<{ label: string; path: string }>;
 }
 
 /**

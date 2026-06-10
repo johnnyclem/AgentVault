@@ -32,6 +32,13 @@ export interface ProxyConfig {
   arweaveProxy?: string;
   /** Bittensor endpoint proxy (empty = disabled in air-gap) */
   bittensorProxy?: string;
+  /**
+   * VPS proxy endpoint through which all Binance API calls are routed.
+   * The VPS must sit behind a firewall that enforces the IP whitelist and
+   * rate-limits outbound connections to api.binance.com.
+   * Example: "https://trade-proxy.internal:8443"
+   */
+  binanceProxy?: string;
   /** Custom environment variables to inject */
   extraEnv?: Record<string, string>;
 }

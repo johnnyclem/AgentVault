@@ -6,12 +6,15 @@
  */
 
 import { getCanisterInfo } from './info.js';
+import { createAnonymousAgent, createActor } from '../canister/actor.js';
 import type {
   CanisterHealthStatus,
   CanisterStatusInfo,
   HealthThresholds,
   MonitoringOptions,
   MonitoringAlert,
+  ThoughtFormHealthStatus,
+  ThoughtFormHealthOptions,
 } from './types.js';
 
 /**
@@ -194,4 +197,75 @@ function formatCycles(cycles: bigint): string {
     ...statusInfo,
     health: determineHealthStatus(statusInfo, options?.thresholds ?? {}),
   }));
+}
+
+/**
+ * Check ThoughtForm store health by querying the canister for latest
+ * memory timestamp and total count.
+ *
+ * @param options - ThoughtForm health check options
+ * @returns ThoughtForm health status with latest timestamp and count
+ */
+export async function checkThoughtFormHealth(
+  options: ThoughtFormHealthOptions,
+): Promise<ThoughtFormHealthStatus> {
+  const { canisterId, staleThresholdHours = 24, host } = options;
+
+  try {
+    const agent = createAnonymousAgent(host);
+    const actor = createActor(canisterId, agent);
+
+    const memories = await actor.getMemories();
+    const count = memories.length;
+
+    let latestTimestamp = 0;
+    for (const memory of memories) {
+      if (memory.timestamp > latestTimestamp) {
+        latestTimestamp = memory.timestamp;
+      }
+    }
+
+    const nowMs = Date.now();
+    const staleThresholdMs = staleThresholdHours * 60 * 60 * 1000;
+    // Canister timestamps may be in nanoseconds (IC convention) or milliseconds
+    const latestMs = latestTimestamp > 1e15 ? latestTimestamp / 1e6 : latestTimestamp;
+    const ageMs = nowMs - latestMs;
+
+    if (count === 0) {
+      return {
+        status: 'WARN',
+        latestTimestamp,
+        count,
+        canisterId,
+        message: 'No ThoughtForm entries found',
+      };
+    }
+
+    if (ageMs > staleThresholdMs) {
+      const ageHours = Math.round(ageMs / (60 * 60 * 1000));
+      return {
+        status: 'WARN',
+        latestTimestamp,
+        count,
+        canisterId,
+        message: `No updates in ${ageHours}h (threshold: ${staleThresholdHours}h)`,
+      };
+    }
+
+    return {
+      status: 'OK',
+      latestTimestamp,
+      count,
+      canisterId,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return {
+      status: 'ERROR',
+      latestTimestamp: 0,
+      count: 0,
+      canisterId,
+      message: `Canister unreachable: ${message}`,
+    };
+  }
 }

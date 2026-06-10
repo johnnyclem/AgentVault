@@ -147,6 +147,15 @@ agentvault rebuild --canister-id <id> --dry-run
 
 ## Network Security
 
+### Compromised-By-Default Threat Model
+
+When operating automated trading agents, assume host and credential exposure is possible and layer controls accordingly:
+
+- Treat API keys as short-lived credentials and automate weekly rotation for exchange keys (for example, Binance).
+- Restrict exchange API keys with provider-side IP whitelists so leaked keys are not useful from arbitrary networks.
+- Route bot traffic through a dedicated VPS egress IP and enforce host firewall rules to allow only required outbound destinations.
+- Run skill/tool execution with least privilege. OpenClaw skills should run without root and with filesystem writes constrained to `/tmp` only.
+
 ### HTTPS Only
 
 - Always use HTTPS for mainnet
@@ -166,8 +175,37 @@ agentvault deploy --timeout 60000
 # Use API keys securely
 export ETHERSCAN_API_KEY=$(cat ~/.secrets/etherscan-key)
 
-# Rotate keys regularly
+# Rotate keys regularly (weekly for exchange trading keys)
 ```
+
+### Exchange API Hardening (Binance Example)
+
+```bash
+# Example: run trading worker from hardened VPS only
+ufw default deny outgoing
+ufw allow out to any port 443 proto tcp
+
+# Store and rotate Binance keys weekly
+export BINANCE_API_KEY=$(cat ~/.secrets/binance-key)
+export BINANCE_API_SECRET=$(cat ~/.secrets/binance-secret)
+```
+
+- Enable Binance API key IP restriction and set it to your VPS egress IP.
+- Disable withdrawal permissions for trading-only keys.
+- Use separate keys per environment (dev/staging/prod) and rotate each on a weekly cadence.
+
+### OpenClaw Skill Sandboxing
+
+```bash
+# Run skill in isolated user namespace/container (example)
+# - no root
+# - writable path limited to /tmp
+docker run --read-only --tmpfs /tmp:rw,noexec,nosuid,nodev --user 65534:65534 <image>
+```
+
+- Do not run OpenClaw skills as root.
+- Mount project directories read-only when possible.
+- Deny writes outside `/tmp` and drop unnecessary Linux capabilities.
 
 ## Monitoring & Alerting
 
@@ -212,7 +250,7 @@ agentvault logs --canister-id <id> --level error --follow
 
 ### Regular Maintenance
 
-- [ ] Rotate API keys (monthly)
+- [ ] Rotate exchange API keys (weekly)
 - [ ] Review access logs (weekly)
 - [ ] Test recovery procedures (monthly)
 - [ ] Update dependencies (as needed)

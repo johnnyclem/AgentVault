@@ -13,7 +13,6 @@ coverage/
 # Development directories
 src/
 cli/
-canister/
 webapp/
 site/
 scripts/

@@ -205,7 +205,7 @@ async function startReplica(config: PrivateReplicaConfig, steps: PilotStep[]): P
     ];
 
     // Compose environment overrides from proxy config
-    const env: Record<string, string> = { ...process.env as Record<string, string> };
+    const env: NodeJS.ProcessEnv = { ...process.env };
     if (config.proxy.anthropicProxy) {
       env['ANTHROPIC_BASE_URL'] = config.proxy.anthropicProxy;
     }
@@ -257,8 +257,8 @@ async function deployGuildCanisters(
       args.push('--identity', config.identityPath);
     }
 
-    const env: Record<string, string> = {
-      ...(process.env as Record<string, string>),
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
       DFX_NETWORK: 'private',
       AGENTVAULT_REPLICA_URL: replicaUrl,
     };
@@ -269,11 +269,12 @@ async function deployGuildCanisters(
       reject: false,
     });
 
-    // Parse canister IDs from dfx output (best-effort)
     const canisterIds: Record<string, string> = {};
     const matches = result.stdout.matchAll(/(\w+):\s+([a-z0-9]{5}-[a-z0-9]{5}-[a-z0-9]{5}-[a-z0-9]{5}-[a-z0-9]{3})/g);
     for (const m of matches) {
-      canisterIds[m[1]] = m[2];
+      if (m[1] && m[2]) {
+        canisterIds[m[1]] = m[2];
+      }
     }
 
     // Provide placeholder IDs when dfx is not available (stub mode)

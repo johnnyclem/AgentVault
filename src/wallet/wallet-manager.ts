@@ -23,7 +23,11 @@ import type {
   WalletData,
   WalletCreationOptions,
   WalletStorageOptions,
+  HsmWalletCreationOptions,
 } from './types.js';
+
+// HSM imports (lazy load to keep non-HSM paths free of HSM dependencies)
+import type { HsmProvider } from './hsm/types.js';
 
 // Phase 5A: Canister imports (lazy load)
 let _createActor: any = null;
@@ -341,6 +345,79 @@ export function clearCachedConnection(
  */
 export function validateSeedPhraseWrapper(seedPhrase: string): boolean {
   return validateSeedPhrase(seedPhrase);
+}
+
+// ==================== HSM / TEE Keygen ====================
+
+/**
+ * Create a wallet whose private key is generated and permanently stored inside
+ * a hardware secure element (Ledger) or Trusted Execution Environment (SGX).
+ *
+ * Security guarantees:
+ *   - The private key is generated inside the secure boundary.
+ *   - The BIP39 mnemonic never exists in this process (Ledger) or is sealed
+ *     inside the enclave (SGX).
+ *   - Only the public key and chain address cross the hardware boundary.
+ *   - The returned WalletData has privateKey=undefined and mnemonic=undefined.
+ *
+ * @param options        - HSM-specific wallet creation options.
+ * @param storageOptions - Where / how to persist the wallet metadata.
+ * @returns WalletData with address/publicKey populated, secrets absent.
+ *
+ * @throws {HsmNotAvailableError}   when device / daemon is unreachable.
+ * @throws {HsmCurveUnsupportedError} when the chain's curve is unsupported.
+ * @throws {HsmOperationError}      on device-level failures.
+ */
+export async function createWalletWithHsm(
+  options: HsmWalletCreationOptions,
+  storageOptions: WalletStorageOptions = {},
+): Promise<WalletData> {
+  const { createHsmProvider } = await import('./hsm/index.js');
+  const { getDefaultDerivationPath } = await import('./key-derivation.js');
+
+  // Determine curve from chain
+  const chain = options.chain.toLowerCase();
+  const isEd25519Chain = ['solana', 'icp', 'arweave'].includes(chain);
+  const curve = isEd25519Chain ? 'ed25519' : 'secp256k1';
+
+  const derivationPath = options.derivationPath ?? getDefaultDerivationPath(chain);
+
+  let provider: HsmProvider | null = null;
+  try {
+    provider = await createHsmProvider(options.hsmBackend, options.hsmOptions ?? {});
+
+    const pubKeyResult = await provider.getPublicKey(derivationPath, curve);
+    const deviceId = await provider.deviceId();
+
+    const walletData: WalletData = {
+      id: options.walletId ?? generateWalletId(),
+      agentId: options.agentId,
+      chain: options.chain,
+      address: pubKeyResult.address,
+      // No privateKey or mnemonic – they stay inside the hardware boundary.
+      privateKey: undefined,
+      mnemonic: undefined,
+      seedDerivationPath: derivationPath,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      creationMethod: 'hsm',
+      chainMetadata: {
+        hsm: {
+          backend: options.hsmBackend,
+          deviceId,
+          derivationPath,
+          curve,
+          createdAt: new Date().toISOString(),
+          publicKeyHex: pubKeyResult.publicKeyHex,
+        },
+      },
+    };
+
+    saveWallet(walletData, storageOptions);
+    return walletData;
+  } finally {
+    if (provider) await provider.close();
+  }
 }
 
 // ==================== Phase 5A: Canister Sync Functions ====================
