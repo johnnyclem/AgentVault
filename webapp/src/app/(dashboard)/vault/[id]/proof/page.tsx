@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { use, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, RefreshCw, ShieldCheck, Clock } from 'lucide-react'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
@@ -12,8 +12,9 @@ import { ArweaveAnchorCard } from '@/components/proof/ArweaveAnchorCard'
 import { ShareProofButton } from '@/components/proof/ShareProofButton'
 import { useProof } from '@/hooks/useProof'
 
-export default function VaultProofPage({ params }: { params: { id: string } }) {
-  const { proof, isLoading, error, lastRefreshed, refetch, shareProof } = useProof(params.id)
+export default function VaultProofPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
+  const { proof, isLoading, error, lastRefreshed, refetch, shareProof } = useProof(id)
   const [pulseRefresh, setPulseRefresh] = useState(false)
 
   // Flash the refresh icon on each update
@@ -104,7 +105,7 @@ export default function VaultProofPage({ params }: { params: { id: string } }) {
             />
           </button>
           {proof && (
-            <ShareProofButton onShare={shareProof} vaultId={params.id} />
+            <ShareProofButton onShare={shareProof} vaultId={id} />
           )}
         </div>
       </div>

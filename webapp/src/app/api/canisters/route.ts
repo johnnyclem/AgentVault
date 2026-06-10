@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { canisterList } from '@/icp/icpcli.js';
+import { canisterList } from '@/icp/icpcli';
 
 export async function GET() {
   try {

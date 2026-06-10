@@ -1,9 +1,9 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import type { Agent, Deployment } from '@/lib/types'
-import { getAllDeployments } from '@/deployment/promotion.js'
-import { listAgents, readAgentConfig } from '@/packaging/config-persistence.js'
-import type { ParsedAgentConfig } from '@/packaging/config-schemas.js'
+import { getAllDeployments } from '@/deployment/promotion'
+import { listAgents, readAgentConfig } from '@/packaging/config-persistence'
+import type { ParsedAgentConfig } from '@/packaging/config-schemas'
 
 type AgentConfigRecord = ParsedAgentConfig & Record<string, unknown>
 

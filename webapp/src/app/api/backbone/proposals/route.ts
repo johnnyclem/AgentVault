@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAuthToken, unauthorizedResponse } from '@/lib/server/auth'
 import { getConsensusService } from '@/lib/server/backbone'
-import { createProposalSchema } from '../../../../../../../../src/backbone/validators.js'
-import type { ProposalStatus } from '../../../../../../../../src/backbone/constants.js'
+import { createProposalSchema } from '@/backbone/validators'
+import type { ProposalStatus } from '@/backbone/constants'
 
 const DEFAULT_COMPANY_ID = process.env.COMPANY_ID || 'default'
 

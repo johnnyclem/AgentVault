@@ -3,14 +3,14 @@ import { validateAuthToken, unauthorizedResponse } from '@/lib/server/auth'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { agentId: string; id: string } }
+  { params }: { params: Promise<{ agentId: string; id: string }> }
 ): Promise<NextResponse> {
   const authResult = validateAuthToken(request)
   if (!authResult.authorized) {
     return unauthorizedResponse(authResult.error ?? 'Unauthorized')
   }
 
-  const { agentId, id } = params
+  const { agentId, id } = await params
 
   try {
     const polyticianEntry = process.env.POLYTICIAN_ENTRY_POINT
@@ -21,7 +21,7 @@ export async function GET(
       )
     }
 
-    const { PolyticianMCPClient } = await import('@/orchestration/mcp-client.js')
+    const { PolyticianMCPClient } = await import('@/orchestration/mcp-client')
     const client = new PolyticianMCPClient({
       namespace: 'polytician',
       entryPoint: polyticianEntry,
@@ -52,14 +52,14 @@ export async function GET(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { agentId: string; id: string } }
+  { params }: { params: Promise<{ agentId: string; id: string }> }
 ): Promise<NextResponse> {
   const authResult = validateAuthToken(request)
   if (!authResult.authorized) {
     return unauthorizedResponse(authResult.error ?? 'Unauthorized')
   }
 
-  const { agentId, id } = params
+  const { agentId, id } = await params
 
   try {
     const polyticianEntry = process.env.POLYTICIAN_ENTRY_POINT
@@ -70,7 +70,7 @@ export async function DELETE(
       )
     }
 
-    const { PolyticianMCPClient } = await import('@/orchestration/mcp-client.js')
+    const { PolyticianMCPClient } = await import('@/orchestration/mcp-client')
     const client = new PolyticianMCPClient({
       namespace: 'polytician',
       entryPoint: polyticianEntry,

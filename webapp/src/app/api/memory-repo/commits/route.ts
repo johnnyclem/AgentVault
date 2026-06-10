@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAuthToken, unauthorizedResponse } from '@/lib/server/auth'
-import { createMemoryRepoActor, createAnonymousAgent } from '@/canister/memory-repo-actor.js'
+import { createMemoryRepoActor, createAnonymousAgent } from '@/canister/memory-repo-actor'
 
 const MEMORY_REPO_CANISTER_ID = process.env.MEMORY_REPO_CANISTER_ID
 

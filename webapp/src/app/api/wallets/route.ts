@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { listAgents } from '@/wallet/wallet-storage.js';
+import { listAgents } from '@/wallet/wallet-storage';
 
 export async function GET() {
   try {

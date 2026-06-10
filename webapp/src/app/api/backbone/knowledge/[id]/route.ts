@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAuthToken, unauthorizedResponse } from '@/lib/server/auth'
 import { getKnowledgeService } from '@/lib/server/backbone'
-import { updateKnowledgeEntrySchema } from '../../../../../../../../../src/backbone/validators.js'
+import { updateKnowledgeEntrySchema } from '@/backbone/validators'
 
 export async function GET(
   request: NextRequest,

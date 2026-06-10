@@ -41,8 +41,8 @@ export default function BackupsPage() {
     setActionInProgress(null)
   }
 
-  const totalSize = archives.reduce((acc, a) => acc + a.size, 0n)
-  const totalCost = archives.reduce((acc, a) => acc + (a.cost || 0n), 0n)
+  const totalSize = archives.reduce((acc, a) => acc + BigInt(a.size), 0n)
+  const totalCost = archives.reduce((acc, a) => acc + BigInt(a.cost || 0), 0n)
 
   if (isLoading) {
     return (

@@ -1,4 +1,4 @@
-import { canisterStatus } from '@/icp/icpcli.js'
+import { canisterStatus } from '@/icp/icpcli'
 
 export interface ParsedCanisterStatus {
   status: 'running' | 'stopped' | 'stopping' | 'starting' | 'error'

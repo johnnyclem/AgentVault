@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAuthToken, unauthorizedResponse } from '@/lib/server/auth'
 import { getConsensusService, getKnowledgeService } from '@/lib/server/backbone'
-import { castVoteSchema } from '../../../../../../../../../../src/backbone/validators.js'
+import { castVoteSchema } from '@/backbone/validators'
 
 export async function POST(
   request: NextRequest,

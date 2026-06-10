@@ -17,7 +17,7 @@ interface BalanceCardProps {
 }
 
 export function WalletOverview({ wallets, onConnectWallet }: WalletOverviewProps) {
-  const totalCycles = wallets.reduce((sum, wallet) => sum + wallet.balance, 0n)
+  const totalCycles = wallets.reduce((sum, wallet) => sum + BigInt(wallet.balance), 0n)
 
   return (
     <div className="space-y-6">

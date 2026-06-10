@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAuthToken, unauthorizedResponse } from '@/lib/server/auth'
 import { getCommunicationService } from '@/lib/server/backbone'
-import { sendMessageSchema } from '../../../../../../../../src/backbone/validators.js'
+import { sendMessageSchema } from '@/backbone/validators'
 
 const DEFAULT_COMPANY_ID = process.env.COMPANY_ID || 'default'
 

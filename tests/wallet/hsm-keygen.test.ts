@@ -27,7 +27,7 @@ import {
 } from '../../src/wallet/hsm/types.js';
 import { isLedgerAvailable } from '../../src/wallet/hsm/ledger-provider.js';
 import { isSgxAvailable } from '../../src/wallet/hsm/sgx-provider.js';
-import { isHsmAvailable, createHsmProvider } from '../../src/wallet/hsm/index.js';
+import { isHsmAvailable } from '../../src/wallet/hsm/index.js';
 import { createWalletWithHsm } from '../../src/wallet/wallet-manager.js';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -428,29 +428,6 @@ describe('Hardware availability probes (CI / no hardware)', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// createHsmProvider factory – rejects unknown backend
-// NOTE: These tests need to be moved to a separate file because the vi.mock
-// in the createWalletWithHsm() describe block is hoisted and affects all tests.
-// ---------------------------------------------------------------------------
-
-describe.skip('createHsmProvider factory', () => {
-  it.skip('throws HsmNotAvailableError for unknown backend', async () => {
-    await expect(
-      createHsmProvider('tpm' as HsmBackend),
-    ).rejects.toBeInstanceOf(HsmNotAvailableError);
-  });
-
-  it.skip('throws HsmNotAvailableError for ledger when device absent', async () => {
-    // @ledgerhq packages are not installed in CI → dynamic import fails → error
-    // OR packages are installed but no device is connected → list() returns []
-    // Either way HsmNotAvailableError should surface.
-    await expect(createHsmProvider('ledger')).rejects.toBeInstanceOf(HsmNotAvailableError);
-  });
-
-  it.skip('throws HsmNotAvailableError for sgx when AESM socket absent', async () => {
-    await expect(
-      createHsmProvider('sgx', { socketPath: '/nonexistent/aesm.socket' }),
-    ).rejects.toBeInstanceOf(HsmNotAvailableError);
-  });
-});
+// createHsmProvider factory tests live in hsm-provider-factory.test.ts:
+// the vi.mock in the createWalletWithHsm() describe block is hoisted and
+// would affect them if they lived in this file.

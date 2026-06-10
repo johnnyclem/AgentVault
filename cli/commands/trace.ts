@@ -51,8 +51,8 @@ traceCmd
       console.log(chalk.gray('  3. Canister will emit traces to stable memory'));
       console.log();
 
-      if (options.method) {
-        console.log(chalk.bold(`Filter: method = ${options.method}`));
+      if (options.filter) {
+        console.log(chalk.bold(`Filter: method = ${options.filter}`));
       }
       if (options.minDuration) {
         console.log(chalk.bold(`Filter: min duration = ${options.minDuration}ms`));

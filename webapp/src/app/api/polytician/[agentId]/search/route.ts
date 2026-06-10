@@ -3,14 +3,14 @@ import { validateAuthToken, unauthorizedResponse } from '@/lib/server/auth'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { agentId: string } }
+  { params }: { params: Promise<{ agentId: string }> }
 ): Promise<NextResponse> {
   const authResult = validateAuthToken(request)
   if (!authResult.authorized) {
     return unauthorizedResponse(authResult.error ?? 'Unauthorized')
   }
 
-  const { agentId } = params
+  const { agentId } = await params
   const { searchParams } = new URL(request.url)
   const query = searchParams.get('q') ?? searchParams.get('query') ?? ''
   const limit = parseInt(searchParams.get('limit') ?? '10', 10)
@@ -31,7 +31,7 @@ export async function GET(
       )
     }
 
-    const { PolyticianMCPClient } = await import('@/orchestration/mcp-client.js')
+    const { PolyticianMCPClient } = await import('@/orchestration/mcp-client')
     const client = new PolyticianMCPClient({
       namespace: 'polytician',
       entryPoint: polyticianEntry,

@@ -6,11 +6,11 @@
  * with database-backed stores.
  */
 
-import { MemoryService } from '../../../../src/backbone/services/memory.js';
-import { KnowledgeService } from '../../../../src/backbone/services/knowledge.js';
-import { CommunicationService } from '../../../../src/backbone/services/communication.js';
-import { ConsensusService } from '../../../../src/backbone/services/consensus.js';
-import { VaultHealthService } from '../../../../src/backbone/services/vault-health.js';
+import { MemoryService } from '../../../../src/backbone/services/memory';
+import { KnowledgeService } from '../../../../src/backbone/services/knowledge';
+import { CommunicationService } from '../../../../src/backbone/services/communication';
+import { ConsensusService } from '../../../../src/backbone/services/consensus';
+import { VaultHealthService } from '../../../../src/backbone/services/vault-health';
 
 // Singleton instances (persist across requests in the same process)
 let memoryService: MemoryService | null = null;
