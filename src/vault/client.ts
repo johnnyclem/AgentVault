@@ -1,11 +1,12 @@
 /**
- * HashiCorp Vault client for agent secret management
+ * Secret manager client for agent secret management
  *
- * Provides a per-agent interface to HashiCorp Vault for reading, writing,
- * listing, and deleting secrets. Each agent gets an isolated secret path
- * enforced by policy.
+ * Supports HashiCorp Vault and Bitwarden CLI backends while preserving
+ * a per-agent secret namespace.
  */
 
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import * as fs from 'node:fs';
 import { Agent as UndiciAgent } from 'undici';
 import type {
@@ -23,6 +24,8 @@ import {
   getOrCreateAgentPolicy,
   validateVaultConfig,
 } from './config.js';
+
+const execFileAsync = promisify(execFile);
 
 /**
  * SEC-6: Convert a glob pattern (supporting `*` and `?` wildcards only)
@@ -96,12 +99,6 @@ interface VaultAPIResponse {
   errors?: string[];
 }
 
-/**
- * HashiCorp Vault client for agent secret management
- *
- * Each agent gets its own private namespace under `agents/<agentId>/secrets`
- * in the configured KV secrets engine.
- */
 export class VaultClient {
   private config: VaultConfig;
   private policy: AgentVaultPolicy;
@@ -116,22 +113,11 @@ export class VaultClient {
   private dispatcher: unknown | undefined;
 
   constructor(config: VaultConfig, policy: AgentVaultPolicy) {
-    this.config = config;
+    this.config = { ...config, backend: config.backend ?? 'hashicorp' };
     this.policy = policy;
     this.dispatcher = buildVaultDispatcher(config);
   }
 
-  /**
-   * Create a VaultClient for a specific agent
-   *
-   * Loads Vault configuration from disk/environment and creates or loads
-   * the agent's policy.
-   *
-   * @param agentId - Agent identifier
-   * @param options - Optional initialization options
-   * @returns Configured VaultClient
-   * @throws Error if Vault is not configured
-   */
   static create(agentId: string, options?: AgentVaultInitOptions): VaultClient {
     const config = loadVaultConfig();
     if (!config) {
@@ -161,16 +147,33 @@ export class VaultClient {
     return new VaultClient(config, policy);
   }
 
-  /**
-   * Create a VaultClient with explicit config (useful for testing)
-   */
   static createWithConfig(config: VaultConfig, policy: AgentVaultPolicy): VaultClient {
     return new VaultClient(config, policy);
   }
 
-  /**
-   * Get the effective authentication token
-   */
+  private get backend(): 'hashicorp' | 'bitwarden' {
+    return this.config.backend ?? 'hashicorp';
+  }
+
+  private async runBitwarden(args: string[]): Promise<string> {
+    try {
+      const { stdout, stderr } = await execFileAsync('bw', args, {
+        env: process.env,
+      });
+
+      if (stderr && stderr.trim().length > 0 && !stdout) {
+        throw new Error(stderr.trim());
+      }
+
+      return stdout.trim();
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Bitwarden CLI failed: ${error.message}`);
+      }
+      throw new Error('Bitwarden CLI failed with unknown error');
+    }
+  }
+
   private async getToken(): Promise<string> {
     if (this.clientToken) {
       return this.clientToken;
@@ -183,24 +186,17 @@ export class VaultClient {
         }
         this.clientToken = this.config.token;
         return this.clientToken;
-
       case 'approle':
         return this.authenticateAppRole();
-
       case 'userpass':
         return this.authenticateUserPass();
-
       case 'kubernetes':
         return this.authenticateKubernetes();
-
       default:
         throw new Error(`Unsupported auth method: ${this.config.authMethod}`);
     }
   }
 
-  /**
-   * Authenticate using AppRole credentials
-   */
   private async authenticateAppRole(): Promise<string> {
     const response = await this.rawRequest('POST', '/v1/auth/approle/login', {
       role_id: this.config.roleId,
@@ -215,9 +211,6 @@ export class VaultClient {
     return this.clientToken;
   }
 
-  /**
-   * Authenticate using username/password
-   */
   private async authenticateUserPass(): Promise<string> {
     const response = await this.rawRequest(
       'POST',
@@ -233,9 +226,6 @@ export class VaultClient {
     return this.clientToken;
   }
 
-  /**
-   * Authenticate using Kubernetes service account
-   */
   private async authenticateKubernetes(): Promise<string> {
     const fs = await import('node:fs');
     const jwtPath = '/var/run/secrets/kubernetes.io/serviceaccount/token';
@@ -260,9 +250,6 @@ export class VaultClient {
     return this.clientToken;
   }
 
-  /**
-   * Make a raw HTTP request to the Vault API
-   */
   private async rawRequest(
     method: string,
     apiPath: string,
@@ -322,9 +309,6 @@ export class VaultClient {
     }
   }
 
-  /**
-   * Make an authenticated request to the Vault API
-   */
   private async request(
     method: string,
     apiPath: string,
@@ -334,9 +318,6 @@ export class VaultClient {
     return this.rawRequest(method, apiPath, body);
   }
 
-  /**
-   * Build the full Vault API path for a KV secret
-   */
   private buildSecretPath(key: string, action: 'data' | 'metadata' = 'data'): string {
     const engine = this.policy.engine === 'kv-v1' ? '' : action;
     const basePath = this.policy.secretPath;
@@ -345,7 +326,6 @@ export class VaultClient {
       return `/v1/${basePath}/${key}`;
     }
 
-    // KV v2: /v1/<mount>/data/<path>
     const parts = basePath.split('/');
     const mount = parts[0];
     const secretSubPath = parts.slice(1).join('/');
@@ -353,9 +333,6 @@ export class VaultClient {
     return `/v1/${mount}/${engine}/${secretSubPath}/${key}`;
   }
 
-  /**
-   * Build the list path for secrets
-   */
   private buildListPath(): string {
     const basePath = this.policy.secretPath;
 
@@ -370,9 +347,6 @@ export class VaultClient {
     return `/v1/${mount}/metadata/${secretSubPath}`;
   }
 
-  /**
-   * Validate a secret key against the agent's policy
-   */
   private validateKey(key: string): string | null {
     if (!key || key.trim().length === 0) {
       return 'Secret key cannot be empty';
@@ -399,26 +373,36 @@ export class VaultClient {
     return null;
   }
 
-  /**
-   * Get the agent ID this client is configured for
-   */
   get agentId(): string {
     return this.policy.agentId;
   }
 
-  /**
-   * Get the secret path for this agent
-   */
   get secretPath(): string {
     return this.policy.secretPath;
   }
 
-  /**
-   * Check Vault server health
-   *
-   * @returns Vault health status
-   */
   async health(): Promise<VaultOperationResult<VaultHealthStatus>> {
+    if (this.backend === 'bitwarden') {
+      try {
+        await this.runBitwarden(['--version']);
+        return {
+          success: true,
+          data: {
+            initialized: true,
+            sealed: false,
+            version: 'bitwarden-cli',
+            clusterName: 'bitwarden',
+          },
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        return {
+          success: false,
+          error: `Failed to check Bitwarden CLI health: ${message}`,
+        };
+      }
+    }
+
     try {
       const fetchOptions: RequestInit & Record<string, unknown> = {
         method: 'GET',
@@ -456,16 +440,33 @@ export class VaultClient {
     }
   }
 
-  /**
-   * Get a secret by key
-   *
-   * @param key - Secret key
-   * @returns The secret value and metadata
-   */
   async getSecret(key: string): Promise<VaultOperationResult<VaultSecret>> {
     const keyError = this.validateKey(key);
     if (keyError) {
       return { success: false, error: keyError };
+    }
+
+    if (this.backend === 'bitwarden') {
+      try {
+        const itemName = `agentvault/${this.policy.agentId}/${key}`;
+        const output = await this.runBitwarden(['get', 'item', itemName, '--raw']);
+
+        const secret: VaultSecret = {
+          key,
+          value: output,
+          metadata: {
+            version: 1,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            destroyed: false,
+          },
+        };
+
+        return { success: true, data: secret };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        return { success: false, error: `Failed to get secret "${key}": ${message}` };
+      }
     }
 
     try {
@@ -498,14 +499,6 @@ export class VaultClient {
     }
   }
 
-  /**
-   * Store a secret
-   *
-   * @param key - Secret key
-   * @param value - Secret value (string or key-value map)
-   * @param metadata - Optional custom metadata
-   * @returns Operation result
-   */
   async putSecret(
     key: string,
     value: string | Record<string, string>,
@@ -523,8 +516,35 @@ export class VaultClient {
       };
     }
 
+    if (this.backend === 'bitwarden') {
+      try {
+        if (typeof value !== 'string') {
+          return {
+            success: false,
+            error: 'Bitwarden backend currently supports string secret values only',
+          };
+        }
+
+        const itemName = `agentvault/${this.policy.agentId}/${key}`;
+        await this.runBitwarden(['create', 'item', itemName, '--notes', value]);
+
+        return {
+          success: true,
+          data: {
+            version: 1,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            destroyed: false,
+            customMetadata: metadata,
+          },
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        return { success: false, error: `Failed to put secret "${key}": ${message}` };
+      }
+    }
+
     try {
-      // Convert string values to a data map
       const data = typeof value === 'string'
         ? { value }
         : value;
@@ -546,7 +566,6 @@ export class VaultClient {
         customMetadata: metadata,
       };
 
-      // Store custom metadata separately if provided (KV v2 only)
       if (metadata && this.policy.engine === 'kv-v2') {
         try {
           const metadataPath = this.buildSecretPath(key, 'metadata');
@@ -554,7 +573,7 @@ export class VaultClient {
             custom_metadata: metadata,
           });
         } catch {
-          // Non-fatal: metadata storage failure shouldn't fail the secret write
+          // ignore metadata failures
         }
       }
 
@@ -565,12 +584,6 @@ export class VaultClient {
     }
   }
 
-  /**
-   * Delete a secret
-   *
-   * @param key - Secret key to delete
-   * @returns Operation result
-   */
   async deleteSecret(key: string): Promise<VaultOperationResult> {
     const keyError = this.validateKey(key);
     if (keyError) {
@@ -584,6 +597,17 @@ export class VaultClient {
       };
     }
 
+    if (this.backend === 'bitwarden') {
+      try {
+        const itemName = `agentvault/${this.policy.agentId}/${key}`;
+        await this.runBitwarden(['delete', 'item', itemName]);
+        return { success: true };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        return { success: false, error: `Failed to delete secret "${key}": ${message}` };
+      }
+    }
+
     try {
       const apiPath = this.buildSecretPath(key);
       await this.request('DELETE', apiPath);
@@ -595,16 +619,18 @@ export class VaultClient {
     }
   }
 
-  /**
-   * List all secret keys for this agent
-   *
-   * @returns List of secret entries
-   */
   async listSecrets(): Promise<VaultOperationResult<VaultSecretListEntry[]>> {
     if (!this.policy.allowList) {
       return {
         success: false,
         error: `Agent "${this.policy.agentId}" is not allowed to list secrets`,
+      };
+    }
+
+    if (this.backend === 'bitwarden') {
+      return {
+        success: false,
+        error: 'Bitwarden backend does not support listing by agent prefix yet',
       };
     }
 
@@ -624,7 +650,6 @@ export class VaultClient {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
 
-      // LIST returns 404 when there are no secrets
       if (message.includes('404') || message.includes('not found')) {
         return { success: true, data: [] };
       }
@@ -633,20 +658,11 @@ export class VaultClient {
     }
   }
 
-  /**
-   * Check if a specific secret exists
-   *
-   * @param key - Secret key to check
-   * @returns Whether the secret exists
-   */
   async secretExists(key: string): Promise<boolean> {
     const result = await this.getSecret(key);
     return result.success && !!result.data;
   }
 
-  /**
-   * Get the agent's Vault policy
-   */
   getPolicy(): AgentVaultPolicy {
     return { ...this.policy };
   }

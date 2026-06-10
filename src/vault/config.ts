@@ -68,6 +68,13 @@ export function loadVaultConfig(): VaultConfig | null {
   }
 
   // Override with environment variables
+  if (process.env.AGENTVAULT_VAULT_BACKEND) {
+    const backend = process.env.AGENTVAULT_VAULT_BACKEND.toLowerCase();
+    if (backend === 'bitwarden' || backend === 'hashicorp') {
+      config.backend = backend;
+    }
+  }
+
   if (process.env.VAULT_ADDR) {
     config.address = process.env.VAULT_ADDR;
   }
@@ -92,6 +99,20 @@ export function loadVaultConfig(): VaultConfig | null {
     config.secretId = process.env.VAULT_SECRET_ID;
   }
 
+  if (!config.backend) {
+    config.backend = 'hashicorp';
+  }
+
+  if (config.backend === 'bitwarden') {
+    if (!config.authMethod) {
+      config.authMethod = 'token';
+    }
+    if (!config.address) {
+      config.address = 'bitwarden://local';
+    }
+    return config as VaultConfig;
+  }
+
   // Validate minimum config
   if (!config.address) {
     return null;
@@ -114,6 +135,7 @@ export function saveVaultConfig(config: VaultConfig): void {
 
   // Never persist tokens or passwords to disk
   const safeConfig: Partial<VaultConfig> = {
+    backend: config.backend ?? 'hashicorp',
     address: config.address,
     authMethod: config.authMethod,
     namespace: config.namespace,
@@ -224,13 +246,17 @@ export function getOrCreateAgentPolicy(
 export function validateVaultConfig(config: VaultConfig): string[] {
   const errors: string[] = [];
 
-  if (!config.address) {
-    errors.push('Vault address is required');
-  } else {
-    try {
-      new URL(config.address);
-    } catch {
-      errors.push(`Invalid Vault address URL: ${config.address}`);
+  const backend = config.backend ?? 'hashicorp';
+
+  if (backend === 'hashicorp') {
+    if (!config.address) {
+      errors.push('Vault address is required');
+    } else {
+      try {
+        new URL(config.address);
+      } catch {
+        errors.push(`Invalid Vault address URL: ${config.address}`);
+      }
     }
   }
 
@@ -240,7 +266,7 @@ export function validateVaultConfig(config: VaultConfig): string[] {
 
   switch (config.authMethod) {
     case 'token':
-      if (!config.token) {
+      if (backend === 'hashicorp' && !config.token) {
         errors.push('Vault token is required for token authentication');
       }
       break;

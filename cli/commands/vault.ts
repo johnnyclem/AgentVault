@@ -46,11 +46,12 @@ const vaultCmd = new Command('vault');
 vaultCmd
   .description('Manage agent secrets and API keys (HashiCorp Vault or Bitwarden)')
   .action(async () => {
-    console.log(chalk.yellow('Please specify a subcommand: init, store, get, put, list, delete, health, or policy'));
+    console.log(chalk.yellow('Please specify a subcommand: init, store, fetch, get, put, list, delete, health, or policy'));
     console.log(chalk.gray(`\nExamples:
   ${chalk.cyan('agentvault vault init')}${chalk.gray('                                         Configure Vault connection')}
   ${chalk.cyan('agentvault vault health')}${chalk.gray('                                       Check backend health')}
   ${chalk.cyan('agentvault vault store --key api_binance --value $KEY')}${chalk.gray('         Store a named secret')}
+  ${chalk.cyan('agentvault vault fetch --key api_binance')}${chalk.gray('                      Fetch a secret at runtime')}
   ${chalk.cyan('agentvault vault put <agent-id> <key> <value>')}${chalk.gray('                 Store a secret (explicit agent)')}
   ${chalk.cyan('agentvault vault get <agent-id> <key>')}${chalk.gray('                         Retrieve a secret')}
   ${chalk.cyan('agentvault vault list <agent-id>')}${chalk.gray('                              List agent secrets')}
@@ -63,9 +64,10 @@ vaultCmd
 // --- vault init ---
 vaultCmd
   .command('init')
-  .description('Configure HashiCorp Vault connection for AgentVault')
+  .description('Configure HashiCorp Vault or Bitwarden CLI backend for AgentVault')
   .option('-a, --address <url>', 'Vault server address')
   .option('-t, --token <token>', 'Vault token')
+  .option('--backend <backend>', 'Secret backend (hashicorp, bitwarden)')
   .option('--auth-method <method>', 'Authentication method (token, approle, userpass, kubernetes)')
   .option('--non-interactive', 'Skip interactive prompts (requires --address and auth flags)')
   .action(async (options) => {
@@ -74,13 +76,14 @@ vaultCmd
     let config: VaultConfig;
 
     if (options.nonInteractive) {
-      if (!options.address) {
-        console.error(chalk.red('--address is required in non-interactive mode'));
+      if (!options.address && options.backend !== 'bitwarden') {
+        console.error(chalk.red('--address is required in non-interactive mode unless --backend bitwarden is used'));
         process.exit(1);
       }
 
       config = {
-        address: options.address,
+        backend: options.backend ?? 'hashicorp',
+        address: options.address ?? 'bitwarden://local',
         authMethod: (options.authMethod as VaultAuthMethod) ?? 'token',
         token: options.token,
       };
@@ -88,6 +91,7 @@ vaultCmd
       const existingConfig = loadVaultConfig();
 
       const answers = await inquirer.prompt<{
+        backend: 'hashicorp' | 'bitwarden';
         address: string;
         authMethod: VaultAuthMethod;
         token?: string;
@@ -99,15 +103,27 @@ vaultCmd
         namespace?: string;
       }>([
         {
+          type: 'list',
+          name: 'backend',
+          message: 'Secret backend:',
+          choices: [
+            { name: 'HashiCorp Vault', value: 'hashicorp' },
+            { name: 'Bitwarden CLI', value: 'bitwarden' },
+          ],
+          default: existingConfig?.backend ?? 'hashicorp',
+        },
+        {
           type: 'input',
           name: 'address',
           message: 'Vault server address:',
           default: existingConfig?.address ?? 'http://127.0.0.1:8200',
+          when: (answers) => answers.backend === 'hashicorp',
         },
         {
           type: 'list',
           name: 'authMethod',
           message: 'Authentication method:',
+          when: (answers) => answers.backend === 'hashicorp',
           choices: [
             { name: 'Token', value: 'token' },
             { name: 'AppRole', value: 'approle' },
@@ -161,9 +177,10 @@ vaultCmd
       ]);
 
       config = {
-        address: answers.address,
-        authMethod: answers.authMethod,
-        token: answers.token,
+        backend: answers.backend,
+        address: answers.backend === 'bitwarden' ? 'bitwarden://local' : answers.address,
+        authMethod: answers.backend === 'bitwarden' ? 'token' : answers.authMethod,
+        token: answers.backend === 'bitwarden' ? undefined : answers.token,
         roleId: answers.roleId,
         secretId: answers.secretId,
         username: answers.username,
@@ -197,7 +214,8 @@ vaultCmd
 
       console.log(chalk.cyan('\nNext steps:'));
       console.log(`  1. Verify connection: ${chalk.bold('agentvault vault health')}`);
-      console.log(`  2. Store a secret:    ${chalk.bold('agentvault vault put <agent-id> <key> <value>')}`);
+      console.log(`  2. Store a secret:    ${chalk.bold('agentvault vault store --key api_binance --value $KEY')}`);
+      console.log(chalk.gray('  3. Docker (optional): docker run --cap-add=IPC_LOCK -p 8200:8200 hashicorp/vault:latest'));
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       spinner.fail(chalk.red(`Failed to save configuration: ${message}`));
@@ -424,6 +442,40 @@ vaultCmd
       } else {
         spinner.fail(chalk.red(result.error ?? 'Failed to store secret'));
         process.exit(1);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      spinner.fail(chalk.red(message));
+      process.exit(1);
+    }
+  });
+
+// --- vault fetch ---
+vaultCmd
+  .command('fetch')
+  .description('Fetch a secret at runtime without canister persistence')
+  .requiredOption('--key <key>', 'Secret key')
+  .option('--agent <agent-id>', 'Agent identifier', 'default')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    const spinner = ora(`Fetching secret "${options.key}" for agent "${options.agent}"...`).start();
+
+    try {
+      const client = VaultClient.create(options.agent);
+      const result = await client.getSecret(options.key);
+
+      if (!(result.success && result.data)) {
+        spinner.fail(chalk.red(result.error ?? 'Secret not found'));
+        process.exit(1);
+      }
+
+      spinner.succeed(chalk.green(`Secret "${options.key}" fetched`));
+      if (options.json) {
+        console.log(JSON.stringify(result.data, null, 2));
+      } else if (typeof result.data.value === 'string') {
+        console.log(result.data.value);
+      } else {
+        console.log(JSON.stringify(result.data.value));
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
