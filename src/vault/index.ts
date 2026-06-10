@@ -40,3 +40,41 @@ export { fetchSecretsAsEnv, fetchAllSecretsAsEnv } from './provider.js';
 export { HashiCorpVaultProvider } from './hashicorp-provider.js';
 export { BitwardenProvider } from './bitwarden.js';
 export type { BitwardenConfig } from './bitwarden.js';
+export { MemorySecretProvider } from './memory-provider.js';
+
+// ---------------------------------------------------------------------------
+// Agent Safehouse – Secret Management Layer
+// ---------------------------------------------------------------------------
+
+// Safehouse types
+export type {
+  SecretAccessLevel,
+  SecretScopeGrant,
+  SecretSandboxScope,
+  EncryptedMemoryEntry,
+  RotationStrategy,
+  SecretRotationConfig,
+  SecretRotationState,
+  LeakSeverity,
+  LeakDetectionEvent,
+  InjectionMethod,
+  SecretInjectionConfig,
+  InjectedSecret,
+  AuditAction,
+  SecretAuditEntry,
+  SecretManagementLayerConfig,
+  SecretManagementStats,
+} from './safehouse-types.js';
+
+// Safehouse components
+export { EncryptedMemoryStore } from './encrypted-memory-store.js';
+export { SecretSandbox } from './secret-sandbox.js';
+export type { CreateScopeOptions, AuditCallback } from './secret-sandbox.js';
+export { SecretRotationManager } from './secret-rotation.js';
+export { SecretLeakDetector } from './secret-leak-detector.js';
+export type { LeakEventCallback, LeakDetectorOptions } from './secret-leak-detector.js';
+export { SecretInjector } from './secret-injector.js';
+export { SecretAccessAudit } from './secret-audit.js';
+
+// Unified orchestrator
+export { SecretManagementLayer } from './secret-management-layer.js';

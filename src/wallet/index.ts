@@ -69,6 +69,7 @@ export {
   importWalletFromSeed,
   importWalletFromMnemonic,
   generateWallet,
+  createWalletWithHsm,
   getWallet,
   listAgentWallets,
   hasWallet,
@@ -79,6 +80,28 @@ export {
   clearCachedConnection,
   validateSeedPhraseWrapper,
 } from './wallet-manager.js';
+
+// HSM / TEE keygen
+export {
+  LedgerHsmProvider,
+  SgxHsmProvider,
+  isLedgerAvailable,
+  isSgxAvailable,
+  isHsmAvailable,
+  createHsmProvider,
+  HsmError,
+  HsmNotAvailableError,
+  HsmCurveUnsupportedError,
+  HsmOperationError,
+} from './hsm/index.js';
+export type {
+  HsmBackend,
+  HsmCurve,
+  HsmProvider,
+  HsmPublicKeyResult,
+  HsmSignatureResult,
+  HsmWalletMetadata,
+} from './hsm/index.js';
 
 // Providers
 export { BaseWalletProvider } from './providers/base-provider.js';

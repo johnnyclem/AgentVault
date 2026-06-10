@@ -105,8 +105,11 @@ function ipv4ToInt(ip: string): number {
  * Return true if `ip` falls within the given IPv4 CIDR block.
  */
 function ipv4InCidr(ip: string, cidr: string): boolean {
-  const [network, prefixStr] = cidr.split('/');
+  const parts = cidr.split('/');
+  if (parts.length !== 2) return false;
+  const [network, prefixStr] = parts as [string, string];
   const prefix = parseInt(prefixStr, 10);
+  if (isNaN(prefix) || prefix < 0 || prefix > 32) return false;
   const mask = prefix === 0 ? 0 : (~0 << (32 - prefix)) >>> 0;
   return (ipv4ToInt(ip) & mask) === (ipv4ToInt(network) & mask);
 }
@@ -131,8 +134,12 @@ function normaliseIpv6(ip: string): string {
  * Uses BigInt for correct 128-bit arithmetic.
  */
 function ipv6InCidr(ip: string, cidr: string): boolean {
-  const [network, prefixStr] = cidr.split('/');
-  const prefix = BigInt(parseInt(prefixStr, 10));
+  const parts = cidr.split('/');
+  if (parts.length !== 2) return false;
+  const [network, prefixStr] = parts as [string, string];
+  const prefixNum = parseInt(prefixStr, 10);
+  if (isNaN(prefixNum) || prefixNum < 0 || prefixNum > 128) return false;
+  const prefix = BigInt(prefixNum);
 
   const expand = (addr: string): bigint => {
     const norm = normaliseIpv6(addr).replace(/:/g, '');
@@ -162,6 +169,7 @@ export function isIpAllowed(sourceIp: string, entries: WhitelistEntry[]): boolea
     // CIDR block.
     if (isCidr(cidr)) {
       const networkIp = cidr.split('/')[0];
+      if (!networkIp) continue;
       const networkVersion = net.isIP(networkIp);
       if (networkVersion !== ipVersion) continue; // IPv4 vs IPv6 mismatch.
 
@@ -199,6 +207,7 @@ export function generateFirewallRules(
 
     if (isPlainIp(cidr) || isCidr(cidr)) {
       const networkIp = isPlainIp(cidr) ? cidr : cidr.split('/')[0];
+      if (!networkIp) continue;
       const version = net.isIP(networkIp);
 
       if (version === 4) {

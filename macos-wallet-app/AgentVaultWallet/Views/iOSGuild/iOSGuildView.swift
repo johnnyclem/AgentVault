@@ -99,20 +99,20 @@ struct iOSGuildView: View {
     @EnvironmentObject var agentStore: AgentStore
     @EnvironmentObject var appState: AppState
 
+    private let cliBridge = CLIBridge.shared
+
     @State private var isSpinningUp = false
-    @State private var isRunningClaudeOrchestration = false
-    @State private var isMintingA2AAgent = false
     @State private var spinUpResult: SpinUpResult?
     @State private var showResult = false
-    @State private var orchestrationTask = ""
-    @State private var orchestrationModel = "claude-opus-4-6"
-    @State private var orchestrationDryRun = true
-    @State private var orchestrationNetwork = "local"
-    @State private var mintedAgentName = ""
-    @State private var mintedAgentType: GoogleA2AAgentType = .loop
-    @State private var mintNetwork = "local"
-    @State private var skipBackup = false
-    @State private var cliOutput = ""
+    @State private var orchestrateTask: String = "Implement SwiftUI timeline with smooth cell reuse and AVPlayer pooling"
+    @State private var orchestrateCanisterId: String = ""
+    @State private var orchestrateModel: String = "claude-opus-4-6"
+    @State private var orchestrateDryRun: Bool = true
+    @State private var mintAgentName: String = "ios-a2a-agent"
+    @State private var mintAgentType: GoogleA2AAgentType = .workflow
+    @State private var mintCanisterId: String = ""
+    @State private var mintOutputDir: String = ""
+    @State private var isRunningCLIAction = false
 
     enum SpinUpResult {
         case success([Agent])
@@ -175,108 +175,6 @@ struct iOSGuildView: View {
                 Text("Failed to spin up guild: \(msg)")
             case .none:
                 Text("")
-            }
-        }
-    }
-
-    private var orchestrationSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("CLI Orchestration")
-                .font(.headline)
-
-            Text("Run new AgentVault CLI flows directly from the macOS app, including Claude Code orchestration and Google ADK / A2A scaffolding.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-            VStack(alignment: .leading, spacing: 10) {
-                Label("Claude Code Orchestrate", systemImage: "sparkles")
-                    .font(.subheadline.weight(.semibold))
-
-                TextField("Task for Claude Code", text: $orchestrationTask)
-                    .textFieldStyle(.roundedBorder)
-
-                HStack {
-                    TextField("Model", text: $orchestrationModel)
-                        .textFieldStyle(.roundedBorder)
-                    Picker("Network", selection: $orchestrationNetwork) {
-                        Text("local").tag("local")
-                        Text("ic").tag("ic")
-                    }
-                    .pickerStyle(.menu)
-                    Toggle("Dry run", isOn: $orchestrationDryRun)
-                        .toggleStyle(.switch)
-                }
-
-                Button {
-                    runClaudeOrchestrate()
-                } label: {
-                    if isRunningClaudeOrchestration {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Label("Run Orchestrate --claude", systemImage: "play.fill")
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(isRunningClaudeOrchestration || orchestrationTask.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-            .padding(12)
-            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
-
-            VStack(alignment: .leading, spacing: 10) {
-                Label("Google ADK / A2A Agent Mint", systemImage: "network")
-                    .font(.subheadline.weight(.semibold))
-
-                HStack {
-                    TextField("Agent name (e.g. demo-agent)", text: $mintedAgentName)
-                        .textFieldStyle(.roundedBorder)
-
-                    Picker("Type", selection: $mintedAgentType) {
-                        ForEach(GoogleA2AAgentType.allCases) { type in
-                            Text(type.rawValue).tag(type)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                }
-
-                HStack {
-                    Picker("Network", selection: $mintNetwork) {
-                        Text("local").tag("local")
-                        Text("ic").tag("ic")
-                    }
-                    .pickerStyle(.menu)
-
-                    Toggle("Skip backup", isOn: $skipBackup)
-                        .toggleStyle(.switch)
-                }
-
-                Button {
-                    mintGoogleA2AAgent()
-                } label: {
-                    if isMintingA2AAgent {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Label("Run Mint Google A2A", systemImage: "hammer.fill")
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(isMintingA2AAgent || mintedAgentName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-            .padding(12)
-            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
-
-            if !cliOutput.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("CLI Output")
-                        .font(.subheadline.weight(.semibold))
-                    ScrollView {
-                        Text(cliOutput)
-                            .font(.caption.monospaced())
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(8)
-                    }
-                    .frame(minHeight: 100, maxHeight: 220)
-                    .background(.black.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-                }
             }
         }
     }
@@ -387,6 +285,80 @@ struct iOSGuildView: View {
         }
     }
 
+
+    private var orchestrationSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Orchestration CLI")
+                .font(.headline)
+            Text("Run `agentvault orchestrate --claude` and mint Google ADK A2A-compatible agents directly from the macOS app.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Claude Code Orchestrate")
+                    .font(.subheadline.weight(.semibold))
+                TextField("Task", text: $orchestrateTask)
+                    .textFieldStyle(.roundedBorder)
+                HStack {
+                    TextField("Canister ID (optional)", text: $orchestrateCanisterId)
+                        .textFieldStyle(.roundedBorder)
+                    TextField("Model", text: $orchestrateModel)
+                        .textFieldStyle(.roundedBorder)
+                }
+                Toggle("Dry run", isOn: $orchestrateDryRun)
+                    .toggleStyle(.checkbox)
+
+                Button {
+                    runClaudeOrchestrate()
+                } label: {
+                    Label("Run Claude Orchestrate", systemImage: "sparkles")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isRunningCLIAction || orchestrateTask.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .padding(12)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Google ADK + A2A Mint")
+                    .font(.subheadline.weight(.semibold))
+                HStack {
+                    TextField("Agent name", text: $mintAgentName)
+                        .textFieldStyle(.roundedBorder)
+                    Picker("Type", selection: $mintAgentType) {
+                        ForEach(GoogleA2AAgentType.allCases) { type in
+                            Text(type.rawValue).tag(type)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+                HStack {
+                    TextField("Canister ID (optional)", text: $mintCanisterId)
+                        .textFieldStyle(.roundedBorder)
+                    TextField("Output dir (optional)", text: $mintOutputDir)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                Button {
+                    runGoogleA2AMint()
+                } label: {
+                    Label("Mint Google A2A Agent", systemImage: "shippingbox.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .disabled(isRunningCLIAction || mintAgentName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .padding(12)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+
+            if isRunningCLIAction {
+                ProgressView("Running AgentVault CLI…")
+                    .controlSize(.small)
+            }
+        }
+    }
+
     private var skillsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -424,6 +396,69 @@ struct iOSGuildView: View {
         }
     }
 
+
+    private func runClaudeOrchestrate() {
+        let task = orchestrateTask.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !task.isEmpty else { return }
+
+        isRunningCLIAction = true
+
+        Task { @MainActor in
+            do {
+                let output = try await cliBridge.orchestrateWithClaude(options: CLIOrchestrateOptions(
+                    task: task,
+                    canisterId: optional(orchestrateCanisterId),
+                    network: "local",
+                    dryRun: orchestrateDryRun,
+                    approve: false,
+                    reviewers: [],
+                    model: optional(orchestrateModel),
+                    timeoutSeconds: 1800,
+                    apiKey: nil
+                ))
+                showCLIOutput(title: "Claude orchestration finished", output: output)
+            } catch {
+                showCLIOutput(title: "Claude orchestration failed", output: error.localizedDescription)
+            }
+            isRunningCLIAction = false
+        }
+    }
+
+    private func runGoogleA2AMint() {
+        let name = mintAgentName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+
+        isRunningCLIAction = true
+
+        Task { @MainActor in
+            do {
+                let output = try await cliBridge.mintGoogleA2AAgent(options: CLIMintGoogleA2AOptions(
+                    name: name,
+                    agentType: mintAgentType,
+                    network: "local",
+                    outputDir: optional(mintOutputDir),
+                    canisterId: optional(mintCanisterId),
+                    skipBackup: false
+                ))
+                showCLIOutput(title: "Google A2A mint finished", output: output)
+            } catch {
+                showCLIOutput(title: "Google A2A mint failed", output: error.localizedDescription)
+            }
+            isRunningCLIAction = false
+        }
+    }
+
+    private func showCLIOutput(title: String, output: String) {
+        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        let message = trimmed.isEmpty ? "Command completed with no output." : String(trimmed.prefix(1500))
+        appState.showAlert(title: title, message: message)
+    }
+
+    private func optional(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     // MARK: - Guild Spin-Up
 
     private func spinUpGuild() {
@@ -452,51 +487,6 @@ struct iOSGuildView: View {
             isSpinningUp = false
             spinUpResult = .success(created)
             showResult = true
-        }
-    }
-
-    private func runClaudeOrchestrate() {
-        isRunningClaudeOrchestration = true
-        cliOutput = ""
-
-        Task { @MainActor in
-            do {
-                let output = try await CLIBridge.shared.runClaudeOrchestration(
-                    task: orchestrationTask,
-                    network: orchestrationNetwork,
-                    dryRun: orchestrationDryRun,
-                    model: orchestrationModel
-                )
-                cliOutput = output.trimmingCharacters(in: .whitespacesAndNewlines)
-                appState.showSuccess("Claude orchestration completed")
-            } catch {
-                cliOutput = error.localizedDescription
-                appState.showError("Claude orchestration failed: \(error.localizedDescription)")
-            }
-            isRunningClaudeOrchestration = false
-        }
-    }
-
-    private func mintGoogleA2AAgent() {
-        isMintingA2AAgent = true
-        cliOutput = ""
-
-        Task { @MainActor in
-            do {
-                let output = try await CLIBridge.shared.mintGoogleA2AAgent(
-                    name: mintedAgentName,
-                    type: mintedAgentType,
-                    network: mintNetwork,
-                    skipBackup: skipBackup,
-                    yes: true
-                )
-                cliOutput = output.trimmingCharacters(in: .whitespacesAndNewlines)
-                appState.showSuccess("Google A2A agent minted")
-            } catch {
-                cliOutput = error.localizedDescription
-                appState.showError("Google A2A mint failed: \(error.localizedDescription)")
-            }
-            isMintingA2AAgent = false
         }
     }
 }

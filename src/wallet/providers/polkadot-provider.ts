@@ -27,6 +27,7 @@ import {
 import { ApiPromise, WsProvider } from '@polkadot/api';
 import type { KeyringPair } from '@polkadot/keyring/types';
 import { Keyring } from '@polkadot/keyring';
+import { debugLog } from '../../debugging/debug-logger.js';
 
 /**
  * Polkadot provider configuration
@@ -91,7 +92,7 @@ export class PolkadotProvider extends BaseWalletProvider {
       await this.api.isReady;
 
       this.connected = true;
-      console.log(`Connected to ${this.chainType} network via ${rpcUrl}`);
+      debugLog(`Connected to ${this.chainType} network`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       throw new Error(`Failed to connect to Polkadot network: ${message}`);
@@ -253,7 +254,7 @@ export class PolkadotProvider extends BaseWalletProvider {
       return transactions.slice(0, 20);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      console.warn(`Failed to get transaction history: ${message}`);
+      debugLog(`Failed to get transaction history: ${message}`);
       return [];
     }
   }
@@ -378,8 +379,7 @@ export class PolkadotProvider extends BaseWalletProvider {
         this.keyringPair = derived;
       }
 
-      console.log('Polkadot keypair initialized for derivation:', path);
-      console.log('Address:', this.getAddress());
+      debugLog('Polkadot keypair initialized for derivation:', path);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       throw new Error(`Failed to initialize Polkadot keypair: ${message}`);
@@ -393,8 +393,7 @@ export class PolkadotProvider extends BaseWalletProvider {
     try {
       this.keyringPair = this.createKeyringPair(privateKey);
 
-      console.log('Polkadot keypair initialized from private key');
-      console.log('Address:', this.getAddress());
+      debugLog('Polkadot keypair initialized from private key');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       throw new Error(`Failed to initialize Polkadot keypair from private key: ${message}`);

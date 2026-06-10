@@ -57,6 +57,8 @@ export {
   findClineConfigs,
   parseGenericConfig,
   findGenericConfigs,
+  parseNemoClawConfig,
+  findNemoClawConfigs,
 } from './parsers/index.js';
 
 // Config Persistence
@@ -73,6 +75,7 @@ export {
   DEFAULT_CLAWDBOT_SETTINGS,
   DEFAULT_GOOSE_CONFIG,
   DEFAULT_CLINE_CONFIG,
+  DEFAULT_NEMOCLAW_CONFIG,
 } from './config-schemas.js';
 
 // Summary - used by package command
@@ -88,3 +91,18 @@ export type {
   SerializedAgentState,
   SerializationOptions,
 } from './serializer.js';
+
+// ThoughtForm serializers
+export {
+  ThoughtStepSchema,
+  ThoughtFormManifestSchema,
+  ThoughtFormBundleSchema,
+  deserializeThoughtFormBundle,
+  THOUGHTFORM_SCHEMA_VERSION,
+} from './serializers/index.js';
+
+export type {
+  ThoughtStep,
+  ThoughtFormManifest,
+  ThoughtFormBundle,
+} from './serializers/index.js';

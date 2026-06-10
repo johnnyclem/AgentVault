@@ -19,13 +19,25 @@
       }
     ],
     "paths": {
-      "@/*": ["../src/*"],
+      "@/*": ["./src/*"],
       "@/components/*": ["./src/components/*"],
       "@/hooks/*": ["./src/hooks/*"],
       "@/lib/*": ["./src/lib/*"],
       "@/app/*": ["./src/app/*"],
-      "@/providers/*": ["./src/providers/*"]
-    }
+      "@/providers/*": ["./src/providers/*"],
+      "@/archival/*": ["../src/archival/*"],
+      "@/backbone/*": ["../src/backbone/*"],
+      "@/backup/*": ["../src/backup/*"],
+      "@/canister/*": ["../src/canister/*"],
+      "@/deployment/*": ["../src/deployment/*"],
+      "@/icp/*": ["../src/icp/*"],
+      "@/inference/*": ["../src/inference/*"],
+      "@/metrics/*": ["../src/metrics/*"],
+      "@/network/*": ["../src/network/*"],
+      "@/orchestration/*": ["../src/orchestration/*"],
+      "@/packaging/*": ["../src/packaging/*"],
+      "@/wallet/*": ["../src/wallet/*"]
+    },
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
   "exclude": ["node_modules"]

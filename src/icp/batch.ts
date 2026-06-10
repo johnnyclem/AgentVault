@@ -6,7 +6,7 @@
  */
 
 import type { IcpCommonOptions } from '../icp/types.js';
-import { canisterStatus, canisterCall } from '../icp/icpcli.js';
+import { canisterStatus, canisterCall, deploy } from '../icp/icpcli.js';
 
 export type BatchOperationType = 'call' | 'query' | 'status' | 'deploy';
 
@@ -162,13 +162,19 @@ async function executeOperation(operation: BatchOperation, config: BatchConfig):
             durationMs: 0,
           };
         }
-        case 'deploy':
+        case 'deploy': {
+          const deployResult = await deploy({
+            canisters: [operation.canisterId],
+            ...operation.options,
+          });
           return {
             operationId: operation.id,
-            success: true,
-            data: { message: 'Deploy operation placeholder' },
+            success: deployResult.success,
+            data: deployResult.stdout,
+            error: deployResult.success ? undefined : deployResult.stderr,
             durationMs: 0,
           };
+        }
         default:
           return {
             operationId: operation.id,

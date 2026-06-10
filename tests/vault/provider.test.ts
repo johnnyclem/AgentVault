@@ -2,7 +2,7 @@
  * Tests for the unified SecretProvider interface and runtime helpers.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   fetchSecretsAsEnv,
   fetchAllSecretsAsEnv,

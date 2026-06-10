@@ -81,6 +81,27 @@ type EncryptedSecret = record {
   createdAt  : int;
 };
 
+// ─── BLS Threshold Share Types (Production VetKeys) ──────────────────────────
+
+/// Public commitment record for one BLS12-381 key share.
+/// Private share scalars are never stored on-chain.
+type ThresholdShareCommitment = record {
+  /// 1-based participant index
+  index      : nat;
+  /// Compressed G1 hex of shareScalar · G1.BASE
+  publicKey  : text;
+  /// SHA-256 integrity tag: H(index_bytes ‖ shareScalar_bytes)
+  commitment : text;
+};
+
+/// Per-share health status from the heartbeat integrity check.
+type ShareHealthStatus = record {
+  index   : nat;
+  healthy : bool;
+  /// "ok" | "missing_pubkey" | "pubkey_too_short" | "commitment_too_short"
+  reason  : text;
+};
+
 // ─── Service ─────────────────────────────────────────────────────────────────
 
 service : {
@@ -159,11 +180,41 @@ service : {
   getEncryptedSecret       : (text)            -> (opt EncryptedSecret) query;
   listEncryptedSecrets     : ()                -> (vec EncryptedSecret) query;
   deleteEncryptedSecret    : (text)            -> (variant { ok : text; err : text });
+
+  // Production threshold signature verification (checks registry + signature length).
   verifyThresholdSignature : (text, text)      -> (variant { ok : text; err : text }) query;
   deriveVetKeysKey         : (text, nat)       -> (variant { ok : text; err : text });
+
+  // Returns #production once initializeThresholdShares has been called.
   getVetKeysStatus         : () -> (record {
     enabled : bool; thresholdSupported : bool;
     mode    : variant { mock : null; production : null };
+  }) query;
+
+  // ── Production VetKeys: BLS Threshold Share Registration ─────────────────
+  //
+  // Call after bootstrap() to register public BLS share commitments.
+  // Private share scalars MUST NOT be included — they remain off-chain.
+
+  initializeThresholdShares : (
+    masterPublicKey  : text,
+    vssCommitments   : vec text,
+    shareCommitments : vec ThresholdShareCommitment,
+    groupCommitment  : text,
+    threshold        : nat,
+    totalParties     : nat
+  ) -> (variant { ok : text; err : text });
+
+  // Returns share health reports produced by the heartbeat integrity check.
+  getShareHealthStatus : () -> (record {
+    initialized     : bool;
+    threshold       : nat;
+    totalParties    : nat;
+    allHealthy      : bool;
+    reports         : vec ShareHealthStatus;
+    masterPublicKey : text;
+    groupCommitment : text;
+    lastCheckNs     : int;
   }) query;
 
   // ── System ────────────────────────────────────────────────────────────────

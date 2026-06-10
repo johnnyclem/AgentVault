@@ -11,12 +11,15 @@ import * as os from 'node:os';
 import {
   serializeWallet,
   deserializeWallet,
-  validateCborData,
 } from './cbor-serializer.js';
 import {
   encryptWalletSecrets,
   decryptWalletSecrets,
 } from './wallet-crypto.js';
+import {
+  sanitizePathPart,
+  atomicWriteFileSync,
+} from '../utils/path-validation.js';
 import type {
   WalletData,
   WalletStorageOptions,
@@ -45,7 +48,8 @@ export function getAgentWalletDir(
   options: WalletStorageOptions = {}
 ): string {
   const baseDir = getWalletBaseDir(options);
-  return path.join(baseDir, agentId);
+  // SEC-12: reject `..`, separators, NUL, etc. before joining
+  return path.join(baseDir, sanitizePathPart(agentId));
 }
 
 /**
@@ -62,7 +66,8 @@ export function getWalletFilePath(
   options: WalletStorageOptions = {}
 ): string {
   const agentDir = getAgentWalletDir(agentId, options);
-  return path.join(agentDir, `${walletId}.wallet`);
+  // SEC-12: walletId is also user-supplied
+  return path.join(agentDir, `${sanitizePathPart(walletId)}.wallet`);
 }
 
 /**
@@ -113,8 +118,8 @@ export function saveWallet(
   // Get wallet file path
   const walletPath = getWalletFilePath(wallet.agentId, wallet.id, options);
 
-  // Write wallet file
-  fs.writeFileSync(walletPath, Buffer.from(serialized));
+  // SEC-17: atomic write so a crash mid-flight doesn't corrupt the wallet
+  atomicWriteFileSync(walletPath, Buffer.from(serialized), { mode: 0o600 });
 }
 
 /**
@@ -141,12 +146,7 @@ export function loadWallet(
   // Read wallet file
   const data = fs.readFileSync(walletPath);
 
-  // Validate CBOR data
-  if (!validateCborData(new Uint8Array(data))) {
-    throw new Error(`Invalid wallet data: ${walletId}`);
-  }
-
-  // Deserialize wallet
+  // Deserialize wallet (validation is done inside deserializeWallet)
   const wallet = deserializeWallet(new Uint8Array(data));
 
   // Decrypt secrets when a key is present

@@ -24,7 +24,6 @@ import {
   syncFromMirror,
   getMirrorStatus,
   loadMirrorConfig,
-  saveMirrorConfig,
   deleteMirrorConfig,
 } from '../../src/fault-tolerance/mirror-sync.js';
 

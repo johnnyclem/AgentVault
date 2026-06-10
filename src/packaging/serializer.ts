@@ -8,6 +8,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { AgentConfig } from './types.js';
+import { isVetKeysEncryptedBundle, decryptBundle } from '../security/vetkeys.js';
 
 /**
  * Agent state schema version
@@ -63,6 +64,7 @@ export interface SerializedAgentState {
     createdAt: string;
     sourcePath: string;
     entryPoint?: string;
+    encrypted?: boolean;
   };
   state: {
     initialized: boolean;
@@ -181,10 +183,25 @@ export async function writeStateFile(
 
 /**
  * Read state from file
+ *
+ * If the file is a VetKeys-encrypted bundle (detected by magic header),
+ * it is automatically decrypted before deserialization.  If the JSON
+ * payload has `metadata.encrypted === true` and the raw bytes are *not*
+ * encrypted, the flag is simply ignored (the data is already plaintext).
  */
-export async function readStateFile(filePath: string): Promise<AgentState> {
-  const content = fs.readFileSync(filePath, 'utf-8');
-  return deserializeState(content);
+export async function readStateFile(
+  filePath: string,
+  principalId?: string,
+): Promise<AgentState> {
+  const raw = fs.readFileSync(filePath);
+
+  // Auto-decrypt if the file is a VetKeys-encrypted bundle
+  if (isVetKeysEncryptedBundle(Buffer.from(raw))) {
+    const decrypted = await decryptBundle(Buffer.from(raw), principalId);
+    return deserializeState(decrypted.toString('utf-8'));
+  }
+
+  return deserializeState(raw.toString('utf-8'));
 }
 
 /**

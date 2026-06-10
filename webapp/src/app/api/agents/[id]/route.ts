@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { writeAgentConfig } from '@/packaging/config-persistence.js'
+import { writeAgentConfig } from '@/packaging/config-persistence'
 import {
   buildAgentModel,
   readAgentConfigRecord,

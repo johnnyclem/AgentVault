@@ -65,21 +65,6 @@ function writePackageJson(dir: string, name: string): void {
   );
 }
 
-/** Write a minimal agent.config.json inside .agentvault/config/ */
-function writeAgentConfig(dir: string, name: string): void {
-  const configDir = path.join(dir, '.agentvault', 'config');
-  fs.mkdirSync(configDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(configDir, 'agent.config.json'),
-    JSON.stringify({
-      name,
-      version: '0.1.0',
-      description: 'E2E test agent',
-      runtime: 'wasm',
-    })
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Phase 1: Agent initialisation
 // ---------------------------------------------------------------------------

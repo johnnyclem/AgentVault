@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto'
 import * as fs from 'node:fs'
 import { NextResponse } from 'next/server'
-import type { DeploymentHistory } from '@/icp/types.js'
-import { deployAgent } from '@/deployment/index.js'
-import { addDeploymentToHistory, getAllDeployments } from '@/deployment/promotion.js'
-import { packageAgent } from '@/packaging/index.js'
+import type { DeploymentHistory } from '@/icp/types'
+import { deployAgent } from '@/deployment/index'
+import { addDeploymentToHistory, getAllDeployments } from '@/deployment/promotion'
+import { packageAgent } from '@/packaging/index'
 import {
   buildAgentModel,
   buildDeploymentModels,

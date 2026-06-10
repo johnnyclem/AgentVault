@@ -12,7 +12,7 @@ export function statsCommand(): Command {
   const command = new Command('stats');
 
   command
-    .description('Display resource usage statistics')
+    .description('[Partial] Display resource usage statistics (current only; historical not yet implemented)')
     .argument('<canister-id>', 'Canister ID to analyze')
     .option('-p, --period <duration>', 'Time period (e.g. 24h, 7d)')
     .option('--snapshots <n>', 'Number of snapshots to analyze');
@@ -33,7 +33,7 @@ export function statsCommand(): Command {
       console.log(`  Current Memory: ${statusInfo.memorySize ? `${(Number(statusInfo.memorySize) / (1024 * 1024)).toFixed(2)} MB` : 'N/A'}`);
       console.log();
       console.log(chalk.yellow('Historical data not yet implemented'));
-      console.log(chalk.gray('Use --period and --snapshots to analyze trends over time'));
+      console.log(chalk.gray('The --period and --snapshots options will enable trend analysis once historical data lands'));
     });
 
   return command;

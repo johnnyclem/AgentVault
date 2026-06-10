@@ -116,6 +116,19 @@ config/
 `;
   fs.writeFileSync(gitignorePath, gitignoreContent, 'utf-8');
 
+  // Detect soul.md in working directory
+  const soulPath = path.join(sourcePath, 'soul.md');
+  const soulDetected = fs.existsSync(soulPath);
+  if (soulDetected) {
+    const memoryRepoConfigPath = path.join(projectDir, 'memory-repo.config.json');
+    const memoryRepoConfig = {
+      soulDetected: true,
+      soulFile: 'soul.md',
+      detectedAt: Date.now(),
+    };
+    fs.writeFileSync(memoryRepoConfigPath, JSON.stringify(memoryRepoConfig, null, 2), 'utf-8');
+  }
+
   spinner.succeed('AgentVault project initialized successfully!');
 
   console.log();
@@ -132,11 +145,21 @@ config/
   console.log('  ├── Version:', chalk.bold(configContent.version));
   console.log('  ├── Description:', chalk.bold(configContent.description));
   console.log();
+  if (soulDetected) {
+    console.log(chalk.cyan('Soul.md detected:'));
+    console.log('  ├── Soul file:', chalk.bold('soul.md'));
+    console.log('  └── Config:', chalk.bold('memory-repo.config.json'));
+    console.log();
+  }
+
   console.log(chalk.cyan('Next steps:'));
   console.log('  1. Run', chalk.bold('agentvault status'), 'to check your project');
   console.log('  2. Configure your agent in', chalk.bold('agent.config.json'), '(add agent type, description, etc.)');
   console.log('  3. Compile agent with', chalk.bold('agentvault package'), 'to prepare for deployment');
   console.log('  4. Deploy with', chalk.bold('agentvault deploy'), 'to upload to ICP');
+  if (soulDetected) {
+    console.log('  5. Run', chalk.bold('agentvault memory init soul.md'), 'to initialize memory from Soul.md');
+  }
 }
 
 export function initCommand(): Command {

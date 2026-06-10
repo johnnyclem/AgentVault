@@ -1,6 +1,6 @@
 {
   "name": "agentvault",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Persistent On-Chain AI Agent Platform - Sovereign, Reconstructible, Autonomous",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
@@ -8,6 +8,14 @@
     ".": {
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
+    },
+    "./vault": {
+      "types": "./dist/src/vault/index.d.ts",
+      "import": "./dist/src/vault/index.js"
+    },
+    "./backbone": {
+      "types": "./dist/src/backbone/index.d.ts",
+      "import": "./dist/src/backbone/index.js"
     }
   },
   "bin": {
@@ -20,14 +28,15 @@
     "dev:webapp": "npm --prefix webapp run dev",
     "dev:dashboard": "node scripts/dev-dashboard.mjs",
     "build": "tsc",
-    "start": "node dist/index.js",
+    "start": "node dist/src/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "typecheck:webapp": "npm --prefix webapp run typecheck",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "lint:webapp": "npm --prefix webapp run lint"
+    "lint:webapp": "npm --prefix webapp run lint",
+    "audio:catfish": "tsx scripts/generate-catfish-audio.ts"
   },
   "keywords": [
     "agent",
@@ -82,6 +91,13 @@
     "execa": "^8.0.0",
     "inquirer": "^9.3.0",
     "ora": "^8.1.0",
+    "undici": "^7.25.0",
     "yaml": "^2.8.2"
+  },
+  "overrides": {
+    "brace-expansion": "^1.1.13",
+    "uuid": "^11.1.1",
+    "ws": "^8.20.1",
+    "postcss": "^8.5.10"
   }
 }

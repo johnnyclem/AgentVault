@@ -30,9 +30,11 @@ export interface WasmEdgeOptions {
 /**
  * Default WasmEdge options
  */
+// SEC-15: default debug/sourcemap to false so shipped WASM doesn't leak
+// symbols. Callers opt in explicitly via `agentvault package --debug`.
 export const DEFAULT_WASMEDGE_OPTIONS: WasmEdgeOptions = {
-  debug: true,
-  sourcemap: true,
+  debug: false,
+  sourcemap: false,
   optimize: 2,
   wasi: true,
 };
@@ -225,8 +227,8 @@ export function generateWasmEdgeConfig(
     module_type: 'wasi',
     output_type: 'wasm',
     optimization_level: options.optimize ?? 2,
-    debug: options.debug ?? true,
-    generate_source_map: options.sourcemap ?? true,
+    debug: options.debug ?? false,
+    generate_source_map: options.sourcemap ?? false,
     enable_wasi: options.wasi ?? true,
     target: 'wasm32',
     features: ['bulk-memory', 'mutable-globals', 'sign-ext'],

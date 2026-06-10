@@ -19,7 +19,7 @@ import type {
 import { cloneControlCenterFallback } from '@/lib/control-center-fallback'
 import { listAgentModels, buildDeploymentModels } from '@/lib/server/agent-models'
 import { getCanisterStatusSafe } from '@/lib/server/canister-status'
-import { listNetworkConfigs } from '@/network/network-config.js'
+import { listNetworkConfigs } from '@/network/network-config'
 
 interface CanisterSnapshot {
   agent: Agent
