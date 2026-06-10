@@ -5,18 +5,24 @@
  * Stores backups in ~/.agentvault/backups/
  * CLE-101: Enhanced to include real canister state
  * CLE-MRB: Full backup adds SHA-256 Merkle root and ed25519-signed AES-256-GCM key
+ * Encrypted full-state export: zip.enc (AES-256-GCM + PBKDF2) with optional
+ * Arweave manifest upload and a restore flow that redeploys a fresh canister.
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
+import { execa } from 'execa';
 import type { AgentConfig } from '../packaging/types.js';
 import { computeMerkleRoot, computeLeafHashes, type MerkleEntry } from './merkle.js';
 import { atomicWriteFileSync } from '../utils/path-validation.js';
+import { ArweaveClient, type JWKInterface } from '../archival/arweave-client.js';
+import { deployAgent } from '../deployment/deployer.js';
 
 const AGENTVAULT_DIR = path.join(os.homedir(), '.agentvault');
 const BACKUPS_DIR = path.join(AGENTVAULT_DIR, 'backups');
+const ENCRYPTION_VERSION = 'enc-v1';
 
 function ensureBackupsDir(): void {
   if (!fs.existsSync(AGENTVAULT_DIR)) {
@@ -25,6 +31,69 @@ function ensureBackupsDir(): void {
   if (!fs.existsSync(BACKUPS_DIR)) {
     fs.mkdirSync(BACKUPS_DIR, { recursive: true });
   }
+}
+
+function safeCopyDir(srcDir: string, destDir: string): boolean {
+  if (!fs.existsSync(srcDir)) {
+    return false;
+  }
+  fs.mkdirSync(path.dirname(destDir), { recursive: true });
+  fs.cpSync(srcDir, destDir, { recursive: true, force: true });
+  return true;
+}
+
+function writeEncryptedFile(sourcePath: string, outputPath: string, passphrase: string): { sha256: string; size: number } {
+  const plaintext = fs.readFileSync(sourcePath);
+  const salt = crypto.randomBytes(16);
+  const iv = crypto.randomBytes(12);
+  const key = crypto.pbkdf2Sync(passphrase, salt, 210000, 32, 'sha256');
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  const tag = cipher.getAuthTag();
+
+  const payload = {
+    version: ENCRYPTION_VERSION,
+    algorithm: 'aes-256-gcm',
+    kdf: 'pbkdf2-sha256',
+    iterations: 210000,
+    salt: salt.toString('base64'),
+    iv: iv.toString('base64'),
+    tag: tag.toString('base64'),
+    ciphertext: ciphertext.toString('base64'),
+  };
+
+  const data = JSON.stringify(payload, null, 2);
+  fs.writeFileSync(outputPath, data, 'utf8');
+  const sha256 = crypto.createHash('sha256').update(data).digest('hex');
+  return { sha256, size: Buffer.byteLength(data) };
+}
+
+function decryptToZip(encryptedPath: string, outputZipPath: string, passphrase: string): void {
+  const data = fs.readFileSync(encryptedPath, 'utf8');
+  const payload = JSON.parse(data) as {
+    version: string;
+    iterations: number;
+    salt: string;
+    iv: string;
+    tag: string;
+    ciphertext: string;
+  };
+
+  if (payload.version !== ENCRYPTION_VERSION) {
+    throw new Error(`Unsupported encrypted backup format: ${payload.version}`);
+  }
+
+  const salt = Buffer.from(payload.salt, 'base64');
+  const iv = Buffer.from(payload.iv, 'base64');
+  const tag = Buffer.from(payload.tag, 'base64');
+  const ciphertext = Buffer.from(payload.ciphertext, 'base64');
+  const key = crypto.pbkdf2Sync(passphrase, salt, payload.iterations, 32, 'sha256');
+
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+  decipher.setAuthTag(tag);
+  const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+
+  fs.writeFileSync(outputZipPath, plaintext);
 }
 
 /**
@@ -62,6 +131,12 @@ export interface BackupManifest {
   checksums: Record<string, string>;
   size: number;
   components: string[];
+  /** Path to the local encrypted full-state zip (encrypted exports only). */
+  localEncryptedZipPath?: string;
+  /** Arweave transaction ID of the uploaded manifest (encrypted exports only). */
+  arweaveManifestTxId?: string;
+  /** SHA-256 of the encrypted zip payload (encrypted exports only). */
+  encryptedZipSha256?: string;
   /**
    * SHA-256 Merkle root of all backup entries (sorted by path).
    * Present only in full backups (--full flag).
@@ -104,10 +179,25 @@ export interface FullBackupOptions extends BackupOptions {
   signingKeyPath?: string;
 }
 
+export interface EncryptedBackupOptions extends BackupOptions {
+  /** Passphrase used to derive the AES-256-GCM key (PBKDF2-SHA256). */
+  passphrase: string;
+  /** Path to an Arweave JWK; when set, the manifest is uploaded to Arweave. */
+  arweaveJwkPath?: string;
+  /** Optional WASM module to bundle so restore can redeploy a canister. */
+  wasmPath?: string;
+}
+
 export interface ImportOptions {
   inputPath: string;
   targetAgentName?: string;
   overwrite?: boolean;
+}
+
+export interface FullRestoreOptions {
+  zipPath: string;
+  passphrase: string;
+  network?: string;
 }
 
 export interface BackupResult {
@@ -125,12 +215,43 @@ export interface FullBackupResult extends BackupResult {
   ed25519PublicKey?: string;
 }
 
+export interface FullRestoreResult {
+  success: boolean;
+  error?: string;
+  deployedCanisterId?: string;
+  restoredPath?: string;
+}
+
 export interface ImportResult {
   success: boolean;
   agentName?: string;
   error?: string;
   components: string[];
   warnings: string[];
+}
+
+async function uploadManifestToArweave(manifest: BackupManifest, encryptedZipSha256: string, jwkPath?: string): Promise<string | undefined> {
+  if (!jwkPath) {
+    return undefined;
+  }
+
+  const raw = fs.readFileSync(jwkPath, 'utf8');
+  const jwk = JSON.parse(raw) as JWKInterface;
+  const client = new ArweaveClient();
+
+  const result = await client.uploadJSON({ manifest, encryptedZipSha256 }, jwk, {
+    tags: {
+      'App-Name': 'AgentVault',
+      'Backup-Type': 'full-state-manifest',
+      'Agent-Name': manifest.agentName,
+    },
+  });
+
+  if (!result.success || !result.transactionId) {
+    throw new Error(result.error || 'Arweave manifest upload failed');
+  }
+
+  return result.transactionId;
 }
 
 /**
@@ -426,19 +547,19 @@ export async function fullBackup(options: FullBackupOptions): Promise<FullBackup
 export async function exportBackup(options: BackupOptions): Promise<BackupResult> {
   try {
     ensureBackupsDir();
-    
+
     const { agentName, outputPath, includeConfig = true, canisterId, includeCanisterState = true } = options;
-    
+
     const timestamp = new Date();
     const created = new Date();
     const filename = `${agentName}-${timestamp.toISOString().replace(/[:.]/g, '-')}.json`;
     const filePath = outputPath || path.join(BACKUPS_DIR, filename);
-    
+
     const components: string[] = [];
     if (includeConfig) {
       components.push('config');
     }
-    
+
     const manifest: BackupManifest = {
       version: '1.1',
       agentName,
@@ -448,7 +569,7 @@ export async function exportBackup(options: BackupOptions): Promise<BackupResult
       size: 0,
       components,
     };
-    
+
     if (includeConfig) {
       manifest.canisterId = canisterId || agentName;
     }
@@ -461,11 +582,11 @@ export async function exportBackup(options: BackupOptions): Promise<BackupResult
         components.push('canister-state');
       }
     }
-    
+
     const content = JSON.stringify(manifest, null, 2);
     const checksum = crypto.createHash('sha256').update(content).digest('hex');
     manifest.checksums[filename] = checksum;
-    
+
     // SEC-17: atomic write prevents a partial backup file on crash
     atomicWriteFileSync(filePath, JSON.stringify(manifest, null, 2), { encoding: 'utf8' });
 
@@ -486,15 +607,199 @@ export async function exportBackup(options: BackupOptions): Promise<BackupResult
   }
 }
 
+/**
+ * Export a full-state encrypted backup (.zip.enc).
+ *
+ * Stages agent state, encrypted keys, logs, dependencies and an optional WASM
+ * module, zips the payload, encrypts it with AES-256-GCM (PBKDF2-SHA256 key
+ * derivation) and writes SHA-256 checksums.  The encrypted zip stays local;
+ * when an Arweave JWK is provided only the manifest + zip hash are uploaded.
+ * A plaintext sidecar manifest (.manifest.json) is written next to the zip so
+ * listing/preview keep working.
+ */
+export async function exportEncryptedBackup(options: EncryptedBackupOptions): Promise<BackupResult> {
+  try {
+    ensureBackupsDir();
+
+    const {
+      agentName,
+      outputPath,
+      includeConfig = true,
+      canisterId,
+      includeCanisterState = true,
+      passphrase,
+      arweaveJwkPath,
+      wasmPath,
+    } = options;
+
+    const timestamp = new Date();
+    const created = new Date();
+    const basename = `${agentName}-${timestamp.toISOString().replace(/[:.]/g, '-')}`;
+    const encryptedPath = outputPath || path.join(BACKUPS_DIR, `${basename}.zip.enc`);
+
+    const components: string[] = [];
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'agentvault-backup-'));
+    const stagedRoot = path.join(tempRoot, 'payload');
+    fs.mkdirSync(stagedRoot, { recursive: true });
+
+    try {
+      const vaultAgentDir = path.join(AGENTVAULT_DIR, 'agents', agentName);
+      if (safeCopyDir(vaultAgentDir, path.join(stagedRoot, 'state', 'agents', agentName))) {
+        components.push('state');
+      }
+
+      const walletsDir = path.join(AGENTVAULT_DIR, 'wallets', agentName);
+      if (safeCopyDir(walletsDir, path.join(stagedRoot, 'encrypted-keys', 'wallets', agentName))) {
+        components.push('encrypted-keys');
+      }
+
+      const logsDir = path.join(AGENTVAULT_DIR, 'logs');
+      if (safeCopyDir(logsDir, path.join(stagedRoot, 'logs'))) {
+        components.push('logs');
+      }
+
+      const depsDir = path.join(process.cwd(), 'node_modules');
+      if (safeCopyDir(depsDir, path.join(stagedRoot, 'deps', 'node_modules'))) {
+        components.push('deps');
+      }
+
+      if (wasmPath && fs.existsSync(wasmPath)) {
+        fs.mkdirSync(path.join(stagedRoot, 'deployment'), { recursive: true });
+        fs.copyFileSync(wasmPath, path.join(stagedRoot, 'deployment', path.basename(wasmPath)));
+        components.push('wasm');
+      }
+
+      const manifest: BackupManifest = {
+        version: '2.0',
+        agentName,
+        timestamp,
+        created,
+        checksums: {},
+        size: 0,
+        components,
+      };
+
+      if (includeConfig) {
+        manifest.canisterId = canisterId || agentName;
+      }
+
+      if (includeCanisterState && canisterId) {
+        const canisterState = await fetchCanisterState(canisterId);
+        if (canisterState) {
+          manifest.canisterState = canisterState;
+          manifest.canisterId = canisterId;
+          if (!components.includes('canister-state')) {
+            components.push('canister-state');
+          }
+        }
+      }
+
+      const manifestPath = path.join(stagedRoot, 'manifest.json');
+      fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+
+      const rawZipPath = path.join(tempRoot, `${basename}.zip`);
+      await execa('zip', ['-r', rawZipPath, '.'], { cwd: stagedRoot });
+
+      const encrypted = writeEncryptedFile(rawZipPath, encryptedPath, passphrase);
+      manifest.localEncryptedZipPath = encryptedPath;
+      manifest.encryptedZipSha256 = encrypted.sha256;
+      manifest.size = encrypted.size;
+      manifest.checksums[path.basename(encryptedPath)] = encrypted.sha256;
+
+      const txId = await uploadManifestToArweave(manifest, encrypted.sha256, arweaveJwkPath);
+      if (txId) {
+        manifest.arweaveManifestTxId = txId;
+      }
+
+      fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+      const localManifestPath = encryptedPath.replace(/\.zip\.enc$/, '.manifest.json');
+      fs.writeFileSync(localManifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+
+      return {
+        success: true,
+        path: encryptedPath,
+        sizeBytes: encrypted.size,
+        manifest,
+      };
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+export async function restoreFromEncryptedZip(options: FullRestoreOptions): Promise<FullRestoreResult> {
+  const { zipPath, passphrase, network = 'local' } = options;
+  try {
+    if (!fs.existsSync(zipPath)) {
+      return { success: false, error: `Backup zip not found: ${zipPath}` };
+    }
+
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'agentvault-restore-'));
+    const decryptedZip = path.join(tempRoot, 'payload.zip');
+    const extractedDir = path.join(tempRoot, 'extracted');
+    fs.mkdirSync(extractedDir, { recursive: true });
+
+    try {
+      decryptToZip(zipPath, decryptedZip, passphrase);
+      await execa('unzip', ['-o', decryptedZip, '-d', extractedDir]);
+
+      const payloadRoot = extractedDir;
+      const stateDir = path.join(payloadRoot, 'state');
+      if (fs.existsSync(stateDir)) {
+        fs.cpSync(stateDir, AGENTVAULT_DIR, { recursive: true, force: true });
+      }
+
+      const deploymentDir = path.join(payloadRoot, 'deployment');
+      const wasmCandidates = fs.existsSync(deploymentDir)
+        ? fs.readdirSync(deploymentDir, { withFileTypes: true })
+          .filter((entry) => entry.isFile() && entry.name.endsWith('.wasm'))
+          .map((entry) => path.join(deploymentDir, entry.name))
+        : [];
+
+      const wasmPath = wasmCandidates[0];
+      if (!wasmPath) {
+        return {
+          success: false,
+          error: 'No WASM module found in decrypted backup; cannot deploy fresh canister',
+        };
+      }
+
+      const deployResult = await deployAgent({
+        wasmPath,
+        network,
+        mode: 'install',
+      });
+
+      return {
+        success: true,
+        deployedCanisterId: deployResult.canister.canisterId,
+        restoredPath: extractedDir,
+      };
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
 export async function previewBackup(inputPath: string): Promise<BackupManifest | null> {
   try {
     if (!fs.existsSync(inputPath)) {
       return null;
     }
-    
+
     const content = fs.readFileSync(inputPath, 'utf8');
     const manifest = JSON.parse(content) as BackupManifest;
-    
+
     return manifest;
   } catch (error) {
     console.error('Failed to preview backup:', error);
@@ -505,7 +810,7 @@ export async function previewBackup(inputPath: string): Promise<BackupManifest |
 export async function importBackup(options: ImportOptions): Promise<ImportResult> {
   try {
     const { inputPath, targetAgentName, overwrite } = options;
-    
+
     if (!fs.existsSync(inputPath)) {
       return {
         success: false,
@@ -515,7 +820,7 @@ export async function importBackup(options: ImportOptions): Promise<ImportResult
         error: `Backup file not found: ${inputPath}`,
       };
     }
-    
+
     const manifest = await previewBackup(inputPath);
     if (!manifest) {
       return {
@@ -526,14 +831,14 @@ export async function importBackup(options: ImportOptions): Promise<ImportResult
         error: 'Invalid backup file',
       };
     }
-    
+
     const targetName = targetAgentName || manifest.agentName;
     const warnings: string[] = [];
-    
+
     if (!overwrite) {
       warnings.push('Using dry-run mode; no changes will be made');
     }
-    
+
     return {
       success: true,
       agentName: targetName,
@@ -551,21 +856,21 @@ export async function importBackup(options: ImportOptions): Promise<ImportResult
   }
 }
 
-export async function listBackups(agentName: string): Promise<BackupManifest[]> {
+export async function listBackups(agentName?: string): Promise<BackupManifest[]> {
   ensureBackupsDir();
   const backups: BackupManifest[] = [];
-  
+
   if (!fs.existsSync(BACKUPS_DIR)) {
     return backups;
   }
-  
+
   const files = fs.readdirSync(BACKUPS_DIR);
   for (const file of files) {
-    if (file.startsWith(agentName) && file.endsWith('.json')) {
+    if ((!agentName || file.startsWith(agentName)) && file.endsWith('.json')) {
       const filePath = path.join(BACKUPS_DIR, file);
       try {
         const manifest = await previewBackup(filePath);
-        if (manifest && manifest.agentName === agentName) {
+        if (manifest && (!agentName || manifest.agentName === agentName)) {
           backups.push(manifest);
         }
       } catch (error) {
@@ -573,8 +878,8 @@ export async function listBackups(agentName: string): Promise<BackupManifest[]> 
       }
     }
   }
-  
-  backups.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+
+  backups.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   return backups;
 }
 

@@ -3,13 +3,16 @@ import chalk from 'chalk';
 import ora from 'ora';
 import {
   exportBackup,
+  exportEncryptedBackup,
   fullBackup,
   previewBackup,
   importBackup,
   listBackups,
   deleteBackup,
   formatBackupSize,
+  restoreFromEncryptedZip,
 } from '../../src/backup/index.js';
+import { VaultClient } from '../../src/vault/index.js';
 import {
   serializeThoughtformBundle,
   deserializeThoughtformBundle,
@@ -27,10 +30,11 @@ const backupCmd = new Command('backup');
 backupCmd
   .description('Export and import agent backups')
   .action(async () => {
-    console.log(chalk.yellow('Please specify a subcommand: export, import, list, delete, or preview'));
+    console.log(chalk.yellow('Please specify a subcommand: export, import, restore, list, delete, or preview'));
     console.log(chalk.gray(`\nExamples:
   ${chalk.cyan('agentvault backup export <agent-name> --output backup.json')}${chalk.gray('    Export agent config to file')}
   ${chalk.cyan('agentvault backup import <file>')}${chalk.gray('           Import agent from backup file')}
+  ${chalk.cyan('agentvault backup restore --zip ./backup.zip.enc --passphrase <secret>')}${chalk.gray('  Restore encrypted zip backup')}
   ${chalk.cyan('agentvault backup list')}${chalk.gray('                 List all backups')}
   ${chalk.cyan('agentvault backup delete <backup-path>')}${chalk.gray('      Delete a backup')}
   ${chalk.cyan('agentvault backup preview <backup-path>')}${chalk.gray('       Preview backup contents')}`));
@@ -40,7 +44,7 @@ backupCmd
   .command('export')
   .description('Export agent configuration and data to a backup file')
   .argument('<agent-name>', 'Agent name to backup')
-  .option('-o, --output <path>', 'Output file path (default: ./backup.json or ./backup.zip for --full)')
+  .option('-o, --output <path>', 'Output file path (default: ./backup.json, ./backup.zip for --full, ./backup.zip.enc for --encrypted)')
   .option('-c, --canister-id <id>', 'Canister ID to include live canister state')
   .option('--no-canister-state', 'Skip fetching canister state even if canister ID provided')
   .option(
@@ -48,6 +52,11 @@ backupCmd
     'Create a full encrypted backup: Merkle-root manifest + AES-256-GCM payload + ed25519-signed key'
   )
   .option('--signing-key <path>', 'Path to ed25519 signing key file (auto-created if absent)')
+  .option('--encrypted', 'Create a passphrase-encrypted full-state zip (.zip.enc) with state, keys, logs and deps')
+  .option('--passphrase <value>', 'Passphrase used to encrypt the backup zip (implies --encrypted)')
+  .option('--vault-passphrase-key <key>', 'Vault key to read backup passphrase from', 'backup-passphrase')
+  .option('--arweave-jwk <path>', 'Path to Arweave JWK for manifest upload (encrypted backups)')
+  .option('--wasm <path>', 'Optional WASM path to include for fresh-canister restore (encrypted backups)')
   .option('-t, --type <type>', 'Backup type (default, thoughtform-bundle)', 'default')
   .option('--store', 'Store thoughtform-bundle to canister after creating it')
   .option('-n, --network <network>', 'Network for canister operations (local or ic)', 'local')
@@ -61,7 +70,52 @@ backupCmd
     }
 
     const isFull: boolean = Boolean(options.full);
+    const isEncrypted: boolean = Boolean(options.encrypted || options.passphrase);
     const includeCanisterState = options.canisterId ? options.canisterState !== false : false;
+
+    if (isEncrypted) {
+      // Passphrase-encrypted full-state zip (.zip.enc)
+      const rawOut = options.output ?? './backup.zip.enc';
+      const outputPath = rawOut.endsWith('.enc') ? rawOut : `${rawOut}.zip.enc`;
+      const spinner = ora(`Creating encrypted backup for ${agentName}...`).start();
+
+      try {
+        const passphrase = options.passphrase || await readBackupPassphraseFromVault(agentName, options.vaultPassphraseKey);
+
+        const result = await exportEncryptedBackup({
+          agentName,
+          outputPath,
+          includeConfig: true,
+          canisterId: options.canisterId,
+          includeCanisterState,
+          passphrase,
+          arweaveJwkPath: options.arweaveJwk,
+          wasmPath: options.wasm,
+        });
+
+        if (result.success && result.path && result.manifest) {
+          spinner.succeed(chalk.green(`Backup exported to ${result.path}`));
+          const sizeBytes = result.sizeBytes || result.manifest.size;
+          console.log(chalk.gray(`Size: ${formatBackupSize(sizeBytes)}`));
+          console.log(chalk.gray(`Components: ${result.manifest.components.join(', ')}`));
+          if (result.manifest.arweaveManifestTxId) {
+            console.log(chalk.gray(`Arweave manifest tx: ${result.manifest.arweaveManifestTxId}`));
+          }
+        } else {
+          spinner.fail(chalk.red('Backup export failed'));
+          if (result.error) {
+            console.error(chalk.red(result.error));
+          }
+          process.exit(1);
+        }
+      } catch (error) {
+        spinner.fail(chalk.red('Backup export failed'));
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error(chalk.red(message));
+        process.exit(1);
+      }
+      return;
+    }
 
     if (backupType === 'thoughtform-bundle') {
       // Thoughtform-bundle: gzipped JSON bundle
@@ -187,6 +241,47 @@ backupCmd
         console.error(chalk.red(message));
         process.exit(1);
       }
+    }
+  });
+
+backupCmd
+  .command('restore')
+  .description('Decrypt an encrypted backup zip and deploy a fresh canister')
+  .requiredOption('--zip <path>', 'Path to encrypted backup zip (.zip.enc)')
+  .option('--passphrase <value>', 'Backup passphrase used for decryption')
+  .option('--agent <name>', 'Agent name used to fetch passphrase from Vault')
+  .option('--vault-passphrase-key <key>', 'Vault key to read backup passphrase from', 'backup-passphrase')
+  .option('--network <name>', 'Network to deploy fresh canister to', 'local')
+  .action(async (options) => {
+    const spinner = ora(`Restoring encrypted backup ${options.zip}...`).start();
+
+    try {
+      const passphrase = options.passphrase || await readBackupPassphraseFromVault(
+        options.agent,
+        options.vaultPassphraseKey,
+      );
+
+      const result = await restoreFromEncryptedZip({
+        zipPath: options.zip,
+        passphrase,
+        network: options.network,
+      });
+
+      if (!result.success) {
+        spinner.fail(chalk.red('Backup restore failed'));
+        console.error(chalk.red(result.error || 'Unknown restore error'));
+        process.exit(1);
+      }
+
+      spinner.succeed(chalk.green('Backup restored and fresh canister deployed'));
+      if (result.deployedCanisterId) {
+        console.log(chalk.gray(`Canister ID: ${result.deployedCanisterId}`));
+      }
+    } catch (error) {
+      spinner.fail(chalk.red('Backup restore failed'));
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.error(chalk.red(message));
+      process.exit(1);
     }
   });
 
@@ -384,3 +479,26 @@ backupCmd
   });
 
 export { backupCmd };
+
+async function readBackupPassphraseFromVault(agentName: string | undefined, secretKey: string): Promise<string> {
+  if (!agentName) {
+    throw new Error('Passphrase not provided and --agent was not set for Vault lookup');
+  }
+
+  const vault = VaultClient.create(agentName);
+  const result = await vault.getSecret(secretKey);
+  if (!result.success || !result.data) {
+    throw new Error(result.error || `Failed to read Vault secret "${secretKey}"`);
+  }
+
+  const secretValue = result.data.value;
+  if (typeof secretValue === 'string') {
+    return secretValue;
+  }
+
+  const value = secretValue.value;
+  if (!value) {
+    throw new Error(`Vault secret "${secretKey}" does not contain a "value" field`);
+  }
+  return value;
+}
