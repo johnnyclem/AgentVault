@@ -305,6 +305,8 @@ actor CLIBridge {
         )
     }
 
+    // MARK: - Orchestration Operations
+
     /// Run a Claude Code orchestration session.
     func orchestrateWithClaude(options: CLIOrchestrateOptions) async throws -> String {
         let root = try requireProjectRoot()
@@ -340,7 +342,7 @@ actor CLIBridge {
     func mintGoogleA2AAgent(options: CLIMintGoogleA2AOptions) async throws -> String {
         let root = try requireProjectRoot()
 
-        var args = ["mint", "agent", options.name, "--google-adk-workflow-agent", "--yes", "--network", options.network]
+        var args = ["mint", "agent", options.name, options.agentType.cliFlag, "--yes", "--network", options.network]
 
         if let outputDir = options.outputDir, !outputDir.isEmpty {
             args += ["--output-dir", outputDir]
@@ -599,6 +601,7 @@ struct CLIOrchestrateOptions {
 
 struct CLIMintGoogleA2AOptions {
     var name: String
+    var agentType: GoogleA2AAgentType = .workflow
     var network: String = "local"
     var outputDir: String?
     var canisterId: String?
@@ -612,4 +615,22 @@ struct CLIWalletResult {
     let privateKey: String?
     let publicKey: String?
     let chain: Chain
+}
+
+enum GoogleA2AAgentType: String, CaseIterable, Identifiable {
+    case loop
+    case workflow
+    case sequential
+    case parallel
+
+    var id: String { rawValue }
+
+    var cliFlag: String {
+        switch self {
+        case .loop: return "--google-adk-loop-agent"
+        case .workflow: return "--google-adk-workflow-agent"
+        case .sequential: return "--google-adk-sequential-agent"
+        case .parallel: return "--google-adk-parallel-agent"
+        }
+    }
 }

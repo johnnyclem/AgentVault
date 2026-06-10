@@ -109,6 +109,7 @@ struct iOSGuildView: View {
     @State private var orchestrateModel: String = "claude-opus-4-6"
     @State private var orchestrateDryRun: Bool = true
     @State private var mintAgentName: String = "ios-a2a-agent"
+    @State private var mintAgentType: GoogleA2AAgentType = .workflow
     @State private var mintCanisterId: String = ""
     @State private var mintOutputDir: String = ""
     @State private var isRunningCLIAction = false
@@ -322,8 +323,16 @@ struct iOSGuildView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Google ADK + A2A Mint")
                     .font(.subheadline.weight(.semibold))
-                TextField("Agent name", text: $mintAgentName)
-                    .textFieldStyle(.roundedBorder)
+                HStack {
+                    TextField("Agent name", text: $mintAgentName)
+                        .textFieldStyle(.roundedBorder)
+                    Picker("Type", selection: $mintAgentType) {
+                        ForEach(GoogleA2AAgentType.allCases) { type in
+                            Text(type.rawValue).tag(type)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
                 HStack {
                     TextField("Canister ID (optional)", text: $mintCanisterId)
                         .textFieldStyle(.roundedBorder)
@@ -425,6 +434,7 @@ struct iOSGuildView: View {
             do {
                 let output = try await cliBridge.mintGoogleA2AAgent(options: CLIMintGoogleA2AOptions(
                     name: name,
+                    agentType: mintAgentType,
                     network: "local",
                     outputDir: optional(mintOutputDir),
                     canisterId: optional(mintCanisterId),
