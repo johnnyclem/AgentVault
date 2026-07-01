@@ -45,6 +45,8 @@ Use production docs with an initialized wallet, funded cycles context, and secur
   Stenographer, and Short-Hand as a single agent stack.
 - [Ecosystem Engineering Guide](/docs/ecosystem/engineering-guide): component reference, data-flow
   architecture, current integration state, and gaps.
+- [Cross-Repo Evaluation Playbook](/docs/ecosystem/cross-repo-playbook): runbook for reproducing
+  this evaluation from within SmallChat, Stenographer, or Short-Hand.
 
 ## Recommended Sync Path
 

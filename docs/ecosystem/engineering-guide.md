@@ -8,6 +8,8 @@ and how to close the gaps.
 > Stenographer, and Short-Hand claims come from their public READMEs (`github.com/johnnyclem/{smallchat,
 > stenographer,short-hand}`) — this session has no source-level GitHub access outside
 > `johnnyclem/agentvault`. Re-verify exact APIs against upstream source before writing integration code.
+> See [`cross-repo-playbook.md`](./cross-repo-playbook.md) for a runbook an agent with access to
+> one of the other three repos can follow to verify and extend this guide from that side.
 
 ## 1. Component reference
 
