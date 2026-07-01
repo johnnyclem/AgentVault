@@ -39,6 +39,13 @@ Use production docs with an initialized wallet, funded cycles context, and secur
 - [Module Reference](/docs/architecture/modules)
 - [Canister Internals](/docs/architecture/canister)
 
+## Ecosystem
+
+- [Ecosystem Executive Summary](/docs/ecosystem/executive-summary): AgentVault, SmallChat,
+  Stenographer, and Short-Hand as a single agent stack.
+- [Ecosystem Engineering Guide](/docs/ecosystem/engineering-guide): component reference, data-flow
+  architecture, current integration state, and gaps.
+
 ## Recommended Sync Path
 
 1. [Installation](/docs/getting-started/installation)
