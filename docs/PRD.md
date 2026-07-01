@@ -9,7 +9,7 @@
 
 ## 1. Executive Summary
 
-AgentVault is an open-source CLI and canister system that enables true autonomy for local AI agents. It solves the fundamental problem of agent state persistence and execution reliability by migrating from fragile local file storage to immutable, sovereign Internet Computer (ICP) canisters.
+AgentVault is an open-source CLI and canister system that enables true autonomy for local AI agents. It solves the fundamental problem of agent state persistence and execution reliability by migrating from fragile local file storage to immutable, production-grade Internet Computer (ICP) canisters.
 
 Core value proposition: **Any user can fully rebuild and resume their agent on a clean OS install using only chain data and a seed phrase—eliminating browser/tab dependency, centralized KMS threats, and fragile off-chain storage.**
 
@@ -24,7 +24,7 @@ Create an open-source tool that:
 
 ### Differentiators
 
-- **Sovereignty:** User controls their data and secrets—no external Vault or middleware SPOFs
+- **User-controlled:** User controls their data and secrets—no external Vault or middleware SPOFs
 - **Persistence:** True autonomy—agents continue even after local machine restarts
 - **Cost-Efficient:** On-chain execution for lightweight inference; off-chain archival for heavy data (Arweave, ~$5/GB/year storage, ~1-2s block times)
 - **Cross-Chain Fusion:** Native interoperability with Ethereum, Bitcoin, Solana via Chain Fusion oracles
@@ -45,7 +45,7 @@ Create an open-source tool that:
 - **Goals:** Deploy agent to ICP canister, migrate existing configs, run 24/7
 
 ### 2.2 Enterprise Operator
-- **Profile:** Running AI agents at scale, needs sovereign deployment
+- **Profile:** Running AI agents at scale, needs independent deployment
 - **Needs:** True autonomy without infrastructure dependencies, compliance-ready solution
 - **Pain Points:**
   - Cloud vendor lock-in

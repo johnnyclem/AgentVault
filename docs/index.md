@@ -1,52 +1,61 @@
-# Neural Codex // AgentVault Documentation
+# AgentVault Documentation
 
-AgentVault is a sovereign runtime for autonomous AI entities on ICP canisters. This portal is structured for fast operator onboarding, resilient deployment, and long-term maintenance.
+AgentVault packages your AI agent, deploys it to an Internet Computer canister, and keeps it running with its
+own durable identity, multi-chain wallet, encrypted secrets, and versioned memory. This is the full reference
+for installing, deploying, operating, and securing it in production.
 
-:::note System Information
-Use production docs with an initialized wallet, funded cycles context, and secure mnemonic handling practices.
+:::note Before you start
+Production use requires a funded ICP identity and cycles balance, plus secure handling of your wallet
+mnemonic. See [Installation](/docs/getting-started/installation) for setup details.
 :::
 
-## Core Hierarchy
+## Get started
 
-| Layer | Purpose | Entry Point |
+| Step | What it covers | Start here |
 | --- | --- | --- |
-| Initialization | Install, configure, and create your first vessel | [Installation](/docs/getting-started/installation) |
-| Sync Protocol | Package and deploy your first entity | [Quick Start](/docs/getting-started/quick-start) |
-| Operator Workflow | End-to-end lifecycle for real workloads | [Tutorial v1.0](/docs/user/tutorial-v1.0) |
+| 1. Install | Install the CLI and set up your ICP identity | [Installation](/docs/getting-started/installation) |
+| 2. Deploy | Package and deploy your first agent | [Quick Start](/docs/getting-started/quick-start) |
+| 3. Operate | End-to-end lifecycle for real workloads | [Tutorial v1.0](/docs/user/tutorial-v1.0) |
 
-## Protocols
+## The agent stack
 
-- [Deployment](/docs/user/deployment): local and mainnet canister operations.
-- [Wallets](/docs/user/wallets): cross-chain custody and transaction flows.
-- [Backups](/docs/user/backups): restore and archival strategy.
-- [Monitoring](/docs/guides/monitoring): health checks, metrics, and alert handling.
-- [Troubleshooting](/docs/user/troubleshooting): fast diagnostics and recovery.
+AgentVault is the runtime layer of a small family of tools built for long-running, autonomous agents: a
+durable place to execute ([AgentVault](#get-started)), a cheap and deterministic way to pick the next action
+([SmallChat](https://github.com/johnnyclem/smallchat)), a passive conversational memory
+([Stenographer](https://github.com/johnnyclem/stenographer)), and a way to keep that memory inside a token
+budget ([Short-Hand](https://github.com/johnnyclem/short-hand)). AgentVault already ships a purpose-built
+implementation of the SmallChat tool-dispatch pattern in its orchestration layer.
 
-## Command Protocols
+- [Ecosystem overview](/docs/ecosystem/executive-summary) — what each project does and how they fit together.
+- [Engineering guide](/docs/ecosystem/engineering-guide) — component reference, integration status, and the
+  roadmap for wiring Stenographer and Short-Hand into AgentVault's orchestration pipeline.
 
-- [CLI Reference](/docs/cli/reference): complete command surface.
-- [CLI Options](/docs/cli/options): global flags and environment variables.
+## Guides
 
-## Guardian Layer
+- [Deployment](/docs/user/deployment) — local and mainnet canister operations.
+- [Wallets](/docs/user/wallets) — cross-chain custody and transaction flows.
+- [Backups](/docs/user/backups) — snapshot, restore, and archival strategy.
+- [Monitoring](/docs/guides/monitoring) — health checks, metrics, and alerting.
+- [Troubleshooting](/docs/user/troubleshooting) — fast diagnostics and recovery.
 
-- [Security Overview](/docs/security/overview): trust model and control boundaries.
-- [Best Practices](/docs/security/best-practices): secure-by-default operation.
-- [Security Audit](/docs/dev/SECURITY_AUDIT): v1.0 findings and recommendations.
+## Reference
 
-## System Cartography
+- [CLI Reference](/docs/cli/reference) — the complete command surface.
+- [CLI Options](/docs/cli/options) — global flags and environment variables.
+
+## Security
+
+- [Security Overview](/docs/security/overview) — trust model and control boundaries.
+- [Best Practices](/docs/security/best-practices) — secure-by-default operation.
+- [Security Audit](/docs/dev/SECURITY_AUDIT) — v1.0 findings and recommendations.
+
+## Architecture
 
 - [Architecture Overview](/docs/architecture/overview)
 - [Module Reference](/docs/architecture/modules)
 - [Canister Internals](/docs/architecture/canister)
 
-## Ecosystem
-
-- [Ecosystem Executive Summary](/docs/ecosystem/executive-summary): AgentVault, SmallChat,
-  Stenographer, and Short-Hand as a single agent stack.
-- [Ecosystem Engineering Guide](/docs/ecosystem/engineering-guide): component reference, data-flow
-  architecture, current integration state, and gaps.
-
-## Recommended Sync Path
+## Recommended reading order
 
 1. [Installation](/docs/getting-started/installation)
 2. [Quick Start](/docs/getting-started/quick-start)
@@ -54,6 +63,7 @@ Use production docs with an initialized wallet, funded cycles context, and secur
 4. [Deployment](/docs/user/deployment) and [Wallets](/docs/user/wallets)
 5. [Backups](/docs/user/backups) and [Monitoring](/docs/guides/monitoring)
 6. [Security Overview](/docs/security/overview)
+7. [Ecosystem overview](/docs/ecosystem/executive-summary)
 
 ## Status
 

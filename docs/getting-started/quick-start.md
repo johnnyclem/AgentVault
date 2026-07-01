@@ -1,6 +1,6 @@
-# Quick Start // Initial Sync Sequence
+# Quick Start
 
-Deploy your first AgentVault entity in under 10 minutes.
+Deploy your first AgentVault agent in under 10 minutes.
 
 :::note Prerequisites
 - Node.js 18+
@@ -8,7 +8,7 @@ Deploy your first AgentVault entity in under 10 minutes.
 - AgentVault CLI installed (`npm install -g agentvault`)
 :::
 
-## 1. Initialize Project Vessel
+## 1. Initialize your project
 
 ```bash
 agentvault init my-first-agent
@@ -17,14 +17,14 @@ cd my-first-agent
 
 This creates a baseline project with config, source, and package metadata.
 
-## 2. Activate Local ICP Runtime
+## 2. Start the local ICP runtime
 
 ```bash
 dfx start --background
 dfx ping
 ```
 
-## 3. Package Entity Artifacts
+## 3. Package the agent
 
 ```bash
 agentvault package ./
@@ -38,9 +38,9 @@ This compiles the agent and prepares deterministic deployment output.
 agentvault deploy --network local
 ```
 
-Capture the emitted canister ID from command output.
+Copy the canister ID printed in the command output — you'll need it in the next steps.
 
-## 5. Verify Operational State
+## 5. Verify it's running
 
 ```bash
 agentvault status
@@ -48,33 +48,33 @@ agentvault info
 agentvault health
 ```
 
-## 6. Execute a Task
+## 6. Run a task
 
 ```bash
 agentvault exec --canister-id <YOUR_CANISTER_ID> "hello world"
 ```
 
-## 7. Read and Preserve State
+## 7. Read and back up state
 
 ```bash
 agentvault show --canister-id <YOUR_CANISTER_ID>
 agentvault backup --canister-id <YOUR_CANISTER_ID>
 ```
 
-:::tip Divine Efficiency
+:::tip Pro tip
 Automate `status`, `health`, and `backup` checks in your local CI before promoting deployments.
 :::
 
-## Next Protocols
+## Next Steps
 
 | Goal | Guide |
 | --- | --- |
-| Complete operational walkthrough | [Tutorial](/docs/user/tutorial-v1.0) |
-| Mainnet deployment strategy | [Deployment Guide](/docs/user/deployment) |
-| Multi-chain wallet operations | [Wallet Guide](/docs/user/wallets) |
-| Full command surface | [CLI Reference](/docs/cli/reference) |
+| Full walkthrough | [Tutorial](/docs/user/tutorial-v1.0) |
+| Deploy to mainnet | [Deployment Guide](/docs/user/deployment) |
+| Manage wallets across chains | [Wallet Guide](/docs/user/wallets) |
+| All CLI commands | [CLI Reference](/docs/cli/reference) |
 
-## Common Command Set
+## Common Commands
 
 ```bash
 # List all local agents
@@ -83,7 +83,7 @@ agentvault list
 # View runtime logs
 agentvault logs <canister-id>
 
-# Fetch state for local reconstruction
+# Fetch state to restore locally
 agentvault fetch --canister-id <canister-id>
 
 # Inspect cycle balance
@@ -97,4 +97,4 @@ agentvault --help
 agentvault <command> --help
 ```
 
-See [Troubleshooting](/docs/user/troubleshooting) when commands fail or outputs diverge.
+See [Troubleshooting](/docs/user/troubleshooting) if a command fails or the output doesn't match what you expect.

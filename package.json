@@ -1,7 +1,7 @@
 {
   "name": "agentvault",
   "version": "1.0.4",
-  "description": "Persistent On-Chain AI Agent Platform - Sovereign, Reconstructible, Autonomous",
+  "description": "Production infrastructure for deploying and running AI agents on Internet Computer canisters",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
   "exports": {
@@ -44,7 +44,6 @@
     "icp",
     "wasm",
     "blockchain",
-    "sovereign",
     "canister",
     "internet-computer",
     "clawdbot",
@@ -53,7 +52,7 @@
     "codeline",
     "autonomous",
     "persistent",
-    "reconstructible"
+    "deployment"
   ],
   "author": "AgentVault Contributors",
   "license": "MIT",

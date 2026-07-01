@@ -9,7 +9,7 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: 'Core Hierarchy',
+      label: 'Getting Started',
       items: [
         'getting-started/installation',
         'getting-started/quick-start',
@@ -18,7 +18,7 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: 'Sovereign Operations',
+      label: 'Guides',
       items: [
         'user/tutorial-v1.0',
         'user/deployment',
@@ -31,7 +31,7 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: 'Command Protocols',
+      label: 'CLI Reference',
       items: [
         'cli/reference',
         'cli/options',
@@ -39,7 +39,7 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: 'Guardian Layer',
+      label: 'Security',
       items: [
         'security/overview',
         'security/best-practices',
@@ -47,7 +47,7 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: 'System Cartography',
+      label: 'Architecture',
       items: [
         'architecture/overview',
         'architecture/modules',
@@ -56,7 +56,15 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: 'Builder Notes',
+      label: 'Ecosystem',
+      items: [
+        'ecosystem/executive-summary',
+        'ecosystem/engineering-guide',
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Contributing',
       items: [
         'development/contributing',
         'development/testing',
@@ -64,7 +72,7 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: 'Advanced Rituals',
+      label: 'Advanced',
       items: [
         'guides/monitoring',
         'guides/advanced/promotion',

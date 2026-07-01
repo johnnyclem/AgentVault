@@ -1,6 +1,6 @@
-# MemoryRepo — Git for Agent Souls
+# MemoryRepo
 
-MemoryRepo is a git-style version-controlled memory system built as an ICP canister. It gives agents persistent, branching, auditable memory — anchored by a genesis commit from a Soul.md document.
+MemoryRepo is a git-style version-controlled memory system built as an ICP canister. It gives agents persistent, branching, auditable memory — anchored by a genesis commit from a `soul.md` document.
 
 ## Architecture
 
@@ -22,7 +22,7 @@ Every state change is recorded as a commit:
 
 - **id**: Auto-generated (`c_<timestamp>_<index>`)
 - **diff**: The actual content/state change
-- **tags**: Semantic labels for categorization (e.g., `chat`, `config`, `soul`)
+- **tags**: Labels for categorization (e.g., `chat`, `config`, `soul`)
 - **parent**: Previous commit ID (null for genesis)
 
 ### Branches
@@ -42,7 +42,7 @@ agentvault memory checkout experiments
 
 ### Genesis Commits
 
-The first commit in a repository is the genesis commit, created from a Soul.md document. This anchors the agent's identity:
+The first commit in a repository is the genesis commit, created from a `soul.md` document. This establishes the agent's baseline configuration:
 
 ```bash
 agentvault memory init soul.md
@@ -50,7 +50,7 @@ agentvault memory init soul.md
 
 ### Rebase
 
-Rebase creates a new branch with a new genesis commit (from a new Soul.md), then replays all non-genesis commits. The original branch is preserved:
+Rebase creates a new branch with a new genesis commit (from a new `soul.md`), then replays all non-genesis commits. The original branch is preserved:
 
 ```bash
 agentvault memory rebase --from-soul new-soul.md

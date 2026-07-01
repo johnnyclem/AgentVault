@@ -3,8 +3,8 @@ import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
-  title: 'Agent Vault',
-  tagline: "Protecting your agent's neural sovereignty through cryptographic decentralization.",
+  title: 'AgentVault',
+  tagline: 'Deploy AI agents that run forever.',
   favicon: 'img/logo.svg',
 
   url: 'https://agentvault.cloud',
@@ -48,16 +48,16 @@ const config: Config = {
     metadata: [
       {name: 'keywords', content: 'ICP, Internet Computer, AI agents, blockchain, canister, deployment, Web3'},
       {name: 'twitter:card', content: 'summary_large_image'},
-      {name: 'twitter:title', content: 'Agent Vault // Neural Sovereignty for Sovereign Agent Operations'},
-      {name: 'twitter:description', content: 'Deploy autonomous AI entities to ICP canisters with sovereign execution, encrypted state, and resilient operations.'},
+      {name: 'twitter:title', content: 'AgentVault — Production infrastructure for autonomous AI agents'},
+      {name: 'twitter:description', content: 'Deploy AI agents to ICP canisters with a durable identity, multi-chain wallet, encrypted secrets, and versioned memory.'},
     ],
     colorMode: {
-      defaultMode: 'dark',
-      disableSwitch: true,
-      respectPrefersColorScheme: false,
+      defaultMode: 'light',
+      disableSwitch: false,
+      respectPrefersColorScheme: true,
     },
     navbar: {
-      title: 'AGENT_VAULT_V1',
+      title: 'AgentVault',
       logo: {
         alt: 'AgentVault Logo',
         src: 'img/logo.svg',
@@ -70,12 +70,17 @@ const config: Config = {
         },
         {
           to: '/docs/security/overview',
-          label: 'Protocols',
+          label: 'Security',
           position: 'left',
         },
         {
-          to: '/docs/architecture/overview',
+          to: '/docs/ecosystem/executive-summary',
           label: 'Ecosystem',
+          position: 'left',
+        },
+        {
+          to: '/changelog',
+          label: 'Changelog',
           position: 'left',
         },
         {
@@ -93,7 +98,7 @@ const config: Config = {
       ],
     },
     footer: {
-      style: 'dark',
+      style: 'light',
       links: [
         {
           title: 'Documentation',
@@ -109,6 +114,10 @@ const config: Config = {
             {
               label: 'Architecture',
               to: '/docs/architecture/overview',
+            },
+            {
+              label: 'Ecosystem',
+              to: '/docs/ecosystem/executive-summary',
             },
           ],
         },
@@ -136,10 +145,14 @@ const config: Config = {
               label: 'npm',
               href: 'https://www.npmjs.com/package/agentvault',
             },
+            {
+              label: 'Changelog',
+              to: '/changelog',
+            },
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} AgentVault // Documentation Engine`,
+      copyright: `Copyright © ${new Date().getFullYear()} AgentVault.`,
     },
     prism: {
       theme: prismThemes.github,
