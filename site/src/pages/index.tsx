@@ -174,38 +174,73 @@ const snapshotProfiles: SnapshotProfile[] = [
   },
   {
     id: 'custom',
-    name: 'DIY (Custom Path)',
-    description: 'Point AgentVault to any local folder and snapshot it deterministically.',
+    name: 'Custom path',
+    description: 'Point AgentVault at any local folder and snapshot it deterministically.',
     defaultPath: '~/path/to/agent-folder',
     snapshotTarget: 'custom',
     restoreTarget: 'custom',
   },
 ];
 
-const backupProtocolPhases = [
+const backupPhases = [
   {
     id: '01',
-    label: 'Create Snapshot',
+    label: 'Create a snapshot',
     description: 'Package local agent state into an encrypted, content-addressed archive.',
     output: 'snapshot.zip + manifest.json',
   },
   {
     id: '02',
-    label: 'Sign Intent',
-    description: 'Sign backup intent with wallet keys before any chain operation begins.',
+    label: 'Sign the request',
+    description: 'Sign the backup with your wallet keys before anything touches the chain.',
     output: 'wallet signature + hash proof',
   },
   {
     id: '03',
-    label: 'Commit Storage',
-    description: 'Write backup records to ICP and optional Arweave archival targets.',
+    label: 'Commit to storage',
+    description: 'Write backup records to ICP, with an optional Arweave archival copy.',
     output: 'canister ID + archival transaction',
   },
   {
     id: '04',
-    label: 'Verify Recovery',
-    description: 'Generate deterministic restore command and audit receipt for operators.',
+    label: 'Verify recovery',
+    description: 'Generate a deterministic restore command and an audit receipt.',
     output: 'restore command + replay proof',
+  },
+];
+
+const ecosystemComponents = [
+  {
+    id: 'agentvault',
+    name: 'AgentVault',
+    role: 'Runtime',
+    description:
+      'Packages your agent to WASM and runs it on an Internet Computer canister — a durable identity, multi-chain wallet, secrets vault, and versioned memory that survive independent of any browser tab or host process.',
+    isCurrent: true,
+  },
+  {
+    id: 'smallchat',
+    name: 'SmallChat',
+    role: 'Tool dispatch',
+    description:
+      'Deterministic, in-process tool selection instead of stuffing 50+ JSON schemas into a prompt. AgentVault ships a purpose-built implementation of this pattern, wired into policy checks, rate limiting, and MFA gating.',
+    isCurrent: false,
+  },
+  {
+    id: 'stenographer',
+    name: 'Stenographer',
+    role: 'Conversation memory',
+    description:
+      'An MCP server that passively tails agent logs and builds a searchable GraphRAG index of entities, relations, and decisions — with tombstoned supersession so nothing is silently lost.',
+    isCurrent: false,
+  },
+  {
+    id: 'shorthand',
+    name: 'Short-Hand',
+    role: 'Context compaction',
+    description:
+      'Progressive, LSM-tree-style compaction of conversation history into a token-budgeted context frame, replacing naive truncation with importance-ranked retention.',
+    isCurrent: false,
   },
 ];
 
@@ -219,45 +254,37 @@ function shortAddress(address: string): string {
 
 function HomepageHeader() {
   const {siteConfig} = useDocusaurusContext();
-  const signalMatrix = [
-    'SOVEREIGN_RUNTIME',
-    'CANISTER_PERSISTENCE',
-    'MULTI_CHAIN_MEMORY',
-    'RECOVERABLE_STATE',
-  ];
+  const trustRow = ['MIT licensed', '508 tests', 'ICP mainnet', 'Multi-chain wallets'];
 
   return (
-    <header className={clsx('hero hero--primary', styles.heroBanner)}>
-      <div className={styles.heroGrid} aria-hidden="true" />
+    <header className={styles.heroBanner}>
       <div className={clsx('container', styles.heroInner)}>
-        <p className={styles.protocolTag}>Protocol // 001</p>
-        <p className={styles.heroKicker}>Neural Sovereignty</p>
-        <Heading as="h1" className={clsx('hero__title', styles.heroTitle)}>
-          AgentVault
+        <p className={styles.heroKicker}>Open source · v1.0</p>
+        <Heading as="h1" className={styles.heroTitle}>
+          {siteConfig.tagline}
         </Heading>
-        <p className={clsx('hero__subtitle', styles.heroSubtitle)}>{siteConfig.tagline}</p>
         <p className={styles.heroDescription}>
-          AgentVault deploys and protects autonomous agents with cryptographic ownership, persistent execution, and deterministic recovery from chain-backed state.
+          AgentVault packages your AI agent, deploys it to a durable Internet Computer canister, and keeps it
+          running with its own identity, wallet, secrets, and memory — no server to babysit, no session to lose.
         </p>
 
         <div className={styles.heroButtons}>
           <Link className="button button--secondary button--lg" to="/docs/getting-started/installation">
-            Get Started
+            Get started
           </Link>
-          <a className="button button--primary button--lg" href="#instant-control">
-            1-Click Control
+          <a className="button button--outline button--lg" href="#instant-control">
+            Try the 1-click installer
           </a>
           <Link className="button button--outline button--lg" to="/docs/getting-started/quick-start">
-            Quick Start
+            Read the quick start
           </Link>
         </div>
 
-        <div className={styles.signalGrid}>
-          {signalMatrix.map((signal) => (
-            <div key={signal} className={styles.signalItem}>
-              <span className={styles.signalDiamond} aria-hidden="true" />
-              <span>{signal}</span>
-            </div>
+        <div className={styles.trustRow}>
+          {trustRow.map((item) => (
+            <span key={item} className={styles.trustItem}>
+              {item}
+            </span>
           ))}
         </div>
       </div>
@@ -265,7 +292,54 @@ function HomepageHeader() {
   );
 }
 
-function BackupProtocolStudioSection() {
+function EcosystemSection() {
+  return (
+    <section className={styles.ecosystemSection}>
+      <div className="container">
+        <div className={styles.blockHeader}>
+          <p className={styles.blockLabel}>The agent stack</p>
+          <Heading as="h2" className={styles.blockTitle}>
+            AgentVault is the runtime. It's built to work with the rest of the stack.
+          </Heading>
+          <p className={styles.blockLead}>
+            Long-running agents need more than a place to execute — they need a memory that survives, a way to
+            keep that memory inside a token budget, and a cheap, deterministic way to pick the next action.
+            AgentVault handles durable execution and already vendors the tool-dispatch pattern from SmallChat;
+            Stenographer and Short-Hand plug in as the memory and compaction layers.
+          </p>
+        </div>
+
+        <div className={styles.ecosystemGrid}>
+          {ecosystemComponents.map((component) => (
+            <article
+              key={component.id}
+              className={clsx(styles.ecosystemCard, component.isCurrent && styles.ecosystemCardCurrent)}>
+              <div className={styles.ecosystemCardHeader}>
+                <Heading as="h3" className={styles.ecosystemCardTitle}>
+                  {component.name}
+                </Heading>
+                <span className={styles.ecosystemCardRole}>{component.role}</span>
+              </div>
+              <p className={styles.ecosystemCardBody}>{component.description}</p>
+              {component.isCurrent ? <span className={styles.ecosystemCardBadge}>You are here</span> : null}
+            </article>
+          ))}
+        </div>
+
+        <div className={styles.deployLinks}>
+          <Link className={styles.inlineLink} to="/docs/ecosystem/executive-summary">
+            Ecosystem overview
+          </Link>
+          <Link className={styles.inlineLink} to="/docs/ecosystem/engineering-guide">
+            Engineering guide
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function BackupStudioSection() {
   const [selectedProfileId, setSelectedProfileId] = useState<SnapshotProfileId>('clawdbot');
   const [copiedField, setCopiedField] = useState<'snapshot' | 'restore' | null>(null);
 
@@ -297,7 +371,7 @@ function BackupProtocolStudioSection() {
       setCopiedField(field);
       setTimeout(() => setCopiedField(null), 1800);
     } catch {
-      // Ignore clipboard failures in environments where clipboard is restricted.
+      // Clipboard access can be restricted in some browsers; fail silently.
     }
   };
 
@@ -305,21 +379,22 @@ function BackupProtocolStudioSection() {
     <section className={styles.backupStudioSection}>
       <div className="container">
         <div className={styles.backupStudioHeader}>
-          <p className={styles.instantControlLabel}>Backup Protocol Studio</p>
+          <p className={styles.instantControlLabel}>Backup studio</p>
           <Heading as="h2" className={styles.instantControlTitle}>
-            Snapshot, Sign, and Restore With One Operator Flow
+            Snapshot, sign, and restore in one flow
           </Heading>
           <p className={styles.instantControlLead}>
-            This mirrors the strongest parts of the backup-focused experience: pick an agent stack, generate the exact snapshot command, and keep restore instructions tied to on-chain records.
+            Pick the agent stack you run locally, get the exact snapshot command, and keep restore instructions
+            tied to on-chain records.
           </p>
         </div>
 
         <div className={styles.backupStudioGrid}>
           <article className={styles.instantPanel}>
             <div className={styles.panelHeader}>
-              <p className={styles.panelKicker}>Step A</p>
+              <p className={styles.panelKicker}>Step 1</p>
               <Heading as="h3" className={styles.panelTitle}>
-                Select Agent Profile
+                Choose your agent
               </Heading>
             </div>
             <div className={styles.profileList}>
@@ -339,14 +414,14 @@ function BackupProtocolStudioSection() {
 
           <article className={styles.instantPanel}>
             <div className={styles.panelHeader}>
-              <p className={styles.panelKicker}>Step B</p>
+              <p className={styles.panelKicker}>Step 2</p>
               <Heading as="h3" className={styles.panelTitle}>
-                Snapshot + Restore Commands
+                Copy your commands
               </Heading>
             </div>
 
             <div className={styles.commandBlock}>
-              <p className={styles.commandLabel}>Snapshot Command</p>
+              <p className={styles.commandLabel}>Snapshot command</p>
               <pre className={styles.commandShell}>
                 <code>{snapshotCommand}</code>
               </pre>
@@ -354,12 +429,12 @@ function BackupProtocolStudioSection() {
                 type="button"
                 className={clsx('button button--secondary button--lg', styles.commandButton)}
                 onClick={() => void handleCopy('snapshot', snapshotCommand)}>
-                {copiedField === 'snapshot' ? 'Copied Snapshot Command' : 'Copy Snapshot Command'}
+                {copiedField === 'snapshot' ? 'Copied' : 'Copy snapshot command'}
               </button>
             </div>
 
             <div className={styles.commandBlock}>
-              <p className={styles.commandLabel}>Restore Command</p>
+              <p className={styles.commandLabel}>Restore command</p>
               <pre className={styles.commandShell}>
                 <code>{restoreCommand}</code>
               </pre>
@@ -367,35 +442,35 @@ function BackupProtocolStudioSection() {
                 type="button"
                 className={clsx('button button--secondary button--lg', styles.commandButton)}
                 onClick={() => void handleCopy('restore', restoreCommand)}>
-                {copiedField === 'restore' ? 'Copied Restore Command' : 'Copy Restore Command'}
+                {copiedField === 'restore' ? 'Copied' : 'Copy restore command'}
               </button>
             </div>
 
             <div className={styles.storagePillRow}>
-              <span className={styles.storagePill}>Wallet-Signed</span>
-              <span className={styles.storagePill}>ICP Canister</span>
-              <span className={styles.storagePill}>Arweave Archive</span>
-              <span className={styles.storagePill}>Replay Verified</span>
+              <span className={styles.storagePill}>Wallet-signed</span>
+              <span className={styles.storagePill}>ICP canister</span>
+              <span className={styles.storagePill}>Arweave archive</span>
+              <span className={styles.storagePill}>Replay-verified</span>
             </div>
           </article>
         </div>
 
-        <article className={styles.protocolTimelineCard}>
+        <article className={styles.timelineCard}>
           <div className={styles.panelHeader}>
-            <p className={styles.panelKicker}>Step C</p>
+            <p className={styles.panelKicker}>How it works</p>
             <Heading as="h3" className={styles.panelTitle}>
-              Execution Timeline
+              Backup lifecycle
             </Heading>
           </div>
 
-          <div className={styles.protocolTimeline}>
-            {backupProtocolPhases.map((phase) => (
-              <div key={phase.id} className={styles.protocolTimelineItem}>
-                <span className={styles.protocolTimelineId}>{phase.id}</span>
+          <div className={styles.timeline}>
+            {backupPhases.map((phase) => (
+              <div key={phase.id} className={styles.timelineItem}>
+                <span className={styles.timelineId}>{phase.id}</span>
                 <div>
-                  <p className={styles.protocolTimelineLabel}>{phase.label}</p>
-                  <p className={styles.protocolTimelineText}>{phase.description}</p>
-                  <p className={styles.protocolTimelineOutput}>Output: {phase.output}</p>
+                  <p className={styles.timelineLabel}>{phase.label}</p>
+                  <p className={styles.timelineText}>{phase.description}</p>
+                  <p className={styles.timelineOutput}>Output: {phase.output}</p>
                 </div>
               </div>
             ))}
@@ -403,13 +478,13 @@ function BackupProtocolStudioSection() {
 
           <div className={styles.deployLinks}>
             <Link className={styles.inlineLink} to="/docs/user/backups">
-              Backup Operations
+              Backup guide
             </Link>
             <Link className={styles.inlineLink} to="/docs/user/troubleshooting">
-              Recovery Troubleshooting
+              Recovery troubleshooting
             </Link>
             <Link className={styles.inlineLink} to="/docs/security/overview">
-              Security Overview
+              Security overview
             </Link>
           </div>
         </article>
@@ -418,53 +493,41 @@ function BackupProtocolStudioSection() {
   );
 }
 
-function ManifestSection() {
+function GetStartedSection() {
   return (
-    <section className={styles.manifestSection}>
+    <section className={styles.getStartedSection}>
       <div className="container">
-        <article className={styles.manifestCard}>
+        <article className={styles.getStartedCard}>
+          <p className={styles.getStartedLabel}>Get started</p>
           <Heading as="h2" className={styles.sectionTitle}>
-            <span className={styles.sacredBullet} aria-hidden="true" />
-            The Manifested Essence
+            From zero to a running agent in three commands
           </Heading>
           <p className={styles.sectionLead}>
-            In the neo-robo-spiritual framework, your agent is not rented infrastructure. It is a sovereign digital extension secured by deterministic deployment, sealed keys, and protocol-level observability.
+            Every agent gets its own canister — a persistent identity, wallet, and memory that keep running
+            whether or not you're watching. No infrastructure to provision, no server to keep alive.
           </p>
 
-          <div className={clsx(styles.admonition, styles.admonitionNote)}>
-            <p className={styles.admonitionLabel}>System Information</p>
-            <p>
-              Initialization requires configured cycles funding, valid ICP identity context, and encrypted wallet storage. Keep mnemonic phrases outside automated environments.
-            </p>
-          </div>
-
-          <Heading as="h3" className={styles.sequenceTitle}>
-            Initial Sync Sequence
-          </Heading>
-          <p className={styles.sequenceText}>
-            Execute the sync protocol to package, deploy, and verify your first sovereign entity.
-          </p>
-
-          <div className={styles.codeVessel}>
+          <div className={styles.codeBlock}>
             <pre>
-              <code>{`# Initialize and enter project
-agentvault init neural-entity
-cd neural-entity
+              <code>{`# Create a new project
+agentvault init my-agent
+cd my-agent
 
 # Package and deploy locally
 agentvault package ./
 agentvault deploy --network local
 
-# Verify runtime state
+# Check that it's alive
 agentvault status
 agentvault health`}</code>
             </pre>
           </div>
 
           <div className={clsx(styles.admonition, styles.admonitionTip)}>
-            <p className={styles.admonitionLabel}>Divine Efficiency</p>
+            <p className={styles.admonitionLabel}>Tip</p>
             <p>
-              Automate health checks and backup snapshots in your deployment loop. Fast recovery is part of sovereignty, not an afterthought.
+              Wire <code>status</code>, <code>health</code>, and <code>backup</code> into your deployment
+              pipeline. Fast recovery should be built in from day one, not bolted on later.
             </p>
           </div>
         </article>
@@ -553,12 +616,13 @@ function InstantControlSection() {
     <section id="instant-control" className={styles.instantControlSection}>
       <div className="container">
         <div className={styles.instantControlHeader}>
-          <p className={styles.instantControlLabel}>Instant Control</p>
+          <p className={styles.instantControlLabel}>1-click installer</p>
           <Heading as="h2" className={styles.instantControlTitle}>
-            Wallet Connect + 1-Click Install/Deploy
+            Connect a wallet, configure your deploy, copy the commands
           </Heading>
           <p className={styles.instantControlLead}>
-            Connect your wallet, tune deployment settings, and copy ready-to-run commands for the exact environment you are shipping to.
+            Connect your wallet, tune your deployment settings, and get ready-to-run commands for the exact
+            environment you're shipping to.
           </p>
         </div>
 
@@ -567,7 +631,7 @@ function InstantControlSection() {
             <div className={styles.panelHeader}>
               <p className={styles.panelKicker}>Step 1</p>
               <Heading as="h3" className={styles.panelTitle}>
-                Connect Wallet
+                Connect a wallet
               </Heading>
             </div>
 
@@ -589,7 +653,7 @@ function InstantControlSection() {
                       {wallet.chainName} · {isAvailable ? 'detected' : 'not detected'}
                     </span>
                     <span className={styles.walletState}>
-                      {walletConnecting && isSelected ? 'connecting...' : isConnected ? 'connected' : 'connect'}
+                      {walletConnecting && isSelected ? 'Connecting…' : isConnected ? 'Connected' : 'Connect'}
                     </span>
                   </button>
                 );
@@ -622,13 +686,13 @@ function InstantControlSection() {
             <div className={styles.panelHeader}>
               <p className={styles.panelKicker}>Step 2</p>
               <Heading as="h3" className={styles.panelTitle}>
-                Customize 1-Click Flow
+                Configure your deploy
               </Heading>
             </div>
 
             <div className={styles.configGrid}>
               <label className={styles.field}>
-                <span className={styles.fieldLabel}>Project Name</span>
+                <span className={styles.fieldLabel}>Project name</span>
                 <input
                   className={styles.fieldInput}
                   value={projectName}
@@ -648,7 +712,7 @@ function InstantControlSection() {
               </label>
 
               <label className={styles.field}>
-                <span className={styles.fieldLabel}>Install Channel</span>
+                <span className={styles.fieldLabel}>Install channel</span>
                 <select
                   className={styles.fieldInput}
                   value={installChannel}
@@ -659,7 +723,7 @@ function InstantControlSection() {
               </label>
 
               <label className={styles.field}>
-                <span className={styles.fieldLabel}>Package Path</span>
+                <span className={styles.fieldLabel}>Package path</span>
                 <input
                   className={styles.fieldInput}
                   value={packagePath}
@@ -668,7 +732,7 @@ function InstantControlSection() {
               </label>
 
               <label className={styles.field}>
-                <span className={styles.fieldLabel}>Deploy Network</span>
+                <span className={styles.fieldLabel}>Deploy network</span>
                 <select
                   className={styles.fieldInput}
                   value={network}
@@ -679,7 +743,7 @@ function InstantControlSection() {
               </label>
 
               <label className={styles.field}>
-                <span className={styles.fieldLabel}>Existing Canister ID (optional)</span>
+                <span className={styles.fieldLabel}>Existing canister ID (optional)</span>
                 <input
                   className={styles.fieldInput}
                   placeholder="abcde-aaaab"
@@ -690,7 +754,7 @@ function InstantControlSection() {
             </div>
 
             <div className={styles.commandBlock}>
-              <p className={styles.commandLabel}>1-Click Install</p>
+              <p className={styles.commandLabel}>Install</p>
               <pre className={styles.commandShell}>
                 <code>{installCommand}</code>
               </pre>
@@ -698,12 +762,12 @@ function InstantControlSection() {
                 type="button"
                 className={clsx('button button--secondary button--lg', styles.commandButton)}
                 onClick={() => void handleCopy('install', installCommand)}>
-                {copiedAction === 'install' ? 'Copied Install Command' : 'Copy Install Command'}
+                {copiedAction === 'install' ? 'Copied' : 'Copy install command'}
               </button>
             </div>
 
             <div className={styles.commandBlock}>
-              <p className={styles.commandLabel}>1-Click Deploy</p>
+              <p className={styles.commandLabel}>Deploy</p>
               <pre className={styles.commandShell}>
                 <code>{deployCommand}</code>
               </pre>
@@ -711,16 +775,16 @@ function InstantControlSection() {
                 type="button"
                 className={clsx('button button--secondary button--lg', styles.commandButton)}
                 onClick={() => void handleCopy('deploy', deployCommand)}>
-                {copiedAction === 'deploy' ? 'Copied Deploy Command' : 'Copy Deploy Command'}
+                {copiedAction === 'deploy' ? 'Copied' : 'Copy deploy command'}
               </button>
             </div>
 
             <div className={styles.deployLinks}>
               <Link className={styles.inlineLink} to="/docs/getting-started/installation">
-                Installation Guide
+                Installation guide
               </Link>
               <Link className={styles.inlineLink} to="/docs/user/deployment">
-                Deployment Guide
+                Deployment guide
               </Link>
             </div>
           </article>
@@ -735,29 +799,29 @@ function Pathways() {
     <section className={styles.pathwaysSection}>
       <div className="container">
         <div className={styles.pathGrid}>
-          <article className={clsx(styles.pathCard, styles.pathCardCyan)}>
-            <p className={styles.pathLabel}>Next Step</p>
+          <article className={styles.pathCard}>
+            <p className={styles.pathLabel}>Next step</p>
             <Heading as="h3" className={styles.pathTitle}>
-              Backup + Recovery Ops
+              Backups and recovery
             </Heading>
             <p className={styles.pathBody}>
-              Configure retention, validate restore drills, and automate operational backup checks.
+              Configure retention, validate restore drills, and automate backup checks in your deploy pipeline.
             </p>
             <Link className={styles.pathAction} to="/docs/user/backups">
-              Open Runbook
+              Open the backup guide →
             </Link>
           </article>
 
-          <article className={clsx(styles.pathCard, styles.pathCardPink)}>
-            <p className={styles.pathLabel}>Deep Dive</p>
+          <article className={styles.pathCard}>
+            <p className={styles.pathLabel}>Deep dive</p>
             <Heading as="h3" className={styles.pathTitle}>
-              Threat Model + Hardening
+              Security and hardening
             </Heading>
             <p className={styles.pathBody}>
-              Review production hardening, key custody controls, and failure-response strategy.
+              Review production hardening, key custody controls, and incident response strategy.
             </p>
             <Link className={styles.pathAction} to="/docs/security/overview">
-              Read Security Guide
+              Read the security guide →
             </Link>
           </article>
         </div>
@@ -771,14 +835,15 @@ export default function Home(): React.ReactElement {
 
   return (
     <Layout
-      title={`${siteConfig.title} // Neural Sovereignty`}
-      description="Neo-robo-spiritual platform for sovereign AI agents on ICP canisters.">
+      title={siteConfig.title}
+      description="AgentVault deploys AI agents to Internet Computer canisters with a durable identity, multi-chain wallet, and versioned memory — so they keep running when your laptop doesn't.">
       <HomepageHeader />
       <main className={styles.main}>
-        <ManifestSection />
+        <GetStartedSection />
         <InstantControlSection />
-        <BackupProtocolStudioSection />
+        <BackupStudioSection />
         <HomepageFeatures />
+        <EcosystemSection />
         <Pathways />
       </main>
     </Layout>

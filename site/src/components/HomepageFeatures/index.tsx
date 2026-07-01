@@ -11,65 +11,65 @@ type FeatureItem = {
   action: string;
 };
 
-const CoreHierarchy: FeatureItem[] = [
+const CoreWorkflow: FeatureItem[] = [
   {
     id: '01',
-    title: 'Package the Entity',
+    title: 'Package your agent',
     description:
-      'Compile local agent logic into deterministic WASM artifacts with reproducible packaging and integrity checks.',
+      'Compile local agent code into reproducible WASM artifacts with built-in integrity checks — no manual build pipeline required.',
     destination: '/docs/getting-started/quick-start',
-    action: 'View Sequence',
+    action: 'View the workflow',
   },
   {
     id: '02',
-    title: 'Deploy the Vessel',
+    title: 'Deploy anywhere',
     description:
-      'Ship to local replica or ICP mainnet with controlled upgrades, environment targeting, and deployment traceability.',
+      'Ship to a local replica or ICP mainnet with controlled upgrades, environment targeting, and full deployment history.',
     destination: '/docs/user/deployment',
-    action: 'Open Deployment',
+    action: 'Open deployment docs',
   },
   {
     id: '03',
-    title: 'Guard the Memory',
+    title: 'Keep it recoverable',
     description:
-      'Run health telemetry, rollback gates, and archival workflows so agent state remains recoverable under pressure.',
+      'Run health checks, rollback gates, and automated backups so agent state is always recoverable, even under pressure.',
     destination: '/docs/user/backups',
-    action: 'Open Backup Guide',
+    action: 'Open the backup guide',
   },
 ];
 
-const ProtocolGrid: FeatureItem[] = [
+const PlatformCapabilities: FeatureItem[] = [
   {
     id: 'A1',
-    title: 'Neural Wallet Mesh',
+    title: 'Multi-chain wallets',
     description:
-      'Operate ICP, Ethereum, Solana, and Polkadot assets from one command surface with encrypted local custody.',
+      'Operate ICP, Ethereum, Solana, and Polkadot assets from a single CLI, with encrypted local key custody.',
     destination: '/docs/user/wallets',
-    action: 'Explore Wallets',
+    action: 'Explore wallets',
   },
   {
     id: 'A2',
-    title: 'Guardian Security Layer',
+    title: 'Security by default',
     description:
-      'Apply multi-signature approvals, key hygiene, and canister-level hardening for operational safety.',
+      'Multi-signature approvals, MFA gating, and canister-level hardening are built in, not bolted on.',
     destination: '/docs/security/overview',
-    action: 'Review Security',
+    action: 'Review security',
   },
   {
     id: 'A3',
-    title: 'Operator Control Plane',
+    title: 'Operations tooling',
     description:
-      'Use monitoring, promotion, rollback, and task visibility to manage long-lived autonomous workflows.',
+      'Monitoring, promotion, rollback, and task visibility for managing long-lived agents without guesswork.',
     destination: '/docs/guides/monitoring',
-    action: 'Open Monitoring',
+    action: 'Open monitoring',
   },
   {
     id: 'A4',
-    title: 'System Cartography',
+    title: 'Clear architecture',
     description:
-      'Understand canister internals, module boundaries, and ICP integration primitives before scaling out.',
+      'Understand canister internals, module boundaries, and ICP integration primitives before you scale out.',
     destination: '/docs/architecture/overview',
-    action: 'Read Architecture',
+    action: 'Read the architecture',
   },
 ];
 
@@ -82,7 +82,7 @@ function FeatureCard({id, title, description, destination, action}: FeatureItem)
       </Heading>
       <p className={styles.cardBody}>{description}</p>
       <Link className={styles.cardAction} to={destination}>
-        {action}
+        {action} →
       </Link>
     </article>
   );
@@ -93,27 +93,27 @@ export default function HomepageFeatures(): React.ReactElement {
     <section className={styles.featuresSection}>
       <div className="container">
         <div className={styles.blockHeader}>
-          <p className={styles.blockLabel}>Core Hierarchy</p>
+          <p className={styles.blockLabel}>How it works</p>
           <Heading as="h2" className={styles.blockTitle}>
-            Operate Sovereign Agent Infrastructure
+            Everything you need to run agents in production
           </Heading>
         </div>
 
         <div className={styles.featureGrid}>
-          {CoreHierarchy.map((item) => (
+          {CoreWorkflow.map((item) => (
             <FeatureCard key={item.id} {...item} />
           ))}
         </div>
 
         <div className={styles.blockHeader}>
-          <p className={styles.blockLabel}>Protocols</p>
+          <p className={styles.blockLabel}>Platform</p>
           <Heading as="h2" className={styles.blockTitle}>
-            Build For Resilience, Not Demo Cycles
+            Built for reliability, not demos
           </Heading>
         </div>
 
         <div className={styles.protocolGrid}>
-          {ProtocolGrid.map((item) => (
+          {PlatformCapabilities.map((item) => (
             <FeatureCard key={item.id} {...item} />
           ))}
         </div>

@@ -4,12 +4,11 @@
 
 .headerCard,
 .releaseCard {
-  background: rgba(12, 12, 18, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
+  background: var(--av-bg);
+  border: 1px solid var(--av-border);
+  border-radius: var(--av-radius-lg);
   padding: 2rem;
-  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.42);
-  backdrop-filter: blur(12px);
+  box-shadow: var(--av-shadow-md);
 }
 
 .headerCard {
@@ -18,11 +17,9 @@
 
 .protocolTag {
   margin: 0 0 0.7rem;
-  font-family: 'Syncopate', sans-serif;
-  font-size: 0.62rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #22d3ee;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ifm-color-primary);
 }
 
 .pageTitle {
@@ -32,7 +29,7 @@
 
 .pageLead {
   margin: 0;
-  color: #b8c8e2;
+  color: var(--av-text-muted);
 }
 
 .releaseTitle {
@@ -43,7 +40,7 @@
 .releaseSubtitle {
   margin-top: 0;
   margin-bottom: 1.4rem;
-  color: #9fb1cc;
+  color: var(--av-text-muted);
 }
 
 .subTitle {
@@ -55,7 +52,7 @@
 .itemList {
   margin: 0;
   padding-left: 1.25rem;
-  color: #c7d6ed;
+  color: var(--av-text-muted);
 }
 
 .itemList li {
@@ -63,27 +60,16 @@
 }
 
 .codeVessel {
-  background: #0d0d0d;
-  border-radius: 12px;
-  border: 1px solid #1a1a1a;
-  position: relative;
-  overflow: hidden;
-}
-
-.codeVessel::before {
-  content: 'CODE_ENTITY';
-  position: absolute;
-  top: 9px;
-  right: 12px;
-  font-family: 'Syncopate', sans-serif;
-  font-size: 0.54rem;
-  letter-spacing: 0.08em;
-  color: rgba(255, 255, 255, 0.35);
+  background: var(--av-bg-inset);
+  border-radius: var(--av-radius-md);
+  border: 1px solid var(--av-border);
 }
 
 .codeVessel pre {
   margin: 0;
   padding: 1rem;
+  background: transparent;
+  border: none;
 }
 
 .linkGrid {
@@ -94,23 +80,20 @@
 
 .linkGrid a {
   display: block;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-left: 3px solid rgba(34, 211, 238, 0.6);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--av-border);
+  border-left: 3px solid var(--ifm-color-primary);
+  border-radius: var(--av-radius-sm);
+  background: var(--av-bg-subtle);
   padding: 0.7rem 0.8rem;
   text-decoration: none;
-  color: #b8cdef;
-  transition:
-    transform var(--ifm-transition-fast),
-    border-color var(--ifm-transition-fast),
-    color var(--ifm-transition-fast);
+  color: var(--av-text);
+  font-weight: 500;
+  transition: transform 120ms ease, border-color 120ms ease;
 }
 
 .linkGrid a:hover {
-  transform: translate3d(4px, 0, 0);
-  border-color: rgba(34, 211, 238, 0.45);
-  color: #ffffff;
+  transform: translate3d(3px, 0, 0);
+  border-color: var(--ifm-color-primary);
 }
 
 .actions {

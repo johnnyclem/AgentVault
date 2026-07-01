@@ -30,8 +30,8 @@ This document defines a launch-ready content and information architecture plan f
 
 ### Hero
 
-- **Headline**: "Run sovereign AI agents that stay online and recoverable."
-- **Subheadline**: "AgentVault packages local agents, deploys to ICP canisters, and preserves reconstructible state for resilient automation."
+- **Headline**: "Run AI agents that stay online and recoverable."
+- **Subheadline**: "AgentVault packages local agents, deploys them to ICP canisters, and preserves recoverable state for reliable automation."
 - **Primary CTA**: "Install AgentVault"
 - **Secondary CTA**: "Read v1.0 tutorial"
 
@@ -45,13 +45,13 @@ This document defines a launch-ready content and information architecture plan f
 
 1. Package your agent.
 2. Deploy to ICP.
-3. Observe, backup, and restore with confidence.
+3. Monitor, back up, and restore with confidence.
 
 ### Value blocks
 
-- **Autonomy**: 24/7 canister runtime.
-- **Reconstructibility**: fetch state + restore workflows.
-- **Operational tooling**: health checks, monitoring, and rollback primitives.
+- **Always-on**: 24/7 canister runtime.
+- **Recoverable**: fetch state and restore workflows.
+- **Operational tooling**: health checks, monitoring, and rollback controls.
 
 ### Footer links
 

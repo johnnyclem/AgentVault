@@ -22,27 +22,27 @@ const knownLimitations = [
 
 function Changelog(): React.ReactElement {
   return (
-    <Layout title="Changelog" description="AgentVault release history and protocol updates.">
+    <Layout title="Changelog" description="AgentVault release history and version notes.">
       <main className={styles.main}>
         <div className="container">
           <section className={styles.headerCard}>
-            <p className={styles.protocolTag}>Archive // Protocol Release</p>
+            <p className={styles.protocolTag}>Release history</p>
             <Heading as="h1" className={styles.pageTitle}>
               Changelog
             </Heading>
             <p className={styles.pageLead}>
-              Release stream for the AgentVault runtime. Current stable milestone: <strong>v1.0.0</strong> (February 2026).
+              Release history for the AgentVault runtime. Current stable release: <strong>v1.0.0</strong> (February 2026).
             </p>
           </section>
 
           <section className={styles.releaseCard}>
             <Heading as="h2" className={styles.releaseTitle}>
-              v1.0.0 // Neural Sovereignty Baseline
+              v1.0.0 — First stable release
             </Heading>
-            <p className={styles.releaseSubtitle}>First stable release for continuous on-chain agent operations.</p>
+            <p className={styles.releaseSubtitle}>The first stable release for continuous on-chain agent operations.</p>
 
             <Heading as="h3" className={styles.subTitle}>
-              Manifested Capabilities
+              What's included
             </Heading>
             <ul className={styles.itemList}>
               {releaseFeatures.map((item) => (
@@ -60,7 +60,7 @@ function Changelog(): React.ReactElement {
             </div>
 
             <Heading as="h3" className={styles.subTitle}>
-              Operational Reading
+              Related reading
             </Heading>
             <div className={styles.linkGrid}>
               <Link to="/docs/getting-started/quick-start">Quick Start</Link>
@@ -70,7 +70,7 @@ function Changelog(): React.ReactElement {
             </div>
 
             <Heading as="h3" className={styles.subTitle}>
-              Known Limitations
+              Known limitations
             </Heading>
             <ul className={styles.itemList}>
               {knownLimitations.map((item) => (
