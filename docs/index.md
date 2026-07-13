@@ -29,6 +29,8 @@ implementation of the SmallChat tool-dispatch pattern in its orchestration layer
 - [Ecosystem overview](/docs/ecosystem/executive-summary) — what each project does and how they fit together.
 - [Engineering guide](/docs/ecosystem/engineering-guide) — component reference, integration status, and the
   roadmap for wiring Stenographer and Short-Hand into AgentVault's orchestration pipeline.
+- [Cross-repo evaluation playbook](/docs/ecosystem/cross-repo-playbook) — runbook for reproducing
+  the ecosystem evaluation from within SmallChat, Stenographer, or Short-Hand.
 
 ## Guides
 

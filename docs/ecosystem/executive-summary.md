@@ -7,6 +7,9 @@
 > AgentVault was evaluated directly from source. SmallChat, Stenographer, and Short-Hand were
 > evaluated from their public GitHub READMEs and repository metadata (no source-level access).
 > Treat claims about those three as directionally accurate, not verified against code.
+> An agent with repo access to SmallChat, Stenographer, or Short-Hand can produce the mirrored,
+> source-verified version of this evaluation using
+> [`cross-repo-playbook.md`](./cross-repo-playbook.md).
 
 ## What each project is, in one line
 
