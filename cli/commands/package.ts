@@ -5,9 +5,11 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { packageAgent, getPackageSummary } from '../../src/packaging/index.js';
 import type { PackageOptions, PackageResult } from '../../src/packaging/index.js';
+import { ensureIcpManifest } from '../../src/deployment/index.js';
 
 export interface PackageCommandOptions {
   output?: string;
@@ -179,6 +181,22 @@ export async function executePackage(
 
     spinner.succeed(`Agent '${result.config.name}' packaged successfully!`);
     displayResult(result);
+
+    // Generate the icp.yaml project manifest so `icp deploy` (icp-cli)
+    // can deploy the packaged WASM directly.
+    try {
+      const resolvedSource = path.resolve(sourcePath);
+      const projectRoot = fs.statSync(resolvedSource).isDirectory()
+        ? resolvedSource
+        : path.dirname(resolvedSource);
+      const manifest = ensureIcpManifest(projectRoot, result.config.name, result.wasmPath);
+      if (manifest.action !== 'kept') {
+        console.log(`  ICP Manifest: ${manifest.path}`);
+      }
+    } catch (manifestError) {
+      const message = manifestError instanceof Error ? manifestError.message : 'Unknown error';
+      console.log(chalk.yellow(`  ⚠ Could not write icp.yaml manifest: ${message}`));
+    }
 
     return result;
   } catch (error) {

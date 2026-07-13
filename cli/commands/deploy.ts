@@ -6,6 +6,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
 import inquirer from 'inquirer';
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
   deployAgent,
@@ -135,7 +136,7 @@ export function displayResult(result: DeployResult): void {
   console.log();
   console.log(chalk.cyan('Next steps:'));
   if (result.canister.network === 'local') {
-    console.log('  1. Test your agent locally with dfx');
+    console.log('  1. Test your agent locally (e.g.', chalk.bold('icp canister status <name>'), 'or dfx)');
     console.log('  2. Deploy to IC mainnet with', chalk.bold('--network ic'));
   } else {
     console.log('  1. Interact with your canister at:');
@@ -164,6 +165,39 @@ async function confirmDeployment(
   ]);
 
   return confirmed;
+}
+
+/**
+ * Discover the packaged WASM in the current project when no path is given.
+ *
+ * Prefers `dist/<agent-name>.wasm` (name from agent.json); otherwise a
+ * single `dist/*.wasm` is used. Returns null when nothing unambiguous
+ * is found.
+ */
+export function discoverWasmPath(cwd: string = process.cwd()): string | null {
+  const distDir = path.join(cwd, 'dist');
+
+  // agent.json names the agent — its wasm is the packaged output
+  try {
+    const agentConfig = JSON.parse(fs.readFileSync(path.join(cwd, 'agent.json'), 'utf-8')) as { name?: string };
+    if (agentConfig.name) {
+      const candidate = path.join(distDir, `${agentConfig.name}.wasm`);
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+  } catch {
+    // No agent.json or unparseable — fall through to directory scan
+  }
+
+  if (fs.existsSync(distDir)) {
+    const wasmFiles = fs.readdirSync(distDir).filter((f) => f.endsWith('.wasm'));
+    if (wasmFiles.length === 1) {
+      return path.join(distDir, wasmFiles[0]!);
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -229,7 +263,7 @@ export function deployCommand(): Command {
 
   command
     .description('Deploy agent WASM to ICP canister')
-    .argument('<wasm>', 'path to compiled WASM file')
+    .argument('[wasm]', 'path to compiled WASM file (defaults to the packaged agent in ./dist)')
     .option('-n, --network <network>', 'target network (local or ic)', 'local')
     .option('-e, --env <environment>', 'named environment from icp.yaml (e.g. dev, staging, production)')
     .option('-c, --canister-id <id>', 'existing canister ID (for upgrades)')
@@ -238,11 +272,22 @@ export function deployCommand(): Command {
     .option('--identity <name>', 'identity name for icp-cli')
     .option('--cycles <amount>', 'cycles allocation (e.g. 100T)')
     .option('--mode <mode>', 'deploy mode: auto, install, reinstall, upgrade')
-    .action(async (wasm: string, options: DeployCommandOptions) => {
+    .action(async (wasm: string | undefined, options: DeployCommandOptions) => {
       console.log(chalk.bold('\n🚀 AgentVault Deploy\n'));
 
+      const wasmPath = wasm ?? discoverWasmPath();
+      if (!wasmPath) {
+        console.error(chalk.red('No packaged WASM found in ./dist.'));
+        console.error(`Run ${chalk.bold('agentvault package ./')} first, or pass the path explicitly:`);
+        console.error(`  ${chalk.bold('agentvault deploy dist/<name>.wasm')}`);
+        process.exit(1);
+      }
+      if (!wasm) {
+        console.log(chalk.gray(`Using packaged WASM: ${path.relative(process.cwd(), wasmPath)}\n`));
+      }
+
       try {
-        await executeDeploy(wasm, options);
+        await executeDeploy(wasmPath, options);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error';
         console.error(chalk.red(`\nError: ${message}`));

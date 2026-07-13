@@ -17,6 +17,7 @@ import type {
   DeploymentStatus,
 } from './types.js';
 import { createICPClient } from './icpClient.js';
+import { ensureIcpManifest, resolveProjectRootForWasm } from './icp-manifest.js';
 import { detectToolchain } from '../icp/tool-detector.js';
 import * as icpcli from '../icp/icpcli.js';
 import { getEnvironment } from '../icp/environment.js';
@@ -329,11 +330,37 @@ async function deployWithIcpCli(
   // Determine deploy mode
   const mode = options.mode ?? (options.canisterId ? 'upgrade' : 'auto');
 
+  // Pin the project root to the agent project so icp-cli does not walk up
+  // the directory tree and pick up an unrelated icp.yaml.
+  const projectRoot = options.projectRoot ?? resolveProjectRootForWasm(options.wasmPath);
+
+  // icp-cli deploys from an icp.yaml manifest, not a bare WASM path —
+  // generate one pointing at the packaged WASM if the project lacks it.
+  const manifest = ensureIcpManifest(projectRoot, extractAgentName(options.wasmPath), options.wasmPath);
+  if (manifest.action === 'created') {
+    warnings.push(`Generated ${manifest.path} for icp-cli deployment`);
+  }
+
+  // Local deploys need the managed local network running.
+  if (envName === 'local') {
+    const status = await icpcli.networkStatus({ projectRoot });
+    if (!status.success) {
+      warnings.push('Local ICP network was not running — started it in the background (stop it with `icp network stop`).');
+      const started = await icpcli.networkStart({ projectRoot, background: true });
+      if (!started.success) {
+        throw new Error(
+          `Failed to start the local ICP network: ${started.stderr || started.stdout}\n` +
+          'Start it manually with `icp network start -d` and retry.'
+        );
+      }
+    }
+  }
+
   const result = await icpcli.deploy({
     environment: envName,
     identity,
     mode,
-    projectRoot: options.projectRoot,
+    projectRoot,
   });
 
   if (!result.success) {
