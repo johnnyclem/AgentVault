@@ -23,15 +23,22 @@ Options:
 Initialize a new AgentVault project.
 
 ```bash
-agentvault init [options] <project-name>
+agentvault init [options] [project-name]
+
+Creates the project directory if it does not exist. When a project name is
+given on the command line, init runs non-interactively; run bare
+`agentvault init` for interactive prompts in the current directory.
 
 Options:
-  -t, --template <name>  Use a template (default, minimal)
-  --force                Overwrite existing directory
+  -n, --name <name>          Agent name (defaults to the project directory name)
+  -t, --template <template>  Project template: default, minimal (default: "default")
+  --force                    Re-initialize an existing AgentVault project
+  -y, --yes                  Skip prompts and use defaults
 
 Examples:
   agentvault init my-agent
   agentvault init my-agent --template minimal
+  npx agentvault@latest init my-agent --template default
 ```
 
 ### package

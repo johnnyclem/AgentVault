@@ -8,7 +8,10 @@
 
 /* Begin PBXBuildFile section */
 		02E452CAC4E7A0E311B96E31 /* AgentVaultWalletApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C81305B565E2E66164DE768 /* AgentVaultWalletApp.swift */; };
+		094EA27E96CDC9E910E3E540 /* Agent.swift in Sources */ = {isa = PBXBuildFile; fileRef = C07CE3A2D225703EB2EAD9E2 /* Agent.swift */; };
 		0BE93736849D82626EF9517E /* FileService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47BD1F82BDFCEA684D7625B2 /* FileService.swift */; };
+		0CA99B8638433C5E85497890 /* iOSGuildView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD9A27E88E7F61F59769C9D1 /* iOSGuildView.swift */; };
+		179EAFDEB77ECF95BF34C7ED /* ChatBubbleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA768CF0088D35834FCEE9C1 /* ChatBubbleView.swift */; };
 		1E8BFE93FDBA58395987C186 /* CreateWalletViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F7B7D70B47800A0678D085C /* CreateWalletViewModel.swift */; };
 		263F73DA9B2DFADD2CB42095 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F82FBEF6E43C4FE9940A4751 /* MainView.swift */; };
 		29B9963D0C76F2C1FA546C18 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F1DB9A64CC2183067C3BF07 /* SidebarView.swift */; };
@@ -16,64 +19,111 @@
 		2F1307C65C2557754847E5D1 /* CreateWalletFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = B602523862FCBC1984E361C9 /* CreateWalletFlow.swift */; };
 		36E194FDB22CABB962E6A31D /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76351788A7E1E167BA60BBA8 /* WelcomeView.swift */; };
 		3785B0D47E21DB878DBC3BD5 /* Chain.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA49B4A5D96C8567575C5A6C /* Chain.swift */; };
+		3F88C1D2D2BF76D664C95018 /* AddMCPServerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A64F3CBC117CA7CAC44FA569 /* AddMCPServerSheet.swift */; };
 		417EBE455FE5E1F59EA0496B /* RestoreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FB19476889265347D1F0296 /* RestoreView.swift */; };
+		42B4822FF8248643ECF61716 /* AgentConfigEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94722DCB9C41A2DECE480234 /* AgentConfigEditorView.swift */; };
 		46ED42ED64CA0FB0AA28D611 /* CLIBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7547913023FB39C976DA3FB /* CLIBridge.swift */; };
+		47A07CB287C8AA7DBA2ED1A4 /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = D46F13C6D8576852C7B8E377 /* ChatMessage.swift */; };
 		4F9A4B91B6EF2702E1F099A9 /* ImportWalletViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9AF752C53B2BA129E24059B /* ImportWalletViewModel.swift */; };
+		589AF3BA43DEF2F5CE9B2030 /* CreateAgentSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE58BF1161043FD51D07A1B4 /* CreateAgentSheet.swift */; };
 		7506F8D9E17DA1577F3A1518 /* Wallet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DD436DAEA0FE29B54C49283 /* Wallet.swift */; };
+		795AB3AA1533B07CA2D3FF0E /* MCPServerRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3864275693CF1369FAC5043B /* MCPServerRowView.swift */; };
+		90BBE9D685687B1D7EF6E5B6 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EC42BC6E2667907FE80EB26 /* ChatView.swift */; };
 		92C75607692F7CD6C1EABA6F /* ImportWalletFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A501E8032A1DFCCA3665681 /* ImportWalletFlow.swift */; };
 		9B949E7EB1E44A72D25A2360 /* BackupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2715E7675F6C248CD0A0AA47 /* BackupService.swift */; };
 		9F039A0C1049BE919643121F /* BackupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53AA71008465FCC7512A28F3 /* BackupView.swift */; };
 		A5AC9AAEDAF0F94F014EFF4E /* BackupViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FCB36A44A23ACCBCF1441D3 /* BackupViewModel.swift */; };
+		BE26FC98876C5BE2F40FCC1D /* ChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F050C65EDD582AA99D770159 /* ChatViewModel.swift */; };
 		C61431624BADBC35371D53E1 /* WalletStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6579BF14E491C12A49015FFA /* WalletStore.swift */; };
 		CD54E3539FF666C454C00F5E /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70AD26EA47257DBF650A0C6 /* KeychainService.swift */; };
+		D20A72C52F6F8D70D548EB27 /* AgentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02B0AD6E8A7EE022AFE0B5CC /* AgentStore.swift */; };
+		D41602B80E60639ABEB00622 /* MCPServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B50C511E2CC3BD288D4D83B /* MCPServer.swift */; };
 		D51F1366AC86DC5E0FEDB72B /* WalletListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 993522D6E91DB664B1CCE8E9 /* WalletListView.swift */; };
 		DD06FF46E9D449BDBB326035 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77403F103E92319789BAE7A5 /* AppState.swift */; };
 		DFD16A804FC73B04818AEE26 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9044311D4D4A681EC6D9DA0 /* SettingsView.swift */; };
+		E776EC777BBD6A9C16E4C925 /* AgentHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8034F561E7E3B6A4C90AA434 /* AgentHubView.swift */; };
 		E81D85473F4293AAA244B60B /* CryptoService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56E6AA1D6454C27417A8F533 /* CryptoService.swift */; };
+		EDC2B9E429A7724C4F1A1B04 /* AgentDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B7FDF55ECAF4CFB2BE2A6B /* AgentDetailView.swift */; };
 		F29047D051D5EE45BDA27D4D /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C578005DF1E9F5C0EB94F2B4 /* DashboardView.swift */; };
 		F2951D6D6970EEDDD6EAA6A6 /* WalletDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84C737929C146175FBE852D1 /* WalletDetailView.swift */; };
 		F408896F412200E914BCB03D /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8F10F99FD72F29ADE56E1AF /* Extensions.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		02B0AD6E8A7EE022AFE0B5CC /* AgentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentStore.swift; sourceTree = "<group>"; };
 		13EDD51F1438F4033300317F /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
 		2715E7675F6C248CD0A0AA47 /* BackupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupService.swift; sourceTree = "<group>"; };
 		2F1DB9A64CC2183067C3BF07 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
 		2F7B7D70B47800A0678D085C /* CreateWalletViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateWalletViewModel.swift; sourceTree = "<group>"; };
+		3864275693CF1369FAC5043B /* MCPServerRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPServerRowView.swift; sourceTree = "<group>"; };
 		3A501E8032A1DFCCA3665681 /* ImportWalletFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportWalletFlow.swift; sourceTree = "<group>"; };
+		3B50C511E2CC3BD288D4D83B /* MCPServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPServer.swift; sourceTree = "<group>"; };
 		3DD436DAEA0FE29B54C49283 /* Wallet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Wallet.swift; sourceTree = "<group>"; };
 		3FCB36A44A23ACCBCF1441D3 /* BackupViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupViewModel.swift; sourceTree = "<group>"; };
 		47BD1F82BDFCEA684D7625B2 /* FileService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileService.swift; sourceTree = "<group>"; };
 		53AA71008465FCC7512A28F3 /* BackupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupView.swift; sourceTree = "<group>"; };
 		56E6AA1D6454C27417A8F533 /* CryptoService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CryptoService.swift; sourceTree = "<group>"; };
+		5EC42BC6E2667907FE80EB26 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		6579BF14E491C12A49015FFA /* WalletStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletStore.swift; sourceTree = "<group>"; };
 		6F3668985FBC310236428160 /* AgentVaultWallet.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AgentVaultWallet.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		76351788A7E1E167BA60BBA8 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
 		77403F103E92319789BAE7A5 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		7C81305B565E2E66164DE768 /* AgentVaultWalletApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentVaultWalletApp.swift; sourceTree = "<group>"; };
+		8034F561E7E3B6A4C90AA434 /* AgentHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentHubView.swift; sourceTree = "<group>"; };
 		84C737929C146175FBE852D1 /* WalletDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletDetailView.swift; sourceTree = "<group>"; };
+		94722DCB9C41A2DECE480234 /* AgentConfigEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentConfigEditorView.swift; sourceTree = "<group>"; };
 		993522D6E91DB664B1CCE8E9 /* WalletListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletListView.swift; sourceTree = "<group>"; };
 		9FB19476889265347D1F0296 /* RestoreView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestoreView.swift; sourceTree = "<group>"; };
+		A64F3CBC117CA7CAC44FA569 /* AddMCPServerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddMCPServerSheet.swift; sourceTree = "<group>"; };
 		A70AD26EA47257DBF650A0C6 /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
 		A7547913023FB39C976DA3FB /* CLIBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIBridge.swift; sourceTree = "<group>"; };
 		A8F10F99FD72F29ADE56E1AF /* Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Extensions.swift; sourceTree = "<group>"; };
+		B1B7FDF55ECAF4CFB2BE2A6B /* AgentDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDetailView.swift; sourceTree = "<group>"; };
 		B602523862FCBC1984E361C9 /* CreateWalletFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateWalletFlow.swift; sourceTree = "<group>"; };
 		BA49B4A5D96C8567575C5A6C /* Chain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Chain.swift; sourceTree = "<group>"; };
+		BE58BF1161043FD51D07A1B4 /* CreateAgentSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateAgentSheet.swift; sourceTree = "<group>"; };
+		C07CE3A2D225703EB2EAD9E2 /* Agent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Agent.swift; sourceTree = "<group>"; };
 		C578005DF1E9F5C0EB94F2B4 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		D46F13C6D8576852C7B8E377 /* ChatMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessage.swift; sourceTree = "<group>"; };
 		D9044311D4D4A681EC6D9DA0 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		D9AF752C53B2BA129E24059B /* ImportWalletViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportWalletViewModel.swift; sourceTree = "<group>"; };
+		DD9A27E88E7F61F59769C9D1 /* iOSGuildView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iOSGuildView.swift; sourceTree = "<group>"; };
 		E7E9B3BC9F10C901D1182129 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		EA768CF0088D35834FCEE9C1 /* ChatBubbleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatBubbleView.swift; sourceTree = "<group>"; };
+		F050C65EDD582AA99D770159 /* ChatViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModel.swift; sourceTree = "<group>"; };
 		F82FBEF6E43C4FE9940A4751 /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
 		FCBF845B4D8A71F4D742E554 /* AgentVaultWallet.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AgentVaultWallet.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
+		04AD8B01A1DFB46C1B64F6F0 /* Agents */ = {
+			isa = PBXGroup;
+			children = (
+				A64F3CBC117CA7CAC44FA569 /* AddMCPServerSheet.swift */,
+				94722DCB9C41A2DECE480234 /* AgentConfigEditorView.swift */,
+				B1B7FDF55ECAF4CFB2BE2A6B /* AgentDetailView.swift */,
+				8034F561E7E3B6A4C90AA434 /* AgentHubView.swift */,
+				BE58BF1161043FD51D07A1B4 /* CreateAgentSheet.swift */,
+				3864275693CF1369FAC5043B /* MCPServerRowView.swift */,
+			);
+			path = Agents;
+			sourceTree = "<group>";
+		};
 		0664A46F68536F21B1707569 /* App */ = {
 			isa = PBXGroup;
 			children = (
 				7C81305B565E2E66164DE768 /* AgentVaultWalletApp.swift */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		09657DC7755CE2C659D745D5 /* Chat */ = {
+			isa = PBXGroup;
+			children = (
+				EA768CF0088D35834FCEE9C1 /* ChatBubbleView.swift */,
+				5EC42BC6E2667907FE80EB26 /* ChatView.swift */,
+			);
+			path = Chat;
 			sourceTree = "<group>";
 		};
 		0EAE03877932386F3D8E2AC9 /* Create */ = {
@@ -110,7 +160,9 @@
 		2DC41E9B985A87958D003F39 /* ViewModels */ = {
 			isa = PBXGroup;
 			children = (
+				02B0AD6E8A7EE022AFE0B5CC /* AgentStore.swift */,
 				3FCB36A44A23ACCBCF1441D3 /* BackupViewModel.swift */,
+				F050C65EDD582AA99D770159 /* ChatViewModel.swift */,
 				2F7B7D70B47800A0678D085C /* CreateWalletViewModel.swift */,
 				D9AF752C53B2BA129E24059B /* ImportWalletViewModel.swift */,
 				6579BF14E491C12A49015FFA /* WalletStore.swift */,
@@ -143,6 +195,14 @@
 			path = Settings;
 			sourceTree = "<group>";
 		};
+		64E7FD6587CB29A51661499F /* iOSGuild */ = {
+			isa = PBXGroup;
+			children = (
+				DD9A27E88E7F61F59769C9D1 /* iOSGuildView.swift */,
+			);
+			path = iOSGuild;
+			sourceTree = "<group>";
+		};
 		65A8D22C2283C0A2485C4441 /* Sidebar */ = {
 			isa = PBXGroup;
 			children = (
@@ -154,8 +214,11 @@
 		68CE89AC7E75C148D5BBA70B /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				C07CE3A2D225703EB2EAD9E2 /* Agent.swift */,
 				77403F103E92319789BAE7A5 /* AppState.swift */,
 				BA49B4A5D96C8567575C5A6C /* Chain.swift */,
+				D46F13C6D8576852C7B8E377 /* ChatMessage.swift */,
+				3B50C511E2CC3BD288D4D83B /* MCPServer.swift */,
 				3DD436DAEA0FE29B54C49283 /* Wallet.swift */,
 			);
 			path = Models;
@@ -165,9 +228,12 @@
 			isa = PBXGroup;
 			children = (
 				F82FBEF6E43C4FE9940A4751 /* MainView.swift */,
+				04AD8B01A1DFB46C1B64F6F0 /* Agents */,
 				453EABFCAA12473F9C621B16 /* Backup */,
+				09657DC7755CE2C659D745D5 /* Chat */,
 				0EAE03877932386F3D8E2AC9 /* Create */,
 				96D44669D6A93E9E1C2DC7F8 /* Import */,
+				64E7FD6587CB29A51661499F /* iOSGuild */,
 				5853E389D4C1DF99D9ED858A /* Settings */,
 				65A8D22C2283C0A2485C4441 /* Sidebar */,
 				D10A3114BE546549B2C018FB /* Wallet */,
@@ -289,6 +355,12 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3F88C1D2D2BF76D664C95018 /* AddMCPServerSheet.swift in Sources */,
+				094EA27E96CDC9E910E3E540 /* Agent.swift in Sources */,
+				42B4822FF8248643ECF61716 /* AgentConfigEditorView.swift in Sources */,
+				EDC2B9E429A7724C4F1A1B04 /* AgentDetailView.swift in Sources */,
+				E776EC777BBD6A9C16E4C925 /* AgentHubView.swift in Sources */,
+				D20A72C52F6F8D70D548EB27 /* AgentStore.swift in Sources */,
 				02E452CAC4E7A0E311B96E31 /* AgentVaultWalletApp.swift in Sources */,
 				DD06FF46E9D449BDBB326035 /* AppState.swift in Sources */,
 				9B949E7EB1E44A72D25A2360 /* BackupService.swift in Sources */,
@@ -296,7 +368,12 @@
 				A5AC9AAEDAF0F94F014EFF4E /* BackupViewModel.swift in Sources */,
 				46ED42ED64CA0FB0AA28D611 /* CLIBridge.swift in Sources */,
 				3785B0D47E21DB878DBC3BD5 /* Chain.swift in Sources */,
+				179EAFDEB77ECF95BF34C7ED /* ChatBubbleView.swift in Sources */,
+				47A07CB287C8AA7DBA2ED1A4 /* ChatMessage.swift in Sources */,
+				90BBE9D685687B1D7EF6E5B6 /* ChatView.swift in Sources */,
+				BE26FC98876C5BE2F40FCC1D /* ChatViewModel.swift in Sources */,
 				2AED2DAB41DE93C1B4ACB611 /* Constants.swift in Sources */,
+				589AF3BA43DEF2F5CE9B2030 /* CreateAgentSheet.swift in Sources */,
 				2F1307C65C2557754847E5D1 /* CreateWalletFlow.swift in Sources */,
 				1E8BFE93FDBA58395987C186 /* CreateWalletViewModel.swift in Sources */,
 				E81D85473F4293AAA244B60B /* CryptoService.swift in Sources */,
@@ -306,6 +383,8 @@
 				92C75607692F7CD6C1EABA6F /* ImportWalletFlow.swift in Sources */,
 				4F9A4B91B6EF2702E1F099A9 /* ImportWalletViewModel.swift in Sources */,
 				CD54E3539FF666C454C00F5E /* KeychainService.swift in Sources */,
+				D41602B80E60639ABEB00622 /* MCPServer.swift in Sources */,
+				795AB3AA1533B07CA2D3FF0E /* MCPServerRowView.swift in Sources */,
 				263F73DA9B2DFADD2CB42095 /* MainView.swift in Sources */,
 				417EBE455FE5E1F59EA0496B /* RestoreView.swift in Sources */,
 				DFD16A804FC73B04818AEE26 /* SettingsView.swift in Sources */,
@@ -315,6 +394,7 @@
 				D51F1366AC86DC5E0FEDB72B /* WalletListView.swift in Sources */,
 				C61431624BADBC35371D53E1 /* WalletStore.swift in Sources */,
 				36E194FDB22CABB962E6A31D /* WelcomeView.swift in Sources */,
+				0CA99B8638433C5E85497890 /* iOSGuildView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

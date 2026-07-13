@@ -79,11 +79,11 @@ agentvault --help
 
 ### Option 3: npx (No Install)
 
-Run without installing:
+Run without installing — this is the 1-click path used on the website:
 
 ```bash
-npx agentvault --help
-npx agentvault init my-agent
+npx agentvault@latest --help
+npx agentvault@latest init my-agent --template default
 ```
 
 ## Post-Installation Setup
@@ -127,11 +127,12 @@ export POLKADOT_RPC_URL=wss://rpc.polkadot.io
 # Check CLI
 agentvault --version
 
-# Initialize test project
+# Initialize test project (non-interactive when a name is given)
 agentvault init test-project
 cd test-project
 
 # Verify project structure
+ls -la            # agent.json, index.js, README.md, .gitignore
 ls -la .agentvault/
 ```
 

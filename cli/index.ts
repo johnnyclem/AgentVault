@@ -5,6 +5,8 @@
  * Command-line interface for the AgentVault platform.
  */
 
+import { realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import { VERSION } from '../src/index.js';
 import { initCommand } from './commands/init.js';
@@ -170,8 +172,20 @@ export async function run(args: string[] = process.argv): Promise<void> {
   await program.parseAsync(args);
 }
 
-// CLI entry point
-if (import.meta.url === `file://${process.argv[1]}`) {
+// CLI entry point. npm installs the bin as a symlink in node_modules/.bin, so
+// argv[1] must be realpath-resolved before comparing against this module.
+function isMainModule(): boolean {
+  if (!process.argv[1]) {
+    return false;
+  }
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule()) {
   run().catch((error: Error) => {
     console.error('Error:', error.message);
     process.exit(1);

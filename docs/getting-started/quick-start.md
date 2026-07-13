@@ -5,17 +5,25 @@ Deploy your first AgentVault agent in under 10 minutes.
 :::note Prerequisites
 - Node.js 18+
 - `dfx` installed and reachable in PATH
-- AgentVault CLI installed (`npm install -g agentvault`)
 :::
+
+No install step is required — `npx agentvault@latest` fetches the CLI on demand. If you prefer a global install, run `npm install -g agentvault` and use `agentvault` in place of `npx agentvault@latest` below.
 
 ## 1. Initialize your project
 
 ```bash
-agentvault init my-first-agent
+npx agentvault@latest init my-first-agent --template default
 cd my-first-agent
 ```
 
-This creates a baseline project with config, source, and package metadata.
+This scaffolds a new project directory containing:
+
+- `agent.json` — agent metadata (name, version, entry point)
+- `index.js` — your agent's entry point, with a working task handler
+- `.agentvault/` — local project state used by the CLI
+- `README.md` and `.gitignore`
+
+Use `--template minimal` if you only want `agent.json` and `index.js`.
 
 ## 2. Start the local ICP runtime
 
@@ -27,7 +35,7 @@ dfx ping
 ## 3. Package the agent
 
 ```bash
-agentvault package ./
+npx agentvault@latest package ./
 ```
 
 This compiles the agent and prepares deterministic deployment output.
@@ -35,7 +43,7 @@ This compiles the agent and prepares deterministic deployment output.
 ## 4. Deploy to Local Network
 
 ```bash
-agentvault deploy --network local
+npx agentvault@latest deploy --network local
 ```
 
 Copy the canister ID printed in the command output — you'll need it in the next steps.
@@ -43,22 +51,22 @@ Copy the canister ID printed in the command output — you'll need it in the nex
 ## 5. Verify it's running
 
 ```bash
-agentvault status
-agentvault info
-agentvault health
+npx agentvault@latest status
+npx agentvault@latest info
+npx agentvault@latest health
 ```
 
 ## 6. Run a task
 
 ```bash
-agentvault exec --canister-id <YOUR_CANISTER_ID> "hello world"
+npx agentvault@latest exec --canister-id <YOUR_CANISTER_ID> "hello world"
 ```
 
 ## 7. Read and back up state
 
 ```bash
-agentvault show --canister-id <YOUR_CANISTER_ID>
-agentvault backup --canister-id <YOUR_CANISTER_ID>
+npx agentvault@latest show --canister-id <YOUR_CANISTER_ID>
+npx agentvault@latest backup --canister-id <YOUR_CANISTER_ID>
 ```
 
 :::tip Pro tip

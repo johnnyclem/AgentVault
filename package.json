@@ -1,6 +1,6 @@
 {
   "name": "agentvault",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Production infrastructure for deploying and running AI agents on Internet Computer canisters",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
@@ -21,13 +21,22 @@
   "bin": {
     "agentvault": "dist/cli/index.js"
   },
+  "files": [
+    "dist/src",
+    "dist/cli",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
   "type": "module",
   "scripts": {
     "dev": "npm run dev:core",
     "dev:core": "tsx watch src/index.ts",
     "dev:webapp": "npm --prefix webapp run dev",
     "dev:dashboard": "node scripts/dev-dashboard.mjs",
+    "clean": "node -e \"fs.rmSync('dist', { recursive: true, force: true })\"",
     "build": "tsc",
+    "prepack": "npm run clean && npm run build",
     "start": "node dist/src/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -67,8 +76,7 @@
     "tsx": "^4.19.0",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.20.0",
-    "vitest": "^4.0.18",
-    "zod": "^4.3.6"
+    "vitest": "^4.0.18"
   },
   "dependencies": {
     "@dfinity/agent": "^3.4.3",
@@ -91,7 +99,8 @@
     "inquirer": "^9.3.0",
     "ora": "^8.1.0",
     "undici": "^7.25.0",
-    "yaml": "^2.8.2"
+    "yaml": "^2.8.2",
+    "zod": "^4.3.6"
   },
   "overrides": {
     "brace-expansion": "^1.1.13",

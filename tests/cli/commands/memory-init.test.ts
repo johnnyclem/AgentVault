@@ -53,7 +53,7 @@ describe('Init Command — Soul.md Detection', () => {
 
     const projectDir = path.join(tmpDir, '.agentvault');
     expect(fs.existsSync(path.join(projectDir, 'config', 'agent.config.json'))).toBe(true);
-    expect(fs.existsSync(path.join(projectDir, '.gitignore'))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, '.gitignore'))).toBe(true);
   });
 
   it('should create standard project structure without soul.md', async () => {

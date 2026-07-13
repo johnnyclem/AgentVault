@@ -45,15 +45,20 @@ node dist/cli/index.js --help
 ### 1. Initialize a New Agent Project
 
 ```bash
-agentvault init my-agent
+npx agentvault@latest init my-agent --template default
+cd my-agent
 ```
 
-This creates a `.agentvault/` directory with agent configuration.
+This scaffolds a new project directory containing `agent.json`, an `index.js`
+entry point, and a `.agentvault/` directory with agent configuration. Use
+`--template minimal` for a bare scaffold. (If you installed the CLI globally
+with `npm install -g agentvault`, replace `npx agentvault@latest` with
+`agentvault` in any command.)
 
 ### 2. Package Your Agent
 
 ```bash
-agentvault package ./my-agent
+agentvault package ./
 ```
 
 Compiles your agent to WASM and generates deployment artifacts.
