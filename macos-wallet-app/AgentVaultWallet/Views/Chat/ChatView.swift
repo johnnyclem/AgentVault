@@ -281,7 +281,7 @@ struct ChatInputBar: View {
                     } else {
                         Image(systemName: "arrow.up.circle.fill")
                             .font(.system(size: 28))
-                            .foregroundStyle(vm.canSend ? .primary : .tertiary)
+                            .foregroundStyle(vm.canSend ? Color.accentColor : Color.secondary)
                     }
                 }
                 .buttonStyle(.plain)

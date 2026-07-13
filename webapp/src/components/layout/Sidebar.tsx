@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Activity, Database, Settings, Server, Archive, Wallet, Layers, ShieldCheck } from 'lucide-react'
+import { LayoutDashboard, Activity, Database, Settings, Server, Archive, Wallet, Layers, ShieldCheck, Blocks } from 'lucide-react'
 import clsx from 'clsx'
 
 interface NavItem {
@@ -16,6 +16,8 @@ const navItems: NavItem[] = [
   { label: 'Agents', href: '/agents', icon: Activity },
   { label: 'Tasks', href: '/tasks', icon: Layers },
   { label: 'Logs', href: '/logs', icon: Database },
+  { label: 'Archives', href: '/archives', icon: Archive },
+  { label: 'On-Chain', href: '/on-chain', icon: Blocks },
   { label: 'Networks', href: '/networks', icon: LayoutDashboard },
   { label: 'Wallets', href: '/wallets', icon: Wallet },
   { label: 'Backups', href: '/backups', icon: Archive },

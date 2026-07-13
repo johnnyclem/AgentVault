@@ -134,13 +134,15 @@ export function importWalletFromPrivateKey(
   agentId: string,
   chain: string,
   privateKey: string,
-  storageOptions: WalletStorageOptions = {}
+  storageOptions: WalletStorageOptions = {},
+  chainMetadata?: Record<string, unknown>,
 ): WalletData {
   return createWallet({
     agentId,
     chain: chain as any,
     method: 'private-key',
     privateKey,
+    chainMetadata,
   }, storageOptions);
 }
 
@@ -159,7 +161,8 @@ export function importWalletFromSeed(
   chain: string,
   seedPhrase: string,
   derivationPath?: string,
-  storageOptions: WalletStorageOptions = {}
+  storageOptions: WalletStorageOptions = {},
+  chainMetadata?: Record<string, unknown>,
 ): WalletData {
   return createWallet({
     agentId,
@@ -167,6 +170,7 @@ export function importWalletFromSeed(
     method: 'seed',
     seedPhrase,
     derivationPath,
+    chainMetadata,
   }, storageOptions);
 }
 
@@ -185,7 +189,8 @@ export function importWalletFromMnemonic(
   chain: string,
   mnemonic: string,
   derivationPath?: string,
-  storageOptions: WalletStorageOptions = {}
+  storageOptions: WalletStorageOptions = {},
+  chainMetadata?: Record<string, unknown>,
 ): WalletData {
   return createWallet({
     agentId,
@@ -193,6 +198,7 @@ export function importWalletFromMnemonic(
     method: 'mnemonic',
     seedPhrase: mnemonic,
     derivationPath,
+    chainMetadata,
   }, storageOptions);
 }
 
