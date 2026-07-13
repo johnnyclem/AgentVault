@@ -81,6 +81,9 @@ import { safehouseCmd } from './commands/safehouse.js';
 // Wiki — LLM-maintained knowledge base (archivist)
 import { wikiCmd } from './commands/wiki.js';
 
+// Merge command — local bundle <-> on-chain thoughtform merging
+import { mergeCommand } from './merge.js';
+
 export function createProgram(): Command {
   const program = new Command();
 
@@ -163,6 +166,9 @@ export function createProgram(): Command {
 
   // Wiki — LLM-maintained knowledge base (archivist)
   program.addCommand(wikiCmd);
+
+  // Merge command — local bundle <-> on-chain thoughtform merging
+  program.addCommand(mergeCommand());
 
   return program;
 }
