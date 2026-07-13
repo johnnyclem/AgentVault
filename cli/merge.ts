@@ -240,9 +240,9 @@ export async function executeMerge(options: {
   const commits = await actor.log([options.branch]);
   const remoteThoughtforms: ThoughtForm[] = [];
 
-  if (commits.length > 0) {
+  const headCommit = commits[0];
+  if (headCommit !== undefined) {
     // Parse thoughtforms from the latest (head) commit diff
-    const headCommit = commits[0];
     const parsed = parseThoughtformsFromDiff(headCommit.diff);
     remoteThoughtforms.push(...parsed);
   }
