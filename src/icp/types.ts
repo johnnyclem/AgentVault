@@ -390,6 +390,8 @@ export interface IcpIdentityImportOptions extends IcpCommonOptions {
 export interface IcpNetworkStartOptions extends IcpCommonOptions {
   /** Network name */
   network?: string;
+  /** Run the network in the background (-d) */
+  background?: boolean;
 }
 
 /** Options for icp network stop */

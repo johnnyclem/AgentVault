@@ -315,10 +315,13 @@ export async function identityDefault(options: IcpCommonOptions = {}): Promise<I
  */
 export async function networkStart(options: IcpNetworkStartOptions = {}): Promise<IcpCliResult> {
   const args = ['network', 'start', ...buildCommonArgs(options)];
+  if (options.background) {
+    args.push('-d');
+  }
   if (options.network) {
     args.push(options.network);
   }
-  return runIcp(args, 60_000, options.projectRoot);
+  return runIcp(args, 120_000, options.projectRoot);
 }
 
 /**

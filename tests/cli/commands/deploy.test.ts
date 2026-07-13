@@ -1,5 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { deployCommand, displayPreview, displayResult, executeDeploy } from '../../../cli/commands/deploy.js';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { deployCommand, discoverWasmPath, displayPreview, displayResult, executeDeploy } from '../../../cli/commands/deploy.js';
 import type { DeployResult } from '../../../src/deployment/types.js';
 
 // Mock the deployment module
@@ -26,6 +29,7 @@ vi.mock('chalk', () => ({
     yellow: (str: string) => str,
     cyan: (str: string) => str,
     red: (str: string) => str,
+    gray: (str: string) => str,
   },
 }));
 
@@ -78,12 +82,52 @@ describe('deploy command', () => {
       expect(dryRunOption).toBeDefined();
     });
 
-    it('should require wasm argument', () => {
+    it('should accept an optional wasm argument', () => {
       const command = deployCommand();
       const args = command.registeredArguments;
       expect(args.length).toBe(1);
       expect(args[0]?.name()).toBe('wasm');
-      expect(args[0]?.required).toBe(true);
+      expect(args[0]?.required).toBe(false);
+    });
+  });
+
+  describe('discoverWasmPath', () => {
+    let tmpDir: string;
+
+    beforeEach(() => {
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'deploy-discover-test-'));
+    });
+
+    afterEach(() => {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('should find the wasm named in agent.json', () => {
+      fs.writeFileSync(path.join(tmpDir, 'agent.json'), JSON.stringify({ name: 'my-agent' }));
+      fs.mkdirSync(path.join(tmpDir, 'dist'));
+      fs.writeFileSync(path.join(tmpDir, 'dist', 'my-agent.wasm'), 'wasm');
+      fs.writeFileSync(path.join(tmpDir, 'dist', 'other.wasm'), 'wasm');
+
+      expect(discoverWasmPath(tmpDir)).toBe(path.join(tmpDir, 'dist', 'my-agent.wasm'));
+    });
+
+    it('should find a single dist wasm without agent.json', () => {
+      fs.mkdirSync(path.join(tmpDir, 'dist'));
+      fs.writeFileSync(path.join(tmpDir, 'dist', 'solo.wasm'), 'wasm');
+
+      expect(discoverWasmPath(tmpDir)).toBe(path.join(tmpDir, 'dist', 'solo.wasm'));
+    });
+
+    it('should return null when dist has multiple wasms and no agent.json', () => {
+      fs.mkdirSync(path.join(tmpDir, 'dist'));
+      fs.writeFileSync(path.join(tmpDir, 'dist', 'a.wasm'), 'wasm');
+      fs.writeFileSync(path.join(tmpDir, 'dist', 'b.wasm'), 'wasm');
+
+      expect(discoverWasmPath(tmpDir)).toBeNull();
+    });
+
+    it('should return null when nothing is packaged', () => {
+      expect(discoverWasmPath(tmpDir)).toBeNull();
     });
   });
 

@@ -128,8 +128,41 @@ function writeUleb128Bytes(value: number): number[] {
     }
     bytes.push(byte);
   } while (remaining !== 0);
-  
+
   return bytes;
+}
+
+/**
+ * Structurally validate a WASM binary using the runtime's WebAssembly engine.
+ * (Accessed via globalThis because tsconfig's lib set has no DOM/WebAssembly
+ * value declarations.)
+ */
+function wasmEngineValidate(buffer: Buffer): boolean {
+  const wasm = (globalThis as Record<string, unknown>).WebAssembly as
+    | { validate(bytes: Uint8Array): boolean }
+    | undefined;
+  // If the runtime has no WebAssembly engine, fall back to accepting the module
+  return wasm ? wasm.validate(buffer) : true;
+}
+
+/**
+ * Write LEB128 encoded signed integer directly to bytes
+ * (used for i32.const operands, which are signed)
+ */
+function writeSleb128Bytes(value: number): number[] {
+  const bytes: number[] = [];
+  let remaining = value | 0;
+
+  for (;;) {
+    const byte = remaining & 0x7f;
+    remaining >>= 7;
+    const signBit = (byte & 0x40) !== 0;
+    if ((remaining === 0 && !signBit) || (remaining === -1 && signBit)) {
+      bytes.push(byte);
+      return bytes;
+    }
+    bytes.push(byte | 0x80);
+  }
 }
 
 /**
@@ -142,174 +175,99 @@ function writeUleb128Bytes(value: number): number[] {
  * - Exported functions for agent lifecycle
  */
 export function generateWasm(config: AgentConfig, javascriptBundle: string): Buffer {
-  const agentNameBytes = Buffer.from(config.name, 'utf-8');
   const jsBytes = Buffer.from(javascriptBundle, 'utf-8');
 
-  // Build sections
+  // A section is: id byte, payload size (uleb128), payload.
+  const section = (id: number, payload: Buffer): Buffer =>
+    concatBuffers([[id], writeUleb128Bytes(payload.length), payload]);
+
+  // A vector is: element count (uleb128), elements.
+  const vec = (items: Buffer[]): Buffer =>
+    concatBuffers([writeUleb128Bytes(items.length), ...items]);
+
+  // A name is: byte length (uleb128), utf-8 bytes.
+  const name = (value: string): Buffer => {
+    const bytes = Buffer.from(value, 'utf-8');
+    return concatBuffers([writeUleb128Bytes(bytes.length), bytes]);
+  };
+
   const sections: Buffer[] = [];
 
-  // 1. Custom section with metadata
+  // 1. Type section: type 0 = () -> i32, type 1 = (i32) -> i32
+  sections.push(section(0x01, vec([
+    Buffer.from([0x60, 0x00, 0x01, 0x7f]),
+    Buffer.from([0x60, 0x01, 0x7f, 0x01, 0x7f]),
+  ])));
+
+  // 2. Function section: init, step, get_state_ptr, get_state_size
+  sections.push(section(0x03, vec([
+    Buffer.from([0x00]), // init: type 0
+    Buffer.from([0x01]), // step: type 1
+    Buffer.from([0x00]), // get_state_ptr: type 0
+    Buffer.from([0x00]), // get_state_size: type 0
+  ])));
+
+  // 3. Memory section: one memory, sized to hold the embedded JS bundle
+  const memoryPages = Math.max(1, Math.ceil(jsBytes.length / 65536));
+  sections.push(section(0x05, vec([
+    concatBuffers([[0x00], writeUleb128Bytes(memoryPages)]), // limits: min only
+  ])));
+
+  // 4. Export section
+  const funcExport = (exportName: string, funcIndex: number): Buffer =>
+    concatBuffers([name(exportName), [0x00], writeUleb128Bytes(funcIndex)]);
+  sections.push(section(0x07, vec([
+    funcExport('init', 0),
+    funcExport('step', 1),
+    funcExport('get_state_ptr', 2),
+    funcExport('get_state_size', 3),
+    concatBuffers([name('memory'), [0x02], [0x00]]), // export memory 0
+  ])));
+
+  // 5. Code section
+  // A body is: size (uleb128), local declarations vector, instructions, end (0x0b).
+  const body = (instructions: number[]): Buffer => {
+    const content = Buffer.from([0x00, ...instructions, 0x0b]); // no locals
+    return concatBuffers([writeUleb128Bytes(content.length), content]);
+  };
+  sections.push(section(0x0a, vec([
+    body([0x41, 0x00]),                                // init: i32.const 0
+    body([0x20, 0x00]),                                // step: local.get 0
+    body([0x41, 0x00]),                                // get_state_ptr: i32.const 0
+    body([0x41, ...writeSleb128Bytes(jsBytes.length)]), // get_state_size: i32.const <len>
+  ])));
+
+  // 6. Data section: active segment placing the JS bundle at offset 0
+  sections.push(section(0x0b, vec([
+    concatBuffers([
+      [0x00],                   // active segment, memory 0
+      [0x41, 0x00, 0x0b],       // offset expression: i32.const 0; end
+      writeUleb128Bytes(jsBytes.length),
+      jsBytes,
+    ]),
+  ])));
+
+  // 7. Custom section with agent metadata
   const version = config.version ?? '1.0.0';
-  const metadataContent = Buffer.concat([
+  const metadataContent = concatBuffers([
     Buffer.from('agentvault', 'utf-8'),
-    Buffer.from([0]),
-    agentNameBytes,
-    Buffer.from([0]),
+    [0],
+    Buffer.from(config.name, 'utf-8'),
+    [0],
     Buffer.from(config.type, 'utf-8'),
-    Buffer.from([0]),
+    [0],
     Buffer.from(version, 'utf-8'),
   ]);
-  
-  const customSectionName = Buffer.from('agent.metadata', 'utf-8');
-  const customSection = concatBuffers([
-    Buffer.from([0x00]), // section id: custom
-    concatBuffers([writeUleb128Bytes(customSectionName.length + 1 + metadataContent.length)]),
-    customSectionName,
-    Buffer.from([0]), // null terminator
-    metadataContent,
-  ]);
-  sections.push(customSection);
-  
-  // 2. Type section
-  const typeSectionContent = Buffer.concat([
-    // Function type 0: () -> i32
-    Buffer.from([0x60]), // func type
-    Buffer.from([0x00]), // 0 params
-    Buffer.from([0x7f]), // 1 result i32
-    // Function type 1: (i32) -> i32
-    Buffer.from([0x60]), // func type
-    Buffer.from([0x01]), // 1 param i32
-    Buffer.from([0x7f]), // 1 result i32
-  ]);
-  
-  const typeSection = concatBuffers([
-    Buffer.from([0x01]), // section id: type
-    concatBuffers([writeUleb128Bytes(typeSectionContent.length)]),
-    concatBuffers([writeUleb128Bytes(2)]), // 2 types
-    typeSectionContent,
-  ]);
-  sections.push(typeSection);
-  
-  // 3. Function section
-  const funcSectionContent = Buffer.concat([
-    // Function 0: uses type 0
-    Buffer.from([0x00]),
-    // Function 1: uses type 1
-    Buffer.from([0x01]),
-  ]);
-  
-  const funcSection = concatBuffers([
-    Buffer.from([0x03]), // section id: function
-    concatBuffers([writeUleb128Bytes(funcSectionContent.length)]),
-    concatBuffers([writeUleb128Bytes(2)]), // 2 functions
-    funcSectionContent,
-  ]);
-  sections.push(funcSection);
-  
-  // 4. Memory section
-  const memorySection = Buffer.concat([
-    Buffer.from([0x05]), // section id: memory
-    Buffer.from([0x01, 0x01]), // 1 memory, min 1 page (64KB)
-  ]);
-  sections.push(memorySection);
+  sections.push(section(0x00, concatBuffers([name('agent.metadata'), metadataContent])));
 
-  // 5. Export section
-  const exportSectionNames = ['init', 'step', 'get_state_ptr', 'get_state_size'];
-  const exportSectionContent = Buffer.concat([
-    // Export 0: init
-    concatBuffers([writeUleb128Bytes((exportSectionNames[0] as string).length)]),
-    Buffer.from(exportSectionNames[0] as string, 'utf-8'),
-    Buffer.from([0x00]), // export kind: function
-    Buffer.from([0x00]), // func index
-    // Export 1: step
-    concatBuffers([writeUleb128Bytes((exportSectionNames[1] as string).length)]),
-    Buffer.from(exportSectionNames[1] as string, 'utf-8'),
-    Buffer.from([0x00]),
-    Buffer.from([0x01]),
-    // Export 2: get_state_ptr
-    concatBuffers([writeUleb128Bytes((exportSectionNames[2] as string).length)]),
-    Buffer.from(exportSectionNames[2] as string, 'utf-8'),
-    Buffer.from([0x00]),
-    Buffer.from([0x02]),
-    // Export 3: get_state_size
-    concatBuffers([writeUleb128Bytes((exportSectionNames[3] as string).length)]),
-    Buffer.from(exportSectionNames[3] as string, 'utf-8'),
-    Buffer.from([0x00]),
-    Buffer.from([0x03]),
-  ]);
-  
-  const exportSection = concatBuffers([
-    Buffer.from([0x07]), // section id: export
-    concatBuffers([writeUleb128Bytes(exportSectionContent.length)]),
-    concatBuffers([writeUleb128Bytes(4)]), // 4 exports
-    exportSectionContent,
-  ]);
-  sections.push(exportSection);
-  
-  // 6. Code section with function bodies
-  // Function 0: init - returns success (0)
-  const funcBody0 = Buffer.concat([
-    Buffer.from([0x0b, 0x01]), // func body size
-    Buffer.from([0x00, 0x41, 0x00, 0x0b]), // i32.const 0; return
-  ]);
-  
-  // Function 1: step - returns input
-  const funcBody1 = Buffer.concat([
-    Buffer.from([0x0b, 0x02]), // func body size
-    Buffer.from([0x20, 0x00, 0x0b]), // local.get 0; return
-  ]);
-  
-  // Function 2: get_state_ptr - returns 0 (memory offset)
-  const funcBody2 = Buffer.concat([
-    Buffer.from([0x0b, 0x01]), // func body size
-    Buffer.from([0x41, 0x00, 0x0b]), // i32.const 0; return
-  ]);
-  
-  // Function 3: get_state_size - returns js bundle size
-  const funcBody3 = Buffer.concat([
-    Buffer.from([0x0b, 0x06]), // func body size
-    Buffer.from([0x41]), // i32.const
-    concatBuffers([writeUleb128Bytes(jsBytes.length)]),
-    Buffer.from([0x0b]), // return
-  ]);
-  
-  const codeSectionContent = Buffer.concat([
-    concatBuffers([writeUleb128Bytes(funcBody0.length)]),
-    funcBody0,
-    concatBuffers([writeUleb128Bytes(funcBody1.length)]),
-    funcBody1,
-    concatBuffers([writeUleb128Bytes(funcBody2.length)]),
-    funcBody2,
-    concatBuffers([writeUleb128Bytes(funcBody3.length)]),
-    funcBody3,
-  ]);
-  
-  const codeSection = concatBuffers([
-    Buffer.from([0x0a]), // section id: code
-    concatBuffers([writeUleb128Bytes(codeSectionContent.length)]),
-    concatBuffers([writeUleb128Bytes(4)]), // 4 function bodies
-    codeSectionContent,
-  ]);
-  sections.push(codeSection);
-  
-  // 7. Data section with embedded JavaScript
-  const dataSectionContent = Buffer.concat([
-    Buffer.from([0x00, 0x41, 0x00, 0x0b]), // memory 0, i32.const 0
-    concatBuffers([writeUleb128Bytes(jsBytes.length)]),
-    jsBytes,
-  ]);
-  
-  const dataSection = concatBuffers([
-    Buffer.from([0x0b]), // section id: data
-    concatBuffers([writeUleb128Bytes(dataSectionContent.length)]),
-    Buffer.from([0x01]), // 1 data segment
-    dataSectionContent,
-  ]);
-  sections.push(dataSection);
-  
-  // Combine all sections into final WASM
   const wasmBuffer = Buffer.concat([WASM_MAGIC, WASM_VERSION, ...sections]);
-  
+
+  // Guard against regressions in the hand-rolled encoder: never emit a
+  // module the WebAssembly engine itself rejects.
+  if (!wasmEngineValidate(wasmBuffer)) {
+    throw new Error('Generated WASM module failed WebAssembly validation');
+  }
+
   return wasmBuffer;
 }
 
@@ -640,7 +598,8 @@ export function validateWasmFile(filePath: string): boolean {
       return false;
     }
 
-    return true;
+    // Full structural validation by the WebAssembly engine
+    return wasmEngineValidate(buffer);
   } catch {
     return false;
   }

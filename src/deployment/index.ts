@@ -30,6 +30,15 @@ export {
   getCanisterStatus,
 } from './deployer.js';
 
+// icp-cli manifest generation
+export {
+  ensureIcpManifest,
+  resolveProjectRootForWasm,
+  icpManifestPath,
+  GENERATED_MARKER,
+  type EnsureManifestResult,
+} from './icp-manifest.js';
+
 // Promotion
 export {
   loadDeploymentHistory,

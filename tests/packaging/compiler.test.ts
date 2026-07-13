@@ -111,6 +111,54 @@ describe('compiler', () => {
       expect(wasmString).toContain('console.log');
     });
 
+    // tsconfig's lib set has no WebAssembly value declarations, so access
+    // the engine through globalThis with a local type.
+    const wasmEngine = (globalThis as Record<string, unknown>).WebAssembly as {
+      validate(bytes: Uint8Array): boolean;
+      instantiate(bytes: Uint8Array): Promise<{ instance: { exports: Record<string, unknown> } }>;
+    };
+
+    it('should pass WebAssembly engine validation', () => {
+      const jsBundle = 'console.log("test");';
+      const wasm = generateWasm(mockConfig, jsBundle);
+
+      expect(wasmEngine.validate(wasm)).toBe(true);
+    });
+
+    it('should instantiate with working lifecycle exports', async () => {
+      const jsBundle = 'console.log("bundle payload");';
+      const wasm = generateWasm(mockConfig, jsBundle);
+
+      const { instance } = await wasmEngine.instantiate(wasm);
+      const exports = instance.exports as {
+        init: () => number;
+        step: (input: number) => number;
+        get_state_ptr: () => number;
+        get_state_size: () => number;
+        memory: { buffer: ArrayBuffer };
+      };
+
+      expect(exports.init()).toBe(0);
+      expect(exports.step(42)).toBe(42);
+      expect(exports.get_state_ptr()).toBe(0);
+      expect(exports.get_state_size()).toBe(Buffer.byteLength(jsBundle, 'utf-8'));
+
+      // The JS bundle is placed at offset 0 of the exported memory
+      const stored = Buffer.from(
+        exports.memory.buffer,
+        exports.get_state_ptr(),
+        exports.get_state_size()
+      ).toString('utf-8');
+      expect(stored).toBe(jsBundle);
+    });
+
+    it('should validate large bundles spanning multiple memory pages', () => {
+      const jsBundle = 'x'.repeat(200_000); // > 3 pages of 64KB
+      const wasm = generateWasm(mockConfig, jsBundle);
+
+      expect(wasmEngine.validate(wasm)).toBe(true);
+    });
+
     it('should generate different sizes for different agent names', () => {
       const shortNameConfig = { ...mockConfig, name: 'a' };
       const longNameConfig = { ...mockConfig, name: 'very-long-agent-name' };

@@ -33,6 +33,14 @@ vi.mock('../../src/icp/tool-detector.js', () => ({
 // Mock icpcli
 vi.mock('../../src/icp/icpcli.js', () => ({
   deploy: vi.fn(),
+  networkStatus: vi.fn(),
+  networkStart: vi.fn(),
+}));
+
+// Mock icp-manifest generation (writes to the real filesystem)
+vi.mock('../../src/deployment/icp-manifest.js', () => ({
+  ensureIcpManifest: vi.fn(() => ({ path: '/project/icp.yaml', action: 'created' })),
+  resolveProjectRootForWasm: vi.fn(() => '/project'),
 }));
 
 // Mock environment
@@ -281,6 +289,108 @@ describe('deployer', () => {
       const after = new Date();
       expect(result.canister.deployedAt.getTime()).toBeGreaterThanOrEqual(before.getTime());
       expect(result.canister.deployedAt.getTime()).toBeLessThanOrEqual(after.getTime());
+    });
+  });
+
+  describe('deployAgent via icp-cli', () => {
+    beforeEach(() => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.statSync).mockReturnValue({ isFile: () => true, size: 1024 } as fs.Stats);
+      vi.mocked(fs.readFileSync).mockReturnValue(
+        Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00])
+      );
+      vi.mocked(detectToolchain).mockResolvedValue({
+        icWasm: { name: 'ic-wasm', available: false, path: '', version: '' },
+        icp: { name: 'icp', available: true, path: '/usr/local/bin/icp', version: '0.1.0' },
+        dfx: { name: 'dfx', available: false, path: '', version: '' },
+        preferredDeployTool: 'icp',
+        canOptimize: false,
+      });
+      vi.mocked(icpcli.networkStatus).mockResolvedValue({
+        success: true,
+        stdout: 'Port: 8000',
+        stderr: '',
+        exitCode: 0,
+      });
+      vi.mocked(icpcli.deploy).mockResolvedValue({
+        success: true,
+        stdout: 'Deployed canister: rrkah-fqaaa-aaaaa-aaaaa-aaaaa-cai',
+        stderr: '',
+        exitCode: 0,
+      });
+    });
+
+    it('should generate an icp.yaml manifest and pin the project root', async () => {
+      const { ensureIcpManifest } = await import('../../src/deployment/icp-manifest.js');
+
+      const result = await deployAgent({
+        wasmPath: '/project/dist/my-agent.wasm',
+        network: 'local',
+      });
+
+      expect(ensureIcpManifest).toHaveBeenCalledWith('/project', 'my-agent', '/project/dist/my-agent.wasm');
+      expect(icpcli.deploy).toHaveBeenCalledWith(
+        expect.objectContaining({ projectRoot: '/project', environment: 'local' })
+      );
+      expect(result.deployTool).toBe('icp');
+    });
+
+    it('should start the local network when it is not running', async () => {
+      vi.mocked(icpcli.networkStatus).mockResolvedValue({
+        success: false,
+        stdout: '',
+        stderr: 'the local network for this project is not running',
+        exitCode: 1,
+      });
+      vi.mocked(icpcli.networkStart).mockResolvedValue({
+        success: true,
+        stdout: 'Network started on port 8000',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      const result = await deployAgent({
+        wasmPath: '/project/dist/my-agent.wasm',
+        network: 'local',
+      });
+
+      expect(icpcli.networkStart).toHaveBeenCalledWith(
+        expect.objectContaining({ projectRoot: '/project', background: true })
+      );
+      expect(result.warnings.some((w) => w.includes('started it in the background'))).toBe(true);
+    });
+
+    it('should throw when the local network cannot be started', async () => {
+      vi.mocked(icpcli.networkStatus).mockResolvedValue({
+        success: false,
+        stdout: '',
+        stderr: 'not running',
+        exitCode: 1,
+      });
+      vi.mocked(icpcli.networkStart).mockResolvedValue({
+        success: false,
+        stdout: '',
+        stderr: 'launcher missing',
+        exitCode: 1,
+      });
+
+      await expect(
+        deployAgent({
+          wasmPath: '/project/dist/my-agent.wasm',
+          network: 'local',
+        })
+      ).rejects.toThrow('Failed to start the local ICP network');
+    });
+
+    it('should not check the network for ic deploys', async () => {
+      await deployAgent({
+        wasmPath: '/project/dist/my-agent.wasm',
+        network: 'ic',
+        skipConfirmation: true,
+      });
+
+      expect(icpcli.networkStatus).not.toHaveBeenCalled();
+      expect(icpcli.networkStart).not.toHaveBeenCalled();
     });
   });
 
