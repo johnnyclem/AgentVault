@@ -27,6 +27,9 @@ import type {
   VetKeysDerivedKey as DerivedKey,
 } from './types.js';
 
+/** AEAD authentication tag length (bytes) for both supported algorithms */
+const GCM_TAG_BYTES = 16;
+
 type CanisterAlgorithm = 'aes_256_gcm' | 'chacha20_poly1305';
 
 function toCanisterAlgorithm(algorithm: EncryptionAlgorithm): CanisterAlgorithm {
@@ -54,7 +57,53 @@ export class VetKeysImplementation {
   }
 
   /**
+   * Encrypt JSON data using seed phrase
+   *
+   * Counterpart to {@link decryptJSON}. Emits the AEAD authentication tag as
+   * a separate `tag` field so decryption can (and must) verify integrity.
+   *
+   * @param data - JSON-serializable value to encrypt
+   * @param seedPhrase - Seed phrase for key derivation
+   * @param algorithm - AEAD algorithm (default aes-256-gcm)
+   * @returns Encrypted data container including the auth tag
+   */
+  public static async encryptJSON(
+    data: unknown,
+    seedPhrase: string,
+    algorithm: EncryptionAlgorithm = 'aes-256-gcm'
+  ): Promise<EncryptedData> {
+    const crypto = await import('node:crypto');
+    const bip39 = await import('bip39');
+
+    const salt = crypto.randomBytes(16).toString('hex');
+    const seed = await bip39.mnemonicToSeed(seedPhrase);
+    const key = crypto.pbkdf2Sync(seed, salt, 100000, 32, 'sha256');
+
+    const iv = crypto.randomBytes(12);
+    const cipher =
+      algorithm === 'aes-256-gcm'
+        ? crypto.createCipheriv('aes-256-gcm', key, iv)
+        : crypto.createCipheriv('chacha20-poly1305', key, iv, { authTagLength: 16 });
+
+    const plaintext = Buffer.from(JSON.stringify(data), 'utf-8');
+    const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+
+    return {
+      algorithm,
+      iv: iv.toString('hex'),
+      salt,
+      ciphertext: ciphertext.toString('hex'),
+      tag: cipher.getAuthTag().toString('hex'),
+      encryptedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
    * Decrypt JSON data using seed phrase
+   *
+   * Security (audit C-1): both supported algorithms are AEAD, so the
+   * authentication tag is always validated. Payloads without a usable tag
+   * are rejected rather than decrypted unauthenticated.
    *
    * @param encrypted - Encrypted data to decrypt
    * @param seedPhrase - Seed phrase for key derivation
@@ -77,19 +126,31 @@ export class VetKeysImplementation {
       'sha256',
     );
 
-    // Decode IV and ciphertext
+    // Decode IV, ciphertext and auth tag. Legacy writers appended the
+    // 16-byte tag to the ciphertext (combined layout); support that, but
+    // never decrypt without a tag.
     const iv = Buffer.from(encrypted.iv, 'hex');
-    const ciphertext = Buffer.from(encrypted.ciphertext, 'hex');
-
-    // Decrypt based on algorithm
-    let algorithm: string;
-    if (encrypted.algorithm === 'aes-256-gcm') {
-      algorithm = 'aes-256-gcm';
+    let ciphertext = Buffer.from(encrypted.ciphertext, 'hex');
+    let tag: Buffer;
+    if (encrypted.tag) {
+      tag = Buffer.from(encrypted.tag, 'hex');
+    } else if (ciphertext.length > GCM_TAG_BYTES) {
+      tag = ciphertext.subarray(ciphertext.length - GCM_TAG_BYTES);
+      ciphertext = ciphertext.subarray(0, ciphertext.length - GCM_TAG_BYTES);
     } else {
-      algorithm = encrypted.algorithm.replace('-', '');
+      throw new Error(
+        'Encrypted payload is missing its authentication tag; refusing unauthenticated decryption'
+      );
+    }
+    if (tag.length !== GCM_TAG_BYTES) {
+      throw new Error(`Authentication tag must be ${GCM_TAG_BYTES} bytes`);
     }
 
-    const decipher = crypto.createDecipheriv(algorithm, key, iv);
+    const decipher =
+      encrypted.algorithm === 'aes-256-gcm'
+        ? crypto.createDecipheriv('aes-256-gcm', key, iv)
+        : crypto.createDecipheriv('chacha20-poly1305', key, iv, { authTagLength: 16 });
+    decipher.setAuthTag(tag);
 
     const decrypted = Buffer.concat([
       decipher.update(ciphertext),
@@ -661,6 +722,22 @@ export async function decryptJSON<T = unknown>(
   seedPhrase: string
 ): Promise<T> {
   return VetKeysImplementation.decryptJSON(encrypted, seedPhrase);
+}
+
+/**
+ * Encrypt JSON data using seed phrase (AEAD, tag included in output)
+ *
+ * @param data - JSON-serializable value to encrypt
+ * @param seedPhrase - Seed phrase for key derivation
+ * @param algorithm - AEAD algorithm (default aes-256-gcm)
+ * @returns Encrypted data container including the auth tag
+ */
+export async function encryptJSON(
+  data: unknown,
+  seedPhrase: string,
+  algorithm: EncryptionAlgorithm = 'aes-256-gcm'
+): Promise<EncryptedData> {
+  return VetKeysImplementation.encryptJSON(data, seedPhrase, algorithm);
 }
 
 // ---------------------------------------------------------------------------

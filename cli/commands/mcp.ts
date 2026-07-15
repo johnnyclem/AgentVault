@@ -256,4 +256,26 @@ mcpCmd
     }
   });
 
+mcpCmd
+  .command('serve')
+  .description('Run the native AgentVault MCP server (hypervault + wiki tools) over stdio')
+  .option('--transport <type>', 'Transport: stdio (default)', 'stdio')
+  .option('--project <path>', 'Project root to operate in', process.cwd())
+  .option('--api-url <url>', 'HyperVault API base URL')
+  .action(async (options: { transport?: string; project?: string; apiUrl?: string }) => {
+    // On stdio, stdout is the JSON-RPC channel — keep it clean (no chalk banners).
+    if ((options.transport ?? 'stdio') !== 'stdio') {
+      console.error(chalk.red(`Unsupported transport: ${options.transport}. Only "stdio" is available.`));
+      process.exit(1);
+    }
+    const { serveMcp } = await import('../../src/hypervault/mcp-server.js');
+    try {
+      await serveMcp({ projectRoot: options.project ?? process.cwd(), apiUrl: options.apiUrl });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.error(chalk.red(`MCP server error: ${message}`));
+      process.exit(1);
+    }
+  });
+
 export { mcpCmd };

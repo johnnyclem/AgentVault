@@ -84,6 +84,9 @@ import { wikiCmd } from './commands/wiki.js';
 // Merge command — local bundle <-> on-chain thoughtform merging
 import { mergeCommand } from './merge.js';
 
+// HyperVault — cloud mind ⇄ sovereign chain + archive bridge
+import { hypervaultCmd } from './commands/hypervault.js';
+
 export function createProgram(): Command {
   const program = new Command();
 
@@ -169,6 +172,9 @@ export function createProgram(): Command {
 
   // Merge command — local bundle <-> on-chain thoughtform merging
   program.addCommand(mergeCommand());
+
+  // HyperVault — cloud mind ⇄ sovereign chain + archive bridge
+  program.addCommand(hypervaultCmd);
 
   return program;
 }

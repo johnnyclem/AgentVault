@@ -25,6 +25,34 @@ const gunzip = promisify(zlib.gunzip);
 
 export const THOUGHTFORM_BUNDLE_FORMAT = 'agentvault-thoughtform-bundle-v1';
 
+/**
+ * HyperVault account snapshots (`src/hypervault/snapshot.ts`) reuse this same
+ * gzip(JSON) envelope with a distinct format string. Recognizing it here lets
+ * `backup preview/verify` identify snapshot bundles instead of erroring on an
+ * unknown format.
+ */
+export const HYPERVAULT_SNAPSHOT_FORMAT = 'agentvault-hypervault-snapshot-v1';
+
+/** Formats that share the gzipped-JSON bundle envelope. */
+export const RECOGNIZED_BUNDLE_FORMATS = [THOUGHTFORM_BUNDLE_FORMAT, HYPERVAULT_SNAPSHOT_FORMAT] as const;
+
+/**
+ * Inspect a gzipped bundle file and report its declared format without fully
+ * validating it. Returns null when the file is not a recognized bundle.
+ */
+export async function detectBundleFormat(filePath: string): Promise<string | null> {
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+  try {
+    const decompressed = await gunzip(fs.readFileSync(filePath));
+    const parsed = JSON.parse(decompressed.toString('utf8')) as { format?: unknown };
+    return typeof parsed.format === 'string' ? parsed.format : null;
+  } catch {
+    return null;
+  }
+}
+
 export interface ThoughtformBundle {
   format: typeof THOUGHTFORM_BUNDLE_FORMAT;
   createdAt: string;

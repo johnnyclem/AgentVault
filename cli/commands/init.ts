@@ -27,6 +27,7 @@ export interface InitOptions {
   yes?: boolean;
   verbose?: boolean;
   v?: boolean;
+  hypervault?: boolean;
 }
 
 export interface InitAnswers {
@@ -312,6 +313,7 @@ export function initCommand(): Command {
     .option('-y, --yes', 'skip prompts and use defaults')
     .option('-v, --verbose', 'display detailed configuration information')
     .option('--vv', 'extra verbose mode for debugging')
+    .option('--hypervault', 'after scaffolding, connect to a HyperVault account')
     .action(async (project: string, options: InitOptions) => {
       console.log(chalk.bold('\n🔐 AgentVault Project Initialization\n'));
 
@@ -342,6 +344,22 @@ export function initCommand(): Command {
       }
 
       await executeInit(answers, options, project);
+
+      if (options.hypervault) {
+        console.log();
+        console.log(chalk.cyan('Connecting to HyperVault...'));
+        try {
+          const { connectHyperVault } = await import('../../src/hypervault/pipeline.js');
+          const result = await connectHyperVault({ agentId: answers.name, projectRoot: path.resolve(project) });
+          if (result.valid) {
+            console.log(chalk.green('  ✓ HyperVault connected.'), chalk.gray('Run `agentvault hypervault pull` to sync your mind.'));
+          } else {
+            console.log(chalk.yellow('  HyperVault key not found or rejected. Run `agentvault hypervault connect` to finish.'));
+          }
+        } catch {
+          console.log(chalk.yellow('  Run `agentvault hypervault connect` to link a HyperVault account.'));
+        }
+      }
     });
 
   return command;

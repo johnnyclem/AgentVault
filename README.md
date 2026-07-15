@@ -93,6 +93,27 @@ agentvault show --canister-id <your-canister-id>
 agentvault fetch --canister-id <your-canister-id>
 ```
 
+## HyperVault
+
+[HyperVault](https://github.com/johnnyclem/hypervault) is the living cloud mind
+(`hypervault.store`); AgentVault is the sovereign body. The `hypervault` command
+group bridges them across three tiers — hot (cloud), warm (ICP canister), cold
+(Arweave) — so a cloud account becomes reconstructible from chain alone.
+
+```bash
+# Bootstrap a HyperVault-backed agent — memories, mind history, and indices included
+npx agentvault@latest hypervault bootstrap my-agent --key hv_...
+
+# hypervault.store → fully secure, archived, blockchain-backed AgentVault
+npx agentvault@latest hypervault archive --all --encrypt --network ic --arweave
+
+# Resurrect anywhere from a single Arweave transaction
+npx agentvault@latest hypervault restore ar://<tx-id> --to local
+```
+
+Both one-liners are also MCP tools via the native `agentvault mcp serve` server.
+See [`docs/guides/hypervault.md`](docs/guides/hypervault.md) for the full guide.
+
 ## CLI Commands
 
 ### Core Commands
