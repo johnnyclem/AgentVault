@@ -29,6 +29,13 @@ export interface EncryptedData {
   salt: string;
   /** Encrypted ciphertext */
   ciphertext: string;
+  /**
+   * AEAD authentication tag (hex). Both supported algorithms are AEAD, so
+   * decryption requires a tag. Legacy payloads produced by writers that
+   * appended the 16-byte tag to `ciphertext` (combined layout) may omit
+   * this field; the tag is then split off the end of `ciphertext`.
+   */
+  tag?: string;
   /** Timestamp of encryption */
   encryptedAt: string;
 }

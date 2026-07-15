@@ -16,6 +16,10 @@
     "./backbone": {
       "types": "./dist/src/backbone/index.d.ts",
       "import": "./dist/src/backbone/index.js"
+    },
+    "./hypervault": {
+      "types": "./dist/src/hypervault/index.d.ts",
+      "import": "./dist/src/hypervault/index.js"
     }
   },
   "bin": {

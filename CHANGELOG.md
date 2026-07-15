@@ -4,6 +4,42 @@ All notable changes to AgentVault will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased] - HyperVault integration
+
+### Added
+- **HyperVault ⇄ AgentVault bridge (`src/hypervault/`, `agentvault hypervault`).**
+  Makes the HyperVault cloud mind a first-class citizen across three tiers —
+  hot (cloud), warm (ICP canister), cold (Arweave):
+  - `HyperVaultClient` — typed REST client over undici with retry/backoff and
+    streamed NDJSON export (`GET /api/export`), plus import and archive-receipt
+    endpoints.
+  - `agentvault-hypervault-snapshot-v1` bundle format — reuses the
+    thoughtform-bundle envelope with per-entry SHA-256, a Merkle root, and an
+    ed25519 manifest signature. Encryption via the audited `CanisterEncryption`
+    (AES-256-GCM); private artifacts and conversations are always encrypted.
+  - Local indices — pure-TS weighted FTS index and a cosine `VectorIndex` over
+    exported embeddings, with reciprocal-rank hybrid recall and graceful
+    FTS-only fallback.
+  - Backbone/wiki adapters — `HyperVaultMemoryStore`, `HyperVaultKnowledgeStore`,
+    `HyperVaultWikiStore` run the existing interfaces against the cloud mind.
+  - On-chain mind mirror — topological, idempotent DAG replay onto a
+    `memory_repo` canister, with on-chain archive receipts.
+  - CLI: `hypervault connect · status · bootstrap · pull · push · snapshot ·
+    archive · verify · restore · reindex · recall`; `init --hypervault`.
+  - Native MCP server — `agentvault mcp serve` (stdio JSON-RPC, no new
+    dependency) exposing the `hypervault_*` pipeline tools and the existing
+    `wiki_*` tools.
+  - New package export subpath `agentvault/hypervault`.
+
+### Security
+- **C-1 (CRITICAL):** `vetkeys.decryptJSON` now validates the AES-256-GCM /
+  ChaCha20-Poly1305 authentication tag before returning plaintext (previously
+  `setAuthTag` was never called, so tampered ciphertext decrypted silently).
+  `EncryptedData` gains an optional `tag` field, a matching `encryptJSON` helper
+  is added, and payloads with no usable tag are refused rather than decrypted
+  unauthenticated. Legacy combined-layout payloads (tag appended to ciphertext)
+  are still supported.
+
 ## [1.0.4] - 2026-05-24 - Security & build hygiene refresh
 
 ### Security
