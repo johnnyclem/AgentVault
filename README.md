@@ -2,11 +2,9 @@
   <img src="site/static/img/logo.svg" alt="AgentVault" width="88" height="88" />
 </p>
 
-<h1 align="center">AgentVault</h1>
+# AgentVault
 
-<p align="center">
-  <strong>Persistent On-Chain AI Agent Platform — Sovereign, Reconstructible, Autonomous</strong>
-</p>
+**Persistent On-Chain AI Agent Platform — Sovereign, Reconstructible, Autonomous**
 
 <p align="center">
   <a href="https://www.npmjs.com/package/agentvault"><img src="https://img.shields.io/npm/v/agentvault.svg" alt="npm version"></a>
