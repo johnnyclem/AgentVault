@@ -1,19 +1,58 @@
-# AgentVault
+<p align="center">
+  <img src="site/static/img/logo.svg" alt="AgentVault" width="88" height="88" />
+</p>
 
-**Persistent On-Chain AI Agent Platform - Sovereign, Reconstructible, Autonomous**
+<h1 align="center">AgentVault</h1>
 
-AgentVault is an open-source CLI and canister system that enables true autonomy for local AI agents. Deploy agents to Internet Computer (ICP) canisters for persistent, 24/7 execution without browser dependencies.
+<p align="center">
+  <strong>Persistent On-Chain AI Agent Platform — Sovereign, Reconstructible, Autonomous</strong>
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/agentvault"><img src="https://img.shields.io/npm/v/agentvault.svg" alt="npm version"></a>
+  <a href="https://github.com/johnnyclem/agentvault/actions/workflows/test.yml"><img src="https://github.com/johnnyclem/agentvault/actions/workflows/test.yml/badge.svg" alt="test status"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/npm/l/agentvault.svg" alt="license"></a>
+  <img src="https://img.shields.io/node/v/agentvault.svg" alt="node engine">
+</p>
+
+AgentVault is an open-source CLI and canister system that gives local AI agents
+true autonomy. Package an agent, deploy it to an [Internet Computer](https://internetcomputer.org/)
+(ICP) canister, and it keeps running 24/7 — no laptop, browser tab, or hosting
+bill required. State lives on-chain, so any agent can be fetched, decrypted,
+and reconstructed from nothing but its canister ID or a single Arweave
+transaction.
+
+## Table of Contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [HyperVault](#hypervault)
+- [Example Agents](#example-agents)
+- [CLI Commands](#cli-commands)
+- [Environment Variables](#environment-variables)
+- [Project Structure](#project-structure)
+- [Documentation](#documentation)
+- [Development](#development)
+- [Testing](#testing)
+- [Known Limitations](#known-limitations)
+- [Wallet Secrets](#wallet-secrets)
+- [Contributing](#contributing)
+- [License](#license)
+- [Resources](#resources)
 
 ## Features
 
-- **Agent Packaging**: Compile TypeScript agents to WASM
-- **Canister Deployment**: Deploy to ICP local replica or mainnet
-- **State Management**: Query, fetch, and reconstruct agent state
-- **Multi-Chain Wallets**: ICP, Ethereum, Polkadot, Solana support
-- **VetKeys Integration**: Threshold key derivation for secure secrets
-- **Monitoring**: Health checks, metrics, and alerting
-- **Archival**: Arweave integration for permanent storage
-- **AI Inference**: Bittensor network integration
+- **Agent Packaging** — compile TypeScript agents to WASM
+- **Canister Deployment** — deploy to an ICP local replica or mainnet
+- **State Management** — query, fetch, and reconstruct agent state
+- **Multi-Chain Wallets** — ICP, Ethereum, Polkadot, and Solana support
+- **VetKeys Integration** — threshold key derivation for secure secrets
+- **Monitoring** — health checks, metrics, and alerting
+- **Archival** — Arweave integration for permanent, off-chain-cheap storage
+- **AI Inference** — Bittensor network integration
+- **Fault Tolerance** — mirrored canisters, cron-driven liveness checks, and auto-restore
+- **HyperVault Bridge** — reconstruct a cloud-hosted agent from chain alone
 
 ## Installation
 
@@ -37,7 +76,7 @@ node dist/cli/index.js --help
 ### Prerequisites
 
 - Node.js 18+
-- dfx (Internet Computer SDK) - for canister deployment
+- [dfx](https://internetcomputer.org/docs/current/developer-docs/getting-started/install/) (Internet Computer SDK) — for canister deployment
 - TypeScript 5.7+
 
 ## Quick Start
@@ -114,6 +153,20 @@ npx agentvault@latest hypervault restore ar://<tx-id> --to local
 Both one-liners are also MCP tools via the native `agentvault mcp serve` server.
 See [`docs/guides/hypervault.md`](docs/guides/hypervault.md) for the full guide.
 
+## Example Agents
+
+The [`examples/`](examples) directory ships ready-to-package agents so you can
+see the full workflow before writing your own:
+
+| Example | Description |
+|---------|-------------|
+| [`vale-agent`](examples/vale-agent) | A persona-driven agent with a defined "soul" (`soul.md`) |
+| [`agents/generic`](examples/agents/generic) | Minimal generic agent scaffold (`agent.json` / `agent.yaml`) |
+| [`agents/clawdbot`](examples/agents/clawdbot) | Claude-based agent example |
+| [`agents/cline`](examples/agents/cline) | Cline-configured coding agent |
+| [`agents/goose`](examples/agents/goose) | Goose-configured agent |
+| [`agents/nemoclaw`](examples/agents/nemoclaw) | NVIDIA Nemotron/OpenShell inference runtime example |
+
 ## CLI Commands
 
 ### Core Commands
@@ -168,6 +221,7 @@ See [`docs/guides/hypervault.md`](docs/guides/hypervault.md) for the full guide.
 |---------|-------------|
 | `memory` | Git-style memory repository for agent identity and versioned memory |
 | `rebase` | Fetch on-chain commits and merge with a local bundle file |
+| `merge` | Merge a local bundle file with on-chain commits (thoughtform merging) |
 | `wiki` | LLM-maintained knowledge base (archivist) |
 | `polytician` | Manage Polytician semantic memory integration |
 | `skills` | Manage domain-specific agent skill files |
@@ -200,6 +254,10 @@ See [`docs/guides/hypervault.md`](docs/guides/hypervault.md) for the full guide.
 | `mcp` | Manage MCP (Model Context Protocol) server registrations |
 | `mint` | Scaffold a new Google ADK agent with on-chain canister and birthday backup |
 | `pilot` | Initialize a private ICP replica and deploy Guild canisters |
+| `hypervault` | Bridge a HyperVault cloud account across hot/warm/cold tiers (see [HyperVault](#hypervault)) |
+
+Run `agentvault <command> --help` for full option details, or see the
+[complete CLI reference](docs/cli/reference.md).
 
 ## Environment Variables
 
@@ -244,7 +302,8 @@ agentvault/
 ├── cli/                    # CLI commands
 ├── canister/               # Motoko canister code
 ├── webapp/                 # Next.js dashboard
-├── tests/                  # Test suite (508 tests)
+├── macos-wallet-app/        # Native macOS/iOS wallet companion app (Xcode project)
+├── tests/                  # Test suite (1,500+ cases)
 └── examples/               # Sample agents
 ```
 
@@ -253,6 +312,10 @@ agentvault/
 - **Website**: https://agentvault.cloud
 - [Documentation index](docs/user/index-v1.0.md)
 - [Comprehensive tutorial](docs/user/tutorial-v1.0.md)
+- [Getting started](docs/getting-started/quick-start.md) · [Installation](docs/getting-started/installation.md) · [Configuration](docs/getting-started/configuration.md)
+- [Complete CLI reference](docs/cli/reference.md)
+- [Architecture overview](docs/architecture/overview.md)
+- [Security overview](docs/security/overview.md) & [best practices](docs/security/best-practices.md)
 - [Clawdbot/Claude skill runbook](docs/user/clawdbot-claude-skill.md)
 
 ## Development
@@ -272,7 +335,7 @@ npm run lint:fix     # ESLint with auto-fix
 
 ## Testing
 
-AgentVault has 508 tests covering:
+AgentVault has 1,500+ test cases across 88 test files covering:
 
 - CLI commands (init, deploy, package, status)
 - ICP client (connection, deployment, execution)
@@ -312,7 +375,8 @@ CLI arguments (they would leak through `ps aux` and shell history). Use:
 
 ## Contributing
 
-Contributions are welcome! Please:
+Contributions are welcome! See the [contributing guide](docs/development/contributing.md)
+for the full workflow. In short:
 
 1. Fork the repository
 2. Create a feature branch
@@ -332,3 +396,4 @@ MIT License - see [LICENSE](./LICENSE).
 - [Implementation Plan](./AI_DOCS/)
 - [Changelog](./CHANGELOG.md)
 - [ICP Documentation](https://internetcomputer.org/docs/)
+</content>
