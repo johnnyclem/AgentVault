@@ -192,12 +192,13 @@ export async function writeStateFile(
 export async function readStateFile(
   filePath: string,
   principalId?: string,
+  secret?: string,
 ): Promise<AgentState> {
   const raw = fs.readFileSync(filePath);
 
   // Auto-decrypt if the file is a VetKeys-encrypted bundle
   if (isVetKeysEncryptedBundle(Buffer.from(raw))) {
-    const decrypted = await decryptBundle(Buffer.from(raw), principalId);
+    const decrypted = await decryptBundle(Buffer.from(raw), principalId, secret);
     return deserializeState(decrypted.toString('utf-8'));
   }
 
