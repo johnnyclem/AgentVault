@@ -20,6 +20,7 @@
 
 import * as crypto from 'node:crypto';
 import { debugLog } from '../debugging/debug-logger.js';
+import { splitSecret, encodeShare } from './shamir.js';
 import type {
   EncryptedData,
   VetKeysOptions,
@@ -253,34 +254,23 @@ export class VetKeysImplementation {
     seedPhrase: string,
     threshold: number,
     totalParties: number,
-    algorithm: EncryptionAlgorithm
+    _algorithm: EncryptionAlgorithm
   ): Promise<Array<{ shareId: string; participantId: string; encryptedShare: string; commitment: string }>> {
-    const shares: Array<{ shareId: string; participantId: string; encryptedShare: string; commitment: string }> = [];
-    const masterCommitment = await this.generateCommitment(shares);
+    // Real Shamir split over GF(2^8): any `threshold` shares reconstruct the
+    // seed phrase, any fewer reveal nothing about it.
+    const splits = splitSecret(Buffer.from(seedPhrase, 'utf-8'), threshold, totalParties);
 
-    for (let i = 0; i < threshold; i++) {
-      const shareId = this.generateShareId();
-      const participantId = i + 1;
+    return splits.map((split) => {
+      const encoded = encodeShare(split);
+      const commitment = crypto.createHash('sha256').update(encoded).digest('hex');
 
-      // Generate unique secret for this participant
-      const participantSecret = this.generateParticipantSecret(seedPhrase, i, totalParties);
-
-      // Encrypt share with participant's secret
-      const { encryptedShare, commitment: shareCommitment } = await this.encryptShare(
-        participantSecret,
-        masterCommitment,
-        algorithm,
-      );
-
-      shares.push({
-        shareId,
-        participantId: participantId.toString(),
-        encryptedShare,
-        commitment: shareCommitment,
-      });
-    }
-
-    return shares;
+      return {
+        shareId: this.generateShareId(),
+        participantId: split.x.toString(),
+        encryptedShare: encoded,
+        commitment,
+      };
+    });
   }
 
   /**
@@ -291,69 +281,6 @@ export class VetKeysImplementation {
     const timestamp = Date.now().toString(36);
     const randomHex = randomBytes.toString('hex').substring(0, 8);
     return `share_${timestamp}_${randomHex}`;
-  }
-
-   /**
-   * Generate unique secret for a participant
-   *
-   * @param seedPhrase - Master secret
-   * @param participantIndex - Participant index (1-based)
-   */
-  private generateParticipantSecret(seedPhrase: string, participantIndex: number, _totalParties: number): string {
-    const secretBytes = Buffer.from(seedPhrase, 'utf8');
-
-    // Create unique secret for this participant by adding participant index
-    const participantSuffix = Buffer.concat([Buffer.from([participantIndex]), secretBytes]);
-
-    return participantSuffix.toString('hex');
-  }
-
-  /**
-   * Encrypt a secret share
-   *
-   * @param secret - Secret to encrypt
-   * @param algorithm - Encryption algorithm
-   */
-  private async encryptShare(
-    secret: string,
-    _commitment: string,
-    algorithm: EncryptionAlgorithm
-  ): Promise<{ encryptedShare: string; commitment: string }> {
-    const crypto = await import('node:crypto');
-
-    const secretBuffer = Buffer.from(secret, 'utf-8');
-    const iv = algorithm === 'aes-256-gcm' ? crypto.randomBytes(12) : crypto.randomBytes(16);
-    // SEC-10: use an independent random salt for PBKDF2 rather than
-    // reusing the IV. The salt is prepended to the encrypted output so
-    // that any future decrypt path can recover it.
-    const salt = crypto.randomBytes(16);
-
-    const encryptionKey = crypto.pbkdf2Sync(
-      secretBuffer,
-      salt,
-      100000,
-      32,
-      'sha256'
-    );
-
-    const cipher = crypto.createCipheriv(algorithm, encryptionKey, iv);
-
-    const ciphertext = Buffer.concat([
-      cipher.update(secretBuffer),
-      cipher.final(),
-    ]);
-
-    // On-disk layout v2: salt(16) || iv(12 or 16) || ciphertext
-    const encryptedShare = Buffer.concat([salt, iv, ciphertext]);
-
-    const commitmentHash = crypto.createHash('sha256')
-      .update(encryptedShare)
-      .digest();
-
-    return {
-      encryptedShare: encryptedShare.toString('hex'),
-      commitment: commitmentHash.toString('hex'),
-    };
   }
 
   /**

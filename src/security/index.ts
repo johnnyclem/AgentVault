@@ -19,6 +19,9 @@ export {
 } from './vetkeys.js';
 
 // Multi-sig approval workflows
+// Shamir's Secret Sharing over GF(2^8) — used for threshold key splitting
+export * from './shamir.js';
+
 export * from './multisig.js';
 
 // TOTP (RFC 6238) — pure-Node implementation for Authy / Google Authenticator
