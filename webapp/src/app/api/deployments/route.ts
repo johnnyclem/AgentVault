@@ -27,6 +27,16 @@ interface DeployRequestBody {
   projectRoot?: string
 }
 
+/**
+ * Networks a deploy request may target.
+ *
+ * The value reaches `dfx` as the `--network` argument. execa passes arguments
+ * without a shell, so this is not a command-injection sink, but an unvalidated
+ * value still lets a caller point a deploy at an arbitrary named network.
+ * Mirrors the networks declared in dfx.json.
+ */
+const ALLOWED_NETWORKS = new Set(['local', 'private', 'ic'])
+
 function asString(value: unknown): string | undefined {
   if (typeof value !== 'string') {
     return undefined
@@ -124,6 +134,14 @@ export async function POST(request: Request) {
       }, { status: 404 })
     }
 
+    const requestedNetwork = asString(body.network) ?? 'local'
+    if (!ALLOWED_NETWORKS.has(requestedNetwork)) {
+      return NextResponse.json({
+        success: false,
+        error: `Unsupported network '${requestedNetwork}'. Expected one of: ${[...ALLOWED_NETWORKS].join(', ')}`,
+      }, { status: 400 })
+    }
+
     const requestedSourcePath = asString(body.sourcePath)
     const sourcePath = resolveAgentSourcePath(agentId, config, requestedSourcePath)
     if (!sourcePath) {
@@ -138,7 +156,7 @@ export async function POST(request: Request) {
       sourcePath,
     })
 
-    const network = asString(body.network) ?? 'local'
+    const network = requestedNetwork
     const environment = asString(body.environment)
     const canisterId = asString(body.canisterId)
     const identity = asString(body.identity)
