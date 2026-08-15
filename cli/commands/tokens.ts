@@ -42,9 +42,11 @@ async function executeBalance(options: any): Promise<void> {
   }
 }
 
-async function executeTransfer(options: any): Promise<void> {
-  const { amount, to } = options;
-
+/**
+ * Commander passes declared `.argument()` values positionally, ahead of the
+ * options object — destructuring them off `options` yields undefined.
+ */
+async function executeTransfer(amount: string, to: string): Promise<void> {
   const spinner = ora(`Transferring ${amount} tokens to ${to}...`).start();
 
   try {
