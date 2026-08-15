@@ -1,7 +1,11 @@
 /**
  * Wallet Export JSON Backup Tests (CLE-71)
  *
- * Tests for wallet export to plain JSON backup format
+ * Tests for wallet export to plain JSON backup format.
+ *
+ * These run with the working directory pointed at a temp dir: handleExport
+ * writes to `<cwd>/backups`, so running them in the repo root previously
+ * rewrote the committed backups/test-backup.json on every `npm test`.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -9,7 +13,9 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 
-const TEST_DIR = path.join(os.tmpdir(), 'agentvault-export-test');
+const WALLET_ADDRESS = '0x1234567890abcdef1234567890abcdef12345678';
+const WALLET_PRIVATE_KEY =
+  '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
 
 vi.mock('inquirer', () => ({
   default: {
@@ -26,110 +32,98 @@ vi.mock('../../src/wallet/index.js', () => ({
     id: walletId,
     agentId: 'test-agent',
     chain: 'cketh',
-    address: '0x1234567890abcdef1234567890abcdef12345678',
-    privateKey: '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+    address: WALLET_ADDRESS,
+    privateKey: WALLET_PRIVATE_KEY,
+    createdAt: 1_700_000_000_000,
+    updatedAt: 1_700_000_000_000,
     creationMethod: 'private-key',
   })),
 }));
 
+const { handleExport } = await import('../../cli/commands/wallet-export.js');
+
+let tmpDir: string;
+let originalCwd: string;
+
+/** Read the single file written under <cwd>/backups. */
+function readExport(): { file: string; parsed: Record<string, any> } {
+  const backupDir = path.join(tmpDir, 'backups');
+  const files = fs.readdirSync(backupDir);
+  expect(files).toHaveLength(1);
+
+  const file = path.join(backupDir, files[0]!);
+  return { file, parsed: JSON.parse(fs.readFileSync(file, 'utf-8')) };
+}
+
+beforeEach(() => {
+  originalCwd = process.cwd();
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentvault-export-json-'));
+  process.chdir(tmpDir);
+  vi.clearAllMocks();
+});
+
+afterEach(() => {
+  process.chdir(originalCwd);
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+});
+
 describe('Wallet Export JSON Backup (CLE-71)', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    if (fs.existsSync(TEST_DIR)) {
-      fs.rmSync(TEST_DIR, { recursive: true, force: true });
-    }
-    fs.mkdirSync(TEST_DIR, { recursive: true });
-  });
-
-  afterEach(() => {
-    if (fs.existsSync(TEST_DIR)) {
-      fs.rmSync(TEST_DIR, { recursive: true, force: true });
-    }
-  });
-
   describe('Export to JSON', () => {
-    it('should create backup file in JSON format', async () => {
-      const { handleExport } = await import('../../cli/commands/wallet-export.js');
-
-      await handleExport('test-agent', { format: 'json', output: 'test-backup.json' });
-
-      const backupDir = path.join(process.cwd(), 'backups');
-      expect(fs.existsSync(backupDir) || true).toBe(true);
-    });
-
-    it('should include all wallets in backup', async () => {
-      const { handleExport } = await import('../../cli/commands/wallet-export.js');
-
+    it('creates a backup file in the backups directory', async () => {
       await handleExport('test-agent', { format: 'json' });
 
-      const backupDir = path.join(process.cwd(), 'backups');
-      if (fs.existsSync(backupDir)) {
-        const files = fs.readdirSync(backupDir);
-        expect(files.length).toBeGreaterThanOrEqual(0);
+      const { file } = readExport();
+      expect(fs.existsSync(file)).toBe(true);
+    });
+
+    it('honours a custom output filename', async () => {
+      await handleExport('test-agent', { format: 'json', output: 'custom-name.json' });
+
+      const { file } = readExport();
+      expect(path.basename(file)).toBe('custom-name.json');
+    });
+
+    it('writes the backup owner-readable only', async () => {
+      await handleExport('test-agent', { format: 'json' });
+
+      const { file } = readExport();
+      expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+    });
+  });
+
+  describe('Backup structure', () => {
+    it('records the expected metadata', async () => {
+      await handleExport('test-agent', { format: 'json' });
+
+      const { parsed } = readExport();
+
+      expect(parsed.version).toBe('1.0');
+      expect(parsed.agentId).toBe('test-agent');
+      expect(parsed.format).toBe('json');
+      expect(typeof parsed.exportedAt).toBe('number');
+    });
+
+    it('includes every wallet the agent owns', async () => {
+      await handleExport('test-agent', { format: 'json' });
+
+      const { parsed } = readExport();
+
+      expect(parsed.wallets).toHaveLength(2);
+      expect(parsed.wallets.map((w: { id: string }) => w.id)).toEqual([
+        'wallet-1',
+        'wallet-2',
+      ]);
+    });
+
+    it('includes wallet addresses and private keys', async () => {
+      await handleExport('test-agent', { format: 'json' });
+
+      const { parsed } = readExport();
+
+      for (const wallet of parsed.wallets) {
+        expect(wallet.address).toBe(WALLET_ADDRESS);
+        expect(wallet.privateKey).toBe(WALLET_PRIVATE_KEY);
       }
-    });
-  });
-
-  describe('Backup Structure', () => {
-    it('should have correct backup metadata', () => {
-      const backup = {
-        version: '1.0',
-        agentId: 'test-agent',
-        exportedAt: Date.now(),
-        format: 'json' as const,
-        wallets: [],
-      };
-
-      expect(backup.version).toBeDefined();
-      expect(backup.agentId).toBeDefined();
-      expect(backup.exportedAt).toBeDefined();
-      expect(backup.format).toBe('json');
-    });
-
-    it('should include wallet addresses', () => {
-      const wallets = [
-        { id: 'wallet-1', chain: 'cketh', address: '0x1234...' },
-        { id: 'wallet-2', chain: 'solana', address: '7Np41...' },
-      ];
-
-      expect(wallets.length).toBe(2);
-      expect(wallets[0]?.address).toBeDefined();
-      expect(wallets[1]?.address).toBeDefined();
-    });
-
-    it('should include private keys when available', () => {
-      const wallet = {
-        id: 'wallet-1',
-        chain: 'cketh',
-        address: '0x1234...',
-        privateKey: '0xabcdef...',
-      };
-
-      expect(wallet.privateKey).toBeDefined();
-    });
-  });
-
-  describe('Export Options', () => {
-    it('should support custom output path', () => {
-      const outputPath = '/custom/path/backup.json';
-      expect(outputPath).toContain('backup.json');
-    });
-
-    it('should support format selection', () => {
-      const formats = ['json', 'encrypted'] as const;
-      expect(formats).toContain('json');
-    });
-  });
-
-  describe('Security Warnings', () => {
-    it('should warn about plaintext private keys', () => {
-      const hasPrivateKey = true;
-      const format = 'json';
-
-      const shouldWarn = hasPrivateKey && format === 'json';
-      expect(shouldWarn).toBe(true);
     });
   });
 });
