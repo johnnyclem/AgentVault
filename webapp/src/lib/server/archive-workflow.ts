@@ -717,7 +717,9 @@ export async function runArchiveWorkflow(input: ArchiveRunInput): Promise<{
 }
 
 function agentNameVersion(agent: NonNullable<ReturnType<typeof buildAgentModel>>): string {
-  return asString((agent as Record<string, unknown>).version) ?? '1.0.0'
+  // Agent has no index signature, so it cannot be cast straight to
+  // Record<string, unknown>; go through unknown to read an optional field.
+  return asString((agent as unknown as Record<string, unknown>).version) ?? '1.0.0'
 }
 
 export async function createWalletForAgent(

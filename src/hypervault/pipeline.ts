@@ -238,7 +238,7 @@ export async function pullHyperVault(options: PullOptions): Promise<PullResult> 
 export function mergeRecords(existing: HvExportRecord[], fresh: HvExportRecord[]): HvExportRecord[] {
   const keyOf = (r: HvExportRecord): string => {
     const id = typeof r.row.id === 'string' ? r.row.id : typeof r.row.name === 'string' ? r.row.name : JSON.stringify(r.row);
-    return `${r.table}\0${id}`;
+    return `${r.table}\u0000${id}`;
   };
   const merged = new Map<string, HvExportRecord>();
   for (const record of existing) merged.set(keyOf(record), record);

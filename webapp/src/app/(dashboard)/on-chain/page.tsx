@@ -125,8 +125,8 @@ export default function OnChainPage() {
       ) : (
         <div className="space-y-4">
           {entries.map((entry) => {
-            const hasCanister = entry.canister
-            const canisterStatus = hasCanister ? entry.canister.status : 'unknown'
+            const canister = entry.canister
+            const canisterStatus = canister ? canister.status : 'unknown'
 
             return (
               <div
@@ -139,7 +139,7 @@ export default function OnChainPage() {
                     <p className="text-sm text-zinc-400">Agent {entry.agentId}</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <StatusBadge status={hasCanister ? canisterStatus : 'error'} />
+                    <StatusBadge status={canister ? canisterStatus : 'error'} />
                     <a
                       href={toExplorer(entry.canisterId)}
                       target="_blank"
@@ -151,7 +151,7 @@ export default function OnChainPage() {
                   </div>
                 </div>
 
-                {hasCanister ? (
+                {canister ? (
                   <div className="grid gap-2 text-sm text-zinc-300 sm:grid-cols-2 lg:grid-cols-4">
                     <p>
                       <span className="text-zinc-500">Canister:</span>{' '}
@@ -159,19 +159,19 @@ export default function OnChainPage() {
                     </p>
                     <p>
                       <span className="text-zinc-500">Cycles:</span>{' '}
-                      {formatCycles(entry.canister.cycles)}
+                      {formatCycles(canister.cycles)}
                     </p>
                     <p>
                       <span className="text-zinc-500">Memory:</span>{' '}
-                      {formatBytes(entry.canister.memory)}
+                      {formatBytes(canister.memory)}
                     </p>
                     <p>
                       <span className="text-zinc-500">Controller:</span>{' '}
-                      <span className="font-mono">{entry.canister.controller.slice(0, 12)}...</span>
+                      <span className="font-mono">{canister.controller.slice(0, 12)}...</span>
                     </p>
                     <p>
                       <span className="text-zinc-500">Updated:</span>{' '}
-                      {formatTimestamp(entry.canister.updatedAt)}
+                      {formatTimestamp(canister.updatedAt)}
                     </p>
                     <p>
                       <span className="text-zinc-500">Status:</span> {canisterStatus}

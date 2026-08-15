@@ -148,13 +148,20 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
   const [archiveReceipt, setArchiveReceipt] = useState<ArchiveReceipt | null>(null)
   const [archiveDoneMessage, setArchiveDoneMessage] = useState<string | null>(null)
 
-  const trimArtifactValues = Object.fromEntries(
-    Object.entries(artifactPaths).map(([key, value]) => [key, asString(value)])
-  ) as ArtifactPaths
+  // Built explicitly rather than via Object.fromEntries + cast: the entries
+  // form produces an index signature that does not overlap ArtifactPaths, and
+  // the cast hid the fact that a missing key would have gone unnoticed.
+  const trimArtifactValues: ArtifactPaths = {
+    config: asString(artifactPaths.config),
+    skill: asString(artifactPaths.skill),
+    token: asString(artifactPaths.token),
+    soul: asString(artifactPaths.soul),
+    memory: asString(artifactPaths.memory),
+  }
 
   const selectedIcpWallet = icpWallets.find((wallet) => wallet.id === selectedIcpWalletId)
   const selectedArweaveWallet = arweaveWallets.find((wallet) => wallet.id === selectedArweaveWalletId)
-  const arweaveNeedsJwk = Boolean(selectedArweaveWallet) && !selectedArweaveWallet.hasJwk
+  const arweaveNeedsJwk = selectedArweaveWallet !== undefined && !selectedArweaveWallet.hasJwk
 
   const requiredKinds = useMemo<ArtifactKind[]>(() => {
     if (!detection || detection.missing.length === 0) {
@@ -164,7 +171,9 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
   }, [detection])
 
   const areArtifactsReady = requiredKinds.every((kind) => Boolean(trimArtifactValues[kind]))
-  const isSourcePathReady = Boolean(asString(archiveSourcePath) || asString(detection?.sourcePath))
+  const isSourcePathReady = Boolean(
+    asString(archiveSourcePath) || asString(detection?.sourcePath ?? undefined)
+  )
   const hasWalletSelection = Boolean(selectedIcpWalletId && selectedArweaveWalletId)
   const isArweaveJwkReady = !arweaveNeedsJwk || Boolean(asString(arweaveJwk))
   const canRunArchive = hasWalletSelection && isArweaveJwkReady
