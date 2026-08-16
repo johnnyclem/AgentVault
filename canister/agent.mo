@@ -6,18 +6,7 @@
  * Implements the standard 14-function agent interface.
  */
 
-import Memory "mo:base/Memory";
-import Buffer "mo:base/Buffer";
-import Int "mo:base/Int";
-import Time "mo:base/Time";
-import Iter "mo:base/Iter";
-import Blob "mo:base/Blob";
-import Text "mo:base/Text";
-import Array "mo:base/Array";
-import Option "mo:base/Option";
-import Principal "mo:base/Principal";
-
-// ==================== Types ====================
+/**
  * Security hardening applied:
  *
  *  1. HEAP LIMIT  — Prim.rts_heap_size() checked on every write call; aborts at 64 MB.
@@ -79,6 +68,14 @@ type ManagementCanister = actor {
 };
 
 let mgmt : ManagementCanister = actor "aaaaa-aa";
+
+// ==================== Canister Actor ====================
+//
+// Everything below is the actor body. The declarations above (imports, the
+// management-canister interface and the `mgmt` reference) stay at module scope
+// so the actor reference resolves at compile time.
+
+actor AgentVault {
 
 // ==================== Domain Types ====================
 
@@ -252,6 +249,19 @@ stable var totalHealthChecks     : Nat  = 0;
 stable var lastHealthCheckNs     : Int  = 0;
 stable var lastHealthStatus      : Text = "not_started";
 
+// ==================== Mirror Replication State ====================
+// Declared here (rather than beside the mirror functions) so the guard
+// functions below can reference mirrorCanisterId without a forward reference.
+
+/** Principal of the registered mirror canister (empty = no mirror configured). */
+stable var mirrorCanisterId : Text = "";
+
+/** Timestamp of the most recent successful push to the mirror. */
+stable var lastSyncToMirrorAt : Int = 0;
+
+/** Timestamp of the most recent successful pull from the mirror. */
+stable var lastSyncFromMirrorAt : Int = 0;
+
 // ==================== Agent Stable State ====================
 
 stable var agentConfig  : ?AgentConfig  = null;
@@ -339,6 +349,25 @@ private func assertAuthorized(caller : Principal) {
   if (not isAuthorized(caller)) {
     assert false; // caller principal is not authorized — unknown principals are rejected
   };
+};
+
+/// Return true if `caller` is the registered mirror canister.
+///
+/// Primary and mirror deploy the same WASM and register each other, so this is
+/// symmetric: the peer pushing state to us is exactly the peer we would push to.
+private func isSyncPeer(caller : Principal) : Bool {
+  if (Text.size(mirrorCanisterId) == 0) { return false };
+  Principal.toText(caller) == mirrorCanisterId
+};
+
+/// Trap unless `caller` is authorized or is the registered mirror peer.
+private func assertSyncAllowed(caller : Principal) {
+  assertNotKilled();
+  assertMemoryLimit();
+  if (not (isAuthorized(caller) or isSyncPeer(caller))) {
+    assert false; // only authorized principals or the registered mirror peer may sync
+  };
+  assertNotFrozen();
 };
 
 /// Trap if `caller` is not the owner.
@@ -575,7 +604,7 @@ system func heartbeat() : async () {
   // Expire timed-out consensus proposals every heartbeat round.
   // This ensures the 30-second window is enforced even if the off-chain
   // coordinator is unreachable.
-  ignore await expireStaleConsensusProposals();
+  ignore expireStaleProposalsInternal();
 };
 
 /**
@@ -1466,10 +1495,21 @@ public shared(msg) func cancelConsensusProposal(proposalId : Text, reason : Text
 /**
  * Expire proposals that have exceeded the 30-second consensus window.
  *
- * Called automatically from the system heartbeat every round.
- * Returns the number of proposals that were expired.
+ * Authorized callers only — this rewrites proposal statuses to #cancelled, so
+ * an open version lets anyone cancel pending consensus rounds.
  */
-public shared func expireStaleConsensusProposals() : async Nat {
+public shared (msg) func expireStaleConsensusProposals() : async Nat {
+  assertWriteAllowed(msg.caller);
+  expireStaleProposalsInternal()
+};
+
+/**
+ * Expiry logic shared by the public entry point and the system heartbeat.
+ *
+ * The heartbeat has no caller to authorize, so it calls this directly rather
+ * than going through the guarded public function.
+ */
+private func expireStaleProposalsInternal() : Nat {
   let now = Time.now();
   var count : Nat = 0;
 
@@ -1717,25 +1757,19 @@ type MirrorActor = actor {
   };
 };
 
-/** Principal of the registered mirror canister (empty = no mirror configured). */
-stable var mirrorCanisterId : Text = "";
-
-/** ISO timestamp of the most recent successful push to the mirror. */
-stable var lastSyncToMirrorAt : Int = 0;
-
-/** ISO timestamp of the most recent successful pull from the mirror. */
-stable var lastSyncFromMirrorAt : Int = 0;
-
 /**
  * Register the mirror canister.
  *
  * @param canisterId - Principal text of the mirror canister
  * @returns Registration result
  */
-public shared func setMirrorCanister(canisterId : Text) : async {
+public shared (msg) func setMirrorCanister(canisterId : Text) : async {
   #ok : Text;
   #err : Text;
 } {
+  assertNotKilled();
+  assertOwner(msg.caller);
+
   if (Text.size(canisterId) == 0) {
     return #err("Mirror canister ID cannot be empty");
   };
@@ -1745,8 +1779,14 @@ public shared func setMirrorCanister(canisterId : Text) : async {
 
 /**
  * Clear the mirror canister registration.
+ *
+ * Owner-only. Permitted while frozen so pairing can be undone during recovery,
+ * matching the allowlist-management functions.
  */
-public shared func clearMirrorCanister() : async Text {
+public shared (msg) func clearMirrorCanister() : async Text {
+  assertNotKilled();
+  assertOwner(msg.caller);
+
   mirrorCanisterId := "";
   "Mirror canister cleared"
 };
@@ -1770,10 +1810,14 @@ public query func getMirrorCanister() : async ?Text {
  *
  * @returns Sync result
  */
-public shared func syncToMirror(targetCanisterId : Text) : async {
+public shared (msg) func syncToMirror(targetCanisterId : Text) : async {
   #ok : Text;
   #err : Text;
 } {
+  // Authorized callers only: this spends cycles on an inter-canister call to a
+  // caller-chosen target, so leaving it open is a cycle-drain primitive.
+  assertWriteAllowed(msg.caller);
+
   let target = if (Text.size(targetCanisterId) > 0) targetCanisterId else mirrorCanisterId;
 
   if (Text.size(target) == 0) {
@@ -1813,10 +1857,14 @@ public shared func syncToMirror(targetCanisterId : Text) : async {
  * @param sourceCanisterId - Mirror canister to pull from (uses registered ID if empty)
  * @returns Restore result
  */
-public shared func syncFromMirror(sourceCanisterId : Text) : async {
+public shared (msg) func syncFromMirror(sourceCanisterId : Text) : async {
   #ok : Text;
   #err : Text;
 } {
+  // Overwrites all local state from a caller-chosen source, so this must be
+  // restricted to authorized principals.
+  assertWriteAllowed(msg.caller);
+
   let source = if (Text.size(sourceCanisterId) > 0) sourceCanisterId else mirrorCanisterId;
 
   if (Text.size(source) == 0) {
@@ -1845,15 +1893,21 @@ public shared func syncFromMirror(sourceCanisterId : Text) : async {
  * Accept a state snapshot pushed by the primary canister (mirror-side function).
  *
  * Both the primary and the mirror deploy the same canister WASM, so both
- * expose this function.  Only the primary's controller should call it.
+ * expose this function.
+ *
+ * Restricted to authorized principals and the registered sync peer: this
+ * replaces all agent state wholesale, so an open version lets any caller
+ * overwrite the agent.
  */
-public shared func receiveSync(
+public shared (msg) func receiveSync(
   inMemories : [Memory],
   inTasks    : [Task],
   inCtx      : [(Text, Text)],
   inConfig   : ?AgentConfig,
   syncedAt   : Int
 ) : async { #ok : Text; #err : Text } {
+  assertSyncAllowed(msg.caller);
+
   memories    := inMemories;
   tasks       := inTasks;
   context     := inCtx;
@@ -1865,14 +1919,21 @@ public shared func receiveSync(
 
 /**
  * Export current state snapshot for a primary-side pull (mirror-side function).
+ *
+ * Restricted to authorized principals and the registered sync peer: this
+ * returns every memory, task and context entry the agent holds.
  */
-public query func exportSyncState() : async {
+public shared query (msg) func exportSyncState() : async {
   memories : [Memory];
   tasks    : [Task];
   ctx      : [(Text, Text)];
   config   : ?AgentConfig;
   syncedAt : Int;
 } {
+  if (not (isAuthorized(msg.caller) or isSyncPeer(msg.caller))) {
+    assert false; // only authorized principals or the registered mirror peer may export state
+  };
+
   {
     memories = memories;
     tasks    = tasks;
@@ -1957,3 +2018,5 @@ public query func get_thoughtform(id : Nat) : async ?ThoughtForm {
 public query func get_thoughtforms() : async [ThoughtForm] {
   thoughtForms
 };
+
+}

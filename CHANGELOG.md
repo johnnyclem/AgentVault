@@ -158,9 +158,14 @@ The following commands are marked [Experimental] and under active development:
 - `wallet-multi-send` - Multi-chain transactions
 - `wallet-process-queue` - Transaction queue processing
 
-## [Unreleased]
-
 ## [1.0.0] - 2025-02-10 - Phase 5: Production Release
+
+> **Note:** this file carries two `[1.0.0]` headings with different dates — the
+> 2025-02-12 "Final Release" entry above and this 2025-02-10 "Phase 5" one,
+> which sits above the `1.0.0-rc.*` entries. The duplication came from a merge
+> and the two sets of notes have never been reconciled. Both are kept verbatim
+> rather than guessing which shipped; treat the 2025-02-12 entry as describing
+> the released 1.0.0.
 
 ### Added
 - Production-ready AI agent platform for Internet Computer
@@ -297,5 +302,3 @@ The following commands are marked [Experimental] and under active development:
 - Documentation structure
 
 ---
-
-## [Unreleased]

@@ -7,7 +7,8 @@
 - `tests/`: Vitest suite (unit, integration, CLI, deployment, packaging).
 - `examples/`: sample agent projects and configs.
 - `docs/`, `AI_DOCS/`: product and design docs.
-- `dist/`, `dist-cli/`: build outputs (generated, do not edit).
+- `dist/`, `dist-cli/`, `test-build/`: build outputs (generated, do not edit,
+  and not tracked in git).
 - Root configs: `dfx.json`, `icp.yaml`, `tsconfig.json`, `eslint.config.js`.
 
 ## Build, Test, and Development Commands
@@ -15,6 +16,10 @@
   with `npm install --legacy-peer-deps` — the flag is required because
   of a peer-dep conflict between the `@dfinity/*` and `@solana/web3.js`
   trees; it has no runtime effect.
+  `pnpm-workspace.yaml` is a leftover from an earlier pnpm setup. It declares
+  no `packages:`, so it defines no workspace and is inert under npm; it is kept
+  only so anyone who does reach for pnpm keeps the `ignoredBuiltDependencies`
+  list.
 - `npm run dev`: run the local dev entry with `tsx` watch.
 - `npm run build`: compile TypeScript to `dist/`.
 - `npm run start`: run the built app from `dist/`.

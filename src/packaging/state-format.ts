@@ -333,9 +333,11 @@ export function isVersionCompatible(version: string): boolean {
  */
 export async function calculateChecksum(data: string | Uint8Array): Promise<string> {
   const encoder = new TextEncoder();
-  const buffer = typeof data === 'string' ? encoder.encode(data) : data;
+  // Copy into an ArrayBuffer-backed view: a Uint8Array may be backed by a
+  // SharedArrayBuffer, which crypto.subtle.digest does not accept.
+  const buffer = typeof data === 'string' ? encoder.encode(data) : new Uint8Array(data);
 
-  // Use Web Crypto API if available, otherwise return placeholder
+  // Prefer Web Crypto where available (browser, Edge runtime, modern Node).
   if (typeof globalThis.crypto !== 'undefined' && globalThis.crypto.subtle) {
     const hashBuffer = await globalThis.crypto.subtle.digest('SHA-256', buffer);
     const hashArray = new Uint8Array(hashBuffer);
@@ -350,15 +352,17 @@ export async function calculateChecksum(data: string | Uint8Array): Promise<stri
     const hash = crypto.createHash('sha256');
     hash.update(buffer);
     return hash.digest('hex');
-  } catch {
-    // Last resort fallback - simple hash for testing
-    let hash = 0;
-    const str = typeof data === 'string' ? data : new TextDecoder().decode(data);
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash + char) | 0;
-    }
-    return Math.abs(hash).toString(16).padStart(64, '0');
+  } catch (error) {
+    // The previous fallback here computed a 32-bit non-cryptographic hash and
+    // zero-padded it to 64 hex characters, so it was indistinguishable from a
+    // real SHA-256 digest while carrying ~32 bits of entropy. Since checksums
+    // are used for integrity verification, failing loudly is the only safe
+    // option. Reaching this branch means neither Web Crypto nor node:crypto is
+    // available, which no supported runtime should hit.
+    const message = error instanceof Error ? error.message : 'unknown error';
+    throw new Error(
+      `Cannot compute SHA-256 checksum: no crypto implementation available (${message})`,
+    );
   }
 }
 

@@ -21,17 +21,40 @@ export function validateAuthToken(request: NextRequest): AuthResult {
   
   const token = parts[1]
   const expectedToken = process.env[API_TOKEN_ENV_VAR]
-  
+
   if (!expectedToken) {
     console.error(`[${API_TOKEN_ENV_VAR}] environment variable is not set`)
     return { authorized: false, error: 'Server configuration error' }
   }
-  
-  if (token !== expectedToken) {
+
+  if (!timingSafeEqualString(token ?? '', expectedToken)) {
     return { authorized: false, error: 'Invalid API token' }
   }
-  
+
   return { authorized: true }
+}
+
+/**
+ * Compare two strings without an input-dependent early exit.
+ *
+ * `===` on a secret returns as soon as it hits a differing character, which
+ * leaks a prefix-matching oracle to anyone who can time the response.
+ *
+ * Implemented in plain JS rather than `crypto.timingSafeEqual` so it works
+ * unchanged in the Edge runtime, where `node:crypto` is unavailable — the
+ * middleware that guards every API route runs there.
+ */
+function timingSafeEqualString(a: string, b: string): boolean {
+  const length = Math.max(a.length, b.length)
+
+  // Fold the length difference in so unequal-length inputs can never compare
+  // equal, then scan the full width regardless of where the first mismatch is.
+  let diff = a.length ^ b.length
+  for (let i = 0; i < length; i++) {
+    diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0)
+  }
+
+  return diff === 0
 }
 
 export function unauthorizedResponse(error: string): NextResponse {

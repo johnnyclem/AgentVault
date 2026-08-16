@@ -8,7 +8,9 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
-      exclude: ['node_modules/', 'dist/', 'tests/'],
+      // dist-cli/ and test-build/ are compiled copies of src/ and cli/; without
+      // excluding them the same code is counted twice.
+      exclude: ['node_modules/', 'dist/', 'dist-cli/', 'test-build/', 'tests/'],
     },
   },
 });

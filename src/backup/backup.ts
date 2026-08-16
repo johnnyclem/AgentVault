@@ -732,6 +732,61 @@ export async function exportEncryptedBackup(options: EncryptedBackupOptions): Pr
   }
 }
 
+/**
+ * Reject archive entries that would write outside the extraction directory.
+ *
+ * `unzip` will happily restore absolute paths, `../` traversal and symlinks.
+ * Since the extracted tree is subsequently copied over ~/.agentvault, any of
+ * those lets a crafted backup place a file — or a symlink pointing at, say,
+ * ~/.ssh — outside the intended root.
+ *
+ * @throws if any entry name is absolute or escapes the archive root
+ */
+async function assertSafeArchiveEntries(zipPath: string): Promise<void> {
+  // -Z1 lists one entry name per line, without the summary header/footer.
+  const { stdout } = await execa('unzip', ['-Z1', zipPath]);
+
+  for (const raw of stdout.split('\n')) {
+    const entry = raw.trim();
+    if (entry.length === 0) continue;
+
+    if (path.isAbsolute(entry) || /^[a-zA-Z]:[\\/]/.test(entry)) {
+      throw new Error(`Refusing to extract archive: absolute path entry "${entry}"`);
+    }
+
+    if (entry.split(/[\\/]/).includes('..')) {
+      throw new Error(`Refusing to extract archive: path traversal entry "${entry}"`);
+    }
+  }
+}
+
+/**
+ * Reject symlinks anywhere under `root`.
+ *
+ * Entry-name validation cannot catch a symlink whose *name* is benign but whose
+ * target escapes; this checks the extracted result instead.
+ *
+ * @throws if a symbolic link is present
+ */
+function assertNoSymlinks(root: string): void {
+  const stack: string[] = [root];
+
+  while (stack.length > 0) {
+    const dir = stack.pop()!;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isSymbolicLink()) {
+        throw new Error(
+          `Refusing to restore archive: contains a symbolic link (${path.relative(root, full)})`,
+        );
+      }
+      if (entry.isDirectory()) {
+        stack.push(full);
+      }
+    }
+  }
+}
+
 export async function restoreFromEncryptedZip(options: FullRestoreOptions): Promise<FullRestoreResult> {
   const { zipPath, passphrase, network = 'local' } = options;
   try {
@@ -746,7 +801,12 @@ export async function restoreFromEncryptedZip(options: FullRestoreOptions): Prom
 
     try {
       decryptToZip(zipPath, decryptedZip, passphrase);
+
+      // Validate entry names before extracting, and reject symlinks after:
+      // the extracted tree is copied over ~/.agentvault below.
+      await assertSafeArchiveEntries(decryptedZip);
       await execa('unzip', ['-o', decryptedZip, '-d', extractedDir]);
+      assertNoSymlinks(extractedDir);
 
       const payloadRoot = extractedDir;
       const stateDir = path.join(payloadRoot, 'state');

@@ -60,15 +60,18 @@ tests/
 
 ## Test Statistics
 
-AgentVault v1.0 includes **508 tests** across **31 test files**.
+AgentVault currently runs **1,599 tests** across **92 test files**.
 
-| Category | Tests | Files |
-|----------|-------|-------|
-| Unit | ~150 | ~10 |
-| CLI | ~200 | ~15 |
-| Deployment | ~80 | ~3 |
-| ICP | ~50 | ~2 |
-| Integration | ~28 | ~1 |
+Run `npm test` for the current figure rather than relying on this number — it
+drifts. (It previously read "508 tests across 31 test files", roughly a third
+of the real suite.)
+
+Coverage is uneven, and skewed away from some of the higher-risk code. The
+`vault`, `wallet`, `security` and `hypervault` suites are substantial, but
+several subsystems have no direct tests at all — `fault-tolerance`, `metrics`,
+`network`, `pilot`, `testing`, `orchestration`, and `backbone` (the last of
+which is a published entry point). The `webapp/` and `site/` packages have no
+test files.
 
 ## Writing Tests
 

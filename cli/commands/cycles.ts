@@ -44,9 +44,11 @@ async function executeBalance(options: any): Promise<void> {
   }
 }
 
-async function executeMint(options: any): Promise<void> {
-  const { amount } = options;
-
+/**
+ * Commander passes declared `.argument()` values positionally, ahead of the
+ * options object — destructuring them off `options` yields undefined.
+ */
+async function executeMint(amount: string): Promise<void> {
   const spinner = ora(`Minting ${amount} cycles...`).start();
 
   try {
@@ -60,9 +62,7 @@ async function executeMint(options: any): Promise<void> {
   }
 }
 
-async function executeTransfer(options: any): Promise<void> {
-  const { amount, to } = options;
-
+async function executeTransfer(amount: string, to: string): Promise<void> {
   const spinner = ora(`Transferring ${amount} cycles to ${to}...`).start();
 
   try {

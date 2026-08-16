@@ -8,6 +8,8 @@ node_modules/
 
 # Build outputs
 dist/
+dist-cli/
+test-build/
 build/
 .next/
 out/
@@ -46,7 +48,6 @@ coverage/
 
 # Misc
 .cache/
-package-lock.json
 
 # ICP/DFX private/testnet stuff
 .dfx/
@@ -54,3 +55,6 @@ package-lock.json
 # agent backups / keys
 backups/
 .vercel
+
+# Per-project agent scaffolding created by `agentvault init`
+.agentvault/

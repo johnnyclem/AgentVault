@@ -26,9 +26,22 @@ interface WalletBackup {
   exportedAt: number;
   format: ExportFormat;
   wallets: any[];
-  encrypted?: boolean;
-  iv?: string;
-  salt?: string;
+}
+
+/**
+ * On-disk shape of an encrypted export.
+ *
+ * `encrypted` holds the ciphertext (`<hex>.<authTagHex>`), not a flag — this is
+ * the shape wallet-import's decryptData reads.
+ */
+interface EncryptedWalletBackup {
+  version: string;
+  agentId: string;
+  exportedAt: number;
+  format: 'encrypted';
+  encrypted: string;
+  iv: string;
+  salt: string;
 }
 
 /**
@@ -161,15 +174,27 @@ export async function handleExport(agentId: string, options: { format?: string; 
       ]);
 
       const { encrypted, iv, salt } = encryptData(data, password);
-      backup.encrypted = true;
-      backup.iv = iv;
-      backup.salt = salt;
 
-      data = JSON.stringify(backup, null, 2);
-      data = JSON.stringify({ encrypted });
+      // Emit the envelope wallet-import expects: metadata plus the ciphertext
+      // in `encrypted`, alongside the iv and salt needed to derive the key.
+      // Note that the plaintext wallets are deliberately not carried over —
+      // `data` above already holds them, and `encrypted` is their ciphertext.
+      const envelope: EncryptedWalletBackup = {
+        version: backup.version,
+        agentId: backup.agentId,
+        exportedAt: backup.exportedAt,
+        format: 'encrypted',
+        encrypted,
+        iv,
+        salt,
+      };
+
+      data = JSON.stringify(envelope, null, 2);
     }
 
-    fs.writeFileSync(filepath, data, 'utf-8');
+    // Contains private keys in both formats: plaintext for json, and the
+    // ciphertext plus its KDF parameters for encrypted.
+    fs.writeFileSync(filepath, data, { encoding: 'utf-8', mode: 0o600 });
 
     spinner.succeed('Wallets exported successfully');
 
@@ -177,12 +202,20 @@ export async function handleExport(agentId: string, options: { format?: string; 
     console.log(chalk.green('✓'), `Export saved to: ${filepath}`);
     console.log(`  Size: ${(data.length / 1024).toFixed(2)} KB`);
 
+    console.log();
     if (format === 'json') {
-      console.log();
-      console.log(chalk.yellow('⚠'), 'This file contains private keys - keep it secure!');
+      console.log(chalk.yellow('⚠'), 'This file contains unencrypted private keys - keep it secure!');
+    } else {
+      console.log(
+        chalk.yellow('⚠'),
+        'This file contains your encrypted private keys - the password cannot be recovered.',
+      );
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     spinner.fail(`Failed to export wallets: ${message}`);
+    // Exit non-zero so callers and CI can detect the failure; previously this
+    // returned normally and the command exited 0 on error.
+    process.exitCode = 1;
   }
 }

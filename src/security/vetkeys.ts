@@ -20,6 +20,7 @@
 
 import * as crypto from 'node:crypto';
 import { debugLog } from '../debugging/debug-logger.js';
+import { splitSecret, encodeShare } from './shamir.js';
 import type {
   EncryptedData,
   VetKeysOptions,
@@ -253,34 +254,23 @@ export class VetKeysImplementation {
     seedPhrase: string,
     threshold: number,
     totalParties: number,
-    algorithm: EncryptionAlgorithm
+    _algorithm: EncryptionAlgorithm
   ): Promise<Array<{ shareId: string; participantId: string; encryptedShare: string; commitment: string }>> {
-    const shares: Array<{ shareId: string; participantId: string; encryptedShare: string; commitment: string }> = [];
-    const masterCommitment = await this.generateCommitment(shares);
+    // Real Shamir split over GF(2^8): any `threshold` shares reconstruct the
+    // seed phrase, any fewer reveal nothing about it.
+    const splits = splitSecret(Buffer.from(seedPhrase, 'utf-8'), threshold, totalParties);
 
-    for (let i = 0; i < threshold; i++) {
-      const shareId = this.generateShareId();
-      const participantId = i + 1;
+    return splits.map((split) => {
+      const encoded = encodeShare(split);
+      const commitment = crypto.createHash('sha256').update(encoded).digest('hex');
 
-      // Generate unique secret for this participant
-      const participantSecret = this.generateParticipantSecret(seedPhrase, i, totalParties);
-
-      // Encrypt share with participant's secret
-      const { encryptedShare, commitment: shareCommitment } = await this.encryptShare(
-        participantSecret,
-        masterCommitment,
-        algorithm,
-      );
-
-      shares.push({
-        shareId,
-        participantId: participantId.toString(),
-        encryptedShare,
-        commitment: shareCommitment,
-      });
-    }
-
-    return shares;
+      return {
+        shareId: this.generateShareId(),
+        participantId: split.x.toString(),
+        encryptedShare: encoded,
+        commitment,
+      };
+    });
   }
 
   /**
@@ -291,69 +281,6 @@ export class VetKeysImplementation {
     const timestamp = Date.now().toString(36);
     const randomHex = randomBytes.toString('hex').substring(0, 8);
     return `share_${timestamp}_${randomHex}`;
-  }
-
-   /**
-   * Generate unique secret for a participant
-   *
-   * @param seedPhrase - Master secret
-   * @param participantIndex - Participant index (1-based)
-   */
-  private generateParticipantSecret(seedPhrase: string, participantIndex: number, _totalParties: number): string {
-    const secretBytes = Buffer.from(seedPhrase, 'utf8');
-
-    // Create unique secret for this participant by adding participant index
-    const participantSuffix = Buffer.concat([Buffer.from([participantIndex]), secretBytes]);
-
-    return participantSuffix.toString('hex');
-  }
-
-  /**
-   * Encrypt a secret share
-   *
-   * @param secret - Secret to encrypt
-   * @param algorithm - Encryption algorithm
-   */
-  private async encryptShare(
-    secret: string,
-    _commitment: string,
-    algorithm: EncryptionAlgorithm
-  ): Promise<{ encryptedShare: string; commitment: string }> {
-    const crypto = await import('node:crypto');
-
-    const secretBuffer = Buffer.from(secret, 'utf-8');
-    const iv = algorithm === 'aes-256-gcm' ? crypto.randomBytes(12) : crypto.randomBytes(16);
-    // SEC-10: use an independent random salt for PBKDF2 rather than
-    // reusing the IV. The salt is prepended to the encrypted output so
-    // that any future decrypt path can recover it.
-    const salt = crypto.randomBytes(16);
-
-    const encryptionKey = crypto.pbkdf2Sync(
-      secretBuffer,
-      salt,
-      100000,
-      32,
-      'sha256'
-    );
-
-    const cipher = crypto.createCipheriv(algorithm, encryptionKey, iv);
-
-    const ciphertext = Buffer.concat([
-      cipher.update(secretBuffer),
-      cipher.final(),
-    ]);
-
-    // On-disk layout v2: salt(16) || iv(12 or 16) || ciphertext
-    const encryptedShare = Buffer.concat([salt, iv, ciphertext]);
-
-    const commitmentHash = crypto.createHash('sha256')
-      .update(encryptedShare)
-      .digest();
-
-    return {
-      encryptedShare: encryptedShare.toString('hex'),
-      commitment: commitmentHash.toString('hex'),
-    };
   }
 
   /**
@@ -750,8 +677,23 @@ const BUNDLE_GCM_IV_BYTES = 12;
 const BUNDLE_SALT_BYTES = 32;
 const BUNDLE_PBKDF2_ITERATIONS = 210_000;
 
-/** 4-byte magic header so we can identify VetKeys-encrypted bundles */
-const VETKEYS_MAGIC = Buffer.from('VKEB'); // VetKeys Encrypted Bundle
+/**
+ * 4-byte magic headers identifying VetKeys-encrypted bundles.
+ *
+ * `VKEB` (v1) is **insecure and deprecated**: its key was derived solely from
+ * the ICP principal, which is a public identifier stored in the bundle header
+ * itself. Anyone holding a v1 bundle can re-derive the key and decrypt it. v1
+ * is retained for decryption only, so that data written by earlier releases can
+ * be recovered and re-encrypted; it is never produced by this module any more.
+ *
+ * `VKE2` (v2) derives the key from a caller-supplied secret, with the principal
+ * and a random per-bundle salt bound in as context.
+ */
+const VETKEYS_MAGIC_V1 = Buffer.from('VKEB'); // legacy, decrypt-only
+const VETKEYS_MAGIC_V2 = Buffer.from('VKE2'); // current
+
+/** Environment variable consulted when no explicit bundle secret is passed. */
+export const BUNDLE_SECRET_ENV_VAR = 'AGENTVAULT_BUNDLE_SECRET';
 
 /**
  * Metadata prepended to an encrypted bundle so the deserializer can detect
@@ -765,15 +707,58 @@ export interface EncryptedBundleHeader {
   iv: Buffer;
   authTag: Buffer;
   principalId: string;
+  /** Bundle format version implied by the magic header. */
+  version: 1 | 2;
 }
 
 /**
- * Derive a 32-byte AES-256-GCM key from the caller's ICP principal.
+ * Resolve the secret used as PBKDF2 key material for v2 bundles.
  *
- * The principal acts as the identity-binding input; a random per-bundle salt
- * prevents key reuse across bundles encrypted for the same principal.
+ * Falls back to `AGENTVAULT_BUNDLE_SECRET`. Throws when no secret is available
+ * rather than silently degrading to a key an attacker could reconstruct.
  */
-function deriveBundleKey(principalId: string, salt: Buffer): Buffer {
+function resolveBundleSecret(explicit?: string): string {
+  const secret = explicit ?? process.env[BUNDLE_SECRET_ENV_VAR];
+
+  if (!secret || secret.length === 0) {
+    throw new Error(
+      'A bundle secret is required for VetKeys bundle encryption. Pass one explicitly ' +
+        `or set ${BUNDLE_SECRET_ENV_VAR}. (The principal ID alone is public and cannot ` +
+        'be used as key material.)',
+    );
+  }
+
+  return secret;
+}
+
+/**
+ * Derive a 32-byte AES-256-GCM key for a v2 bundle.
+ *
+ * The secret supplies the entropy; the principal is bound in as context so a
+ * bundle encrypted for one principal cannot be decrypted as another's, and the
+ * random per-bundle salt prevents key reuse across bundles.
+ */
+function deriveBundleKeyV2(secret: string, principalId: string, salt: Buffer): Buffer {
+  return crypto.pbkdf2Sync(
+    secret,
+    Buffer.concat([
+      salt,
+      Buffer.from(principalId, 'utf-8'),
+      Buffer.from('agentvault-vetkeys-bundle-v2'),
+    ]),
+    BUNDLE_PBKDF2_ITERATIONS,
+    BUNDLE_AES_KEY_BYTES,
+    'sha256',
+  );
+}
+
+/**
+ * Derive the key for a legacy v1 bundle.
+ *
+ * Kept only so historical bundles remain recoverable. This derivation provides
+ * no confidentiality — see {@link VETKEYS_MAGIC_V1}.
+ */
+function deriveBundleKeyV1(principalId: string, salt: Buffer): Buffer {
   return crypto.pbkdf2Sync(
     principalId,
     Buffer.concat([salt, Buffer.from('agentvault-vetkeys-bundle-v1')]),
@@ -793,19 +778,24 @@ function deriveBundleKey(principalId: string, salt: Buffer): Buffer {
  *
  * @param buffer      - Plaintext bundle (e.g. serialized agent state)
  * @param principalId - ICP principal that "owns" the encryption key
+ * @param secret      - Key material. Falls back to `AGENTVAULT_BUNDLE_SECRET`;
+ *                      throws when neither is present.
  * @returns Encrypted bundle buffer (magic ‖ salt ‖ iv ‖ tag ‖ principalLen ‖ principal ‖ ciphertext)
  */
 export async function encryptBundleWithVetKeys(
   buffer: Buffer,
   principalId: string,
+  secret?: string,
 ): Promise<Buffer> {
   if (!principalId || principalId.length === 0) {
     throw new Error('principalId is required for VetKeys bundle encryption');
   }
 
+  const bundleSecret = resolveBundleSecret(secret);
+
   const salt = crypto.randomBytes(BUNDLE_SALT_BYTES);
   const iv = crypto.randomBytes(BUNDLE_GCM_IV_BYTES);
-  const key = deriveBundleKey(principalId, salt);
+  const key = deriveBundleKeyV2(bundleSecret, principalId, salt);
 
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
   const ciphertext = Buffer.concat([cipher.update(buffer), cipher.final()]);
@@ -817,7 +807,7 @@ export async function encryptBundleWithVetKeys(
   principalLenBuf.writeUInt32BE(principalBuf.length, 0);
 
   return Buffer.concat([
-    VETKEYS_MAGIC,        // 4
+    VETKEYS_MAGIC_V2,     // 4
     salt,                 // 32
     iv,                   // 12
     authTag,              // 16
@@ -828,13 +818,22 @@ export async function encryptBundleWithVetKeys(
 }
 
 /**
- * Detect whether a buffer starts with the VetKeys encrypted-bundle magic.
+ * Detect whether a buffer starts with a VetKeys encrypted-bundle magic
+ * (either the current v2 header or the deprecated v1 one).
  */
 export function isVetKeysEncryptedBundle(buffer: Buffer): boolean {
-  if (buffer.length < VETKEYS_MAGIC.length) {
-    return false;
+  return bundleVersion(buffer) !== null;
+}
+
+/** Return the bundle format version, or `null` if the buffer is not a bundle. */
+function bundleVersion(buffer: Buffer): 1 | 2 | null {
+  if (buffer.length < 4) {
+    return null;
   }
-  return buffer.subarray(0, VETKEYS_MAGIC.length).equals(VETKEYS_MAGIC);
+  const magic = buffer.subarray(0, 4);
+  if (magic.equals(VETKEYS_MAGIC_V2)) return 2;
+  if (magic.equals(VETKEYS_MAGIC_V1)) return 1;
+  return null;
 }
 
 /**
@@ -850,7 +849,12 @@ function parseEncryptedBundleHeader(
     throw new Error('Encrypted bundle is too short to contain a valid header');
   }
 
-  let offset = VETKEYS_MAGIC.length; // skip magic (already verified by caller)
+  const version = bundleVersion(encrypted);
+  if (version === null) {
+    throw new Error('Buffer is not a VetKeys encrypted bundle (missing magic header)');
+  }
+
+  let offset = 4; // skip magic (already verified by caller)
 
   const salt = encrypted.subarray(offset, offset + BUNDLE_SALT_BYTES);
   offset += BUNDLE_SALT_BYTES;
@@ -872,7 +876,13 @@ function parseEncryptedBundleHeader(
   offset += principalLen;
 
   return {
-    header: { salt: Buffer.from(salt), iv: Buffer.from(iv), authTag: Buffer.from(authTag), principalId },
+    header: {
+      salt: Buffer.from(salt),
+      iv: Buffer.from(iv),
+      authTag: Buffer.from(authTag),
+      principalId,
+      version,
+    },
     ciphertextOffset: offset,
   };
 }
@@ -884,14 +894,20 @@ function parseEncryptedBundleHeader(
  * caller may optionally supply their own `principalId` to verify that the
  * bundle was encrypted for them; if omitted the embedded principal is used.
  *
+ * v1 bundles are decrypted without a secret, because none was used to encrypt
+ * them; a warning is emitted so operators know that data needs re-encrypting.
+ *
  * @param encrypted   - Buffer produced by `encryptBundleWithVetKeys`
  * @param principalId - (optional) expected principal; if provided and it does
  *                       not match the embedded principal an error is thrown
+ * @param secret      - Key material for v2 bundles. Falls back to
+ *                      `AGENTVAULT_BUNDLE_SECRET`.
  * @returns Decrypted plaintext buffer
  */
 export async function decryptBundle(
   encrypted: Buffer,
   principalId?: string,
+  secret?: string,
 ): Promise<Buffer> {
   if (!isVetKeysEncryptedBundle(encrypted)) {
     throw new Error('Buffer is not a VetKeys encrypted bundle (missing magic header)');
@@ -906,9 +922,19 @@ export async function decryptBundle(
     );
   }
 
-  const ciphertext = encrypted.subarray(ciphertextOffset);
-  const key = deriveBundleKey(header.principalId, header.salt);
+  let key: Buffer;
+  if (header.version === 1) {
+    console.warn(
+      '[vetkeys] Decrypting a legacy v1 bundle. v1 encryption is not confidential — ' +
+        'its key is derived from the public principal ID stored in the bundle itself. ' +
+        'Re-encrypt this data with the current format as soon as possible.',
+    );
+    key = deriveBundleKeyV1(header.principalId, header.salt);
+  } else {
+    key = deriveBundleKeyV2(resolveBundleSecret(secret), header.principalId, header.salt);
+  }
 
+  const ciphertext = encrypted.subarray(ciphertextOffset);
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, header.iv);
   decipher.setAuthTag(header.authTag);
 
