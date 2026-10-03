@@ -19,18 +19,28 @@ mnemonic. See [Installation](/docs/getting-started/installation) for setup detai
 
 ## The agent stack
 
-AgentVault is the runtime layer of a small family of tools built for long-running, autonomous agents: a
-durable place to execute ([AgentVault](#get-started)), a cheap and deterministic way to pick the next action
-([SmallChat](https://github.com/johnnyclem/smallchat)), a passive conversational memory
-([Stenographer](https://github.com/johnnyclem/stenographer)), and a way to keep that memory inside a token
-budget ([Short-Hand](https://github.com/johnnyclem/short-hand)). AgentVault already ships a purpose-built
-implementation of the SmallChat tool-dispatch pattern in its orchestration layer.
+AgentVault is the runtime layer for long-running, autonomous agents: a durable place to execute
+([AgentVault](#get-started)). It pairs with the smallchat suite, which covers the other layers: picking the
+next tool, a memory that survives, and keeping that memory inside a token budget. The suite's 1.0 release is:
+
+| Project | What it does | Release |
+| --- | --- | --- |
+| [smallchat](https://www.smallchat.dev) ([repo](https://github.com/johnnyclem/smallchat), [Swift](https://github.com/johnnyclem/smallchat-swift)) | Semantic tool dispatch: resolves an intent to at most one tool and checks its arguments against the tool's JSON Schema | `@smallchat/core` 1.0.0, `SmallChat` Swift package 1.0.0 |
+| [Stenographer](https://stenographer.smallchat.dev) ([repo](https://github.com/johnnyclem/stenographer)) | Conversation index with GraphRAG search, plus a hash-chained truth ledger | `@stenographer/core` 1.0.0 |
+| [Short-hand](https://short-hand.smallchat.dev) ([repo](https://github.com/johnnyclem/short-hand)) | Progressive compaction of conversation history into a token-budgeted context frame | `@shorthand/core` 1.0.0 |
+| [Polytician](https://polytician.smallchat.dev) ([repo](https://github.com/johnnyclem/polytician)) | Local-first MCP server for semantic memory (concepts as vectors, markdown and ThoughtForm JSON) | `polytician` 3.0.0 |
+
+AgentVault ships on its own schedule and does not depend on those packages. Its orchestration layer has its
+own selector-based dispatcher modeled on smallchat, and a Polytician MCP client written against Polytician 2.x
+(Polytician 3.0 tightened its tool contract; see its MIGRATION.md). Stenographer and Short-hand are not
+integrated yet.
 
 - [Ecosystem overview](/docs/ecosystem/executive-summary) — what each project does and how they fit together.
-- [Engineering guide](/docs/ecosystem/engineering-guide) — component reference, integration status, and the
-  roadmap for wiring Stenographer and Short-Hand into AgentVault's orchestration pipeline.
+- [Engineering guide](/docs/ecosystem/engineering-guide) — component reference, integration status, and a
+  proposed roadmap (not yet scheduled) for wiring Stenographer and Short-hand into AgentVault's orchestration
+  pipeline.
 - [Cross-repo evaluation playbook](/docs/ecosystem/cross-repo-playbook) — runbook for reproducing
-  the ecosystem evaluation from within SmallChat, Stenographer, or Short-Hand.
+  the ecosystem evaluation from within another repo in the stack.
 
 ## Guides
 
