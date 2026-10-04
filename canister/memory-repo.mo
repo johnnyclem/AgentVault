@@ -17,6 +17,9 @@
  *  7. PREUPGRADE GUARD — Traps if frozen, preventing unauthorized code upgrades.
  *  8. MONOTONIC IDS — Sequential counter prevents ID collisions under concurrency.
  *  9. DEPTH-LIMITED WALKS — Parent chain traversal capped to prevent infinite loops.
+ * 10. BRANCH-ADDRESSED WRITES — commitToBranch and createBranchFrom name their
+ *     branch, so concurrent writers (the webapp serves many) never depend on,
+ *     or move, the shared current branch that switchBranch sets.
  */
 
 import Int       "mo:base/Int";
@@ -30,23 +33,25 @@ import Prim      "mo:prim";
 import Debug     "mo:base/Debug";
 import Order     "mo:base/Order";
 
-actor MemoryRepo {
+// A persistent actor: every `var` below survives upgrades; `transient`
+// declarations are rebuilt on each install or upgrade.
+persistent actor MemoryRepo {
 
   // ==================== Constants ====================
 
-  let ANON : Principal = Principal.fromText("2vxsx-fae");
-  let MAX_HEAP_BYTES   : Nat  = 67_108_864;  // 64 MB
-  let MAX_COMMITS      : Nat  = 10_000;
-  let MAX_BRANCHES     : Nat  = 100;
-  let MAX_DIFF_BYTES   : Nat  = 1_048_576;   // 1 MB
-  let MAX_MESSAGE_BYTES: Nat  = 1_024;
-  let MAX_TAG_BYTES    : Nat  = 128;
-  let MAX_TAGS         : Nat  = 20;
-  let MAX_BRANCH_NAME  : Nat  = 64;
-  let MAX_CHAIN_DEPTH  : Nat  = 10_000;
-  let MAX_THOUGHT_FORMS: Nat  = 10_000;
-  let MAX_THOUGHT_JSON : Nat  = 1_048_576;  // 1 MB
-  let MAX_THOUGHT_HASH : Nat  = 128;
+  transient let ANON : Principal = Principal.fromText("2vxsx-fae");
+  transient let MAX_HEAP_BYTES   : Nat  = 67_108_864;  // 64 MB
+  transient let MAX_COMMITS      : Nat  = 10_000;
+  transient let MAX_BRANCHES     : Nat  = 100;
+  transient let MAX_DIFF_BYTES   : Nat  = 1_048_576;   // 1 MB
+  transient let MAX_MESSAGE_BYTES: Nat  = 1_024;
+  transient let MAX_TAG_BYTES    : Nat  = 128;
+  transient let MAX_TAGS         : Nat  = 20;
+  transient let MAX_BRANCH_NAME  : Nat  = 64;
+  transient let MAX_CHAIN_DEPTH  : Nat  = 10_000;
+  transient let MAX_THOUGHT_FORMS: Nat  = 10_000;
+  transient let MAX_THOUGHT_JSON : Nat  = 1_048_576;  // 1 MB
+  transient let MAX_THOUGHT_HASH : Nat  = 128;
 
   // ==================== Types ====================
 
@@ -125,22 +130,22 @@ actor MemoryRepo {
 
   // ==================== Stable State ====================
 
-  stable var owner             : Principal      = ANON;
-  stable var allowedPrincipals : [Principal]     = [];
-  stable var initialized       : Bool           = false;
-  stable var frozenMode        : Bool           = false;
-  stable var canisterKilled    : Bool           = false;
-  stable var commits           : [Commit]       = [];
-  stable var branches          : [(Text, Text)] = []; // (name, headCommitId)
-  stable var currentBranch     : Text           = "main";
-  stable var nextCommitSeq     : Nat            = 0;
-  stable var thoughtForms      : [ThoughtFormStore] = [];
+  var owner             : Principal      = ANON;
+  var allowedPrincipals : [Principal]     = [];
+  var initialized       : Bool           = false;
+  var frozenMode        : Bool           = false;
+  var canisterKilled    : Bool           = false;
+  var commits           : [Commit]       = [];
+  var branches          : [(Text, Text)] = []; // (name, headCommitId)
+  var currentBranch     : Text           = "main";
+  var nextCommitSeq     : Nat            = 0;
+  var thoughtForms      : [ThoughtFormStore] = [];
 
   // ThoughtForm commit storage: flat list + per-branch HEAD pointers
-  stable var tfCommits         : [ThoughtFormCommit] = [];
-  stable var tfBranches        : [(Text, Text)]      = []; // (branch, headHash)
-  let MAX_TF_COMMITS : Nat     = 10_000;
-  let MAX_TF_CONTENT : Nat     = 1_048_576; // 1 MB per thoughtform content
+  var tfCommits         : [ThoughtFormCommit] = [];
+  var tfBranches        : [(Text, Text)]      = []; // (branch, headHash)
+  transient let MAX_TF_COMMITS : Nat     = 10_000;
+  transient let MAX_TF_CONTENT : Nat     = 1_048_576; // 1 MB per thoughtform content
 
   // ==================== Upgrade Guards ====================
 
@@ -220,7 +225,7 @@ actor MemoryRepo {
 
   private func validateTags(tags : [Text]) : ?Text {
     if (tags.size() > MAX_TAGS) {
-      return ?"Too many tags (maximum " # Nat.toText(MAX_TAGS) # ")";
+      return ?("Too many tags (maximum " # Nat.toText(MAX_TAGS) # ")");
     };
     for (t in tags.vals()) {
       if (Text.size(t) == 0) {
@@ -464,10 +469,9 @@ actor MemoryRepo {
     #ok(genesisId)
   };
 
-  /// Create a new commit on the current branch.
-  public shared(msg) func commit(message : Text, diff : Text, tags : [Text]) : async { #ok : Text; #err : Text } {
-    assertWriteAllowed(msg.caller);
-
+  /// Append a commit to a branch and move its HEAD, after the checks every
+  /// commit gets. Runs within one message, so no other write interleaves.
+  private func appendCommit(branchName : Text, message : Text, diff : Text, tags : [Text]) : { #ok : Text; #err : Text } {
     if (not initialized) {
       return #err("Repository not initialized — call initRepo first");
     };
@@ -489,7 +493,10 @@ actor MemoryRepo {
       case null {};
     };
 
-    let parentId = getBranchHead(currentBranch);
+    let parentId = switch (getBranchHead(branchName)) {
+      case null { return #err("Branch '" # branchName # "' does not exist") };
+      case (?h) { ?h };
+    };
     let commitId = generateCommitId();
 
     let newCommit : Commit = {
@@ -499,13 +506,27 @@ actor MemoryRepo {
       diff      = diff;
       tags      = tags;
       parent    = parentId;
-      branch    = currentBranch;
+      branch    = branchName;
     };
 
     commits := Array.append<Commit>(commits, [newCommit]);
-    ignore updateBranchHead(currentBranch, commitId);
+    ignore updateBranchHead(branchName, commitId);
 
     #ok(commitId)
+  };
+
+  /// Create a new commit on the current branch.
+  public shared(msg) func commit(message : Text, diff : Text, tags : [Text]) : async { #ok : Text; #err : Text } {
+    assertWriteAllowed(msg.caller);
+    appendCommit(currentBranch, message, diff, tags)
+  };
+
+  /// Create a new commit on the named branch, whichever branch is current,
+  /// and leave the current branch where it is. Unlike switchBranch followed by
+  /// commit (two messages), no other caller's write can land in between.
+  public shared(msg) func commitToBranch(branchName : Text, message : Text, diff : Text, tags : [Text]) : async { #ok : Text; #err : Text } {
+    assertWriteAllowed(msg.caller);
+    appendCommit(branchName, message, diff, tags)
   };
 
   /// Query the commit log for a branch (newest first).
@@ -535,10 +556,8 @@ actor MemoryRepo {
     branches
   };
 
-  /// Create a new branch pointing at the current branch's HEAD.
-  public shared(msg) func createBranch(name : Text) : async { #ok : Text; #err : Text } {
-    assertWriteAllowed(msg.caller);
-
+  /// Create a branch pointing at baseBranch's HEAD.
+  private func forkBranch(name : Text, baseBranch : Text) : { #ok : Text; #err : Text } {
     if (not initialized) {
       return #err("Repository not initialized");
     };
@@ -556,13 +575,26 @@ actor MemoryRepo {
       return #err("Branch '" # name # "' already exists");
     };
 
-    let headId = switch (getBranchHead(currentBranch)) {
-      case null { return #err("Current branch has no commits") };
+    let headId = switch (getBranchHead(baseBranch)) {
+      case null { return #err("Branch '" # baseBranch # "' has no commits") };
       case (?h) { h };
     };
 
     branches := Array.append<(Text, Text)>(branches, [(name, headId)]);
     #ok("Branch '" # name # "' created at " # headId)
+  };
+
+  /// Create a new branch pointing at the current branch's HEAD.
+  public shared(msg) func createBranch(name : Text) : async { #ok : Text; #err : Text } {
+    assertWriteAllowed(msg.caller);
+    forkBranch(name, currentBranch)
+  };
+
+  /// Create a new branch pointing at baseBranch's HEAD, whichever branch is
+  /// current (createBranch forks from the current one).
+  public shared(msg) func createBranchFrom(name : Text, baseBranch : Text) : async { #ok : Text; #err : Text } {
+    assertWriteAllowed(msg.caller);
+    forkBranch(name, baseBranch)
   };
 
   /// Switch to a different branch.

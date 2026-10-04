@@ -8,6 +8,7 @@
     },
     "memory_repo": {
       "main": "canister/memory-repo.mo",
+      "args": "--enhanced-orthogonal-persistence",
       "initialization_values": {
         "wasm_memory_limit": 67108864
       }

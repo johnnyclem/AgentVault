@@ -85,6 +85,13 @@ export const idlFactory = ({ IDL }: any) => IDL.Service({
     [],
   ),
 
+  // (branch, message, diff, tags): onto that branch in one message, leaving the current branch
+  commitToBranch: IDL.Func(
+    [IDL.Text, IDL.Text, IDL.Text, IDL.Vec(IDL.Text)],
+    [OperationResultVariant(IDL)],
+    [],
+  ),
+
   getCommit: IDL.Func([IDL.Text], [IDL.Opt(CommitRecord(IDL))], ['query']),
 
   // ── Log & State Queries ───────────────────────────────────────────────
@@ -102,6 +109,9 @@ export const idlFactory = ({ IDL }: any) => IDL.Service({
   ),
 
   createBranch: IDL.Func([IDL.Text], [OperationResultVariant(IDL)], []),
+
+  // (name, base): a branch at base's HEAD, whichever branch is current
+  createBranchFrom: IDL.Func([IDL.Text, IDL.Text], [OperationResultVariant(IDL)], []),
 
   switchBranch: IDL.Func([IDL.Text], [OperationResultVariant(IDL)], []),
 
