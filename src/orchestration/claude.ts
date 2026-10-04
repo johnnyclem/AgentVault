@@ -56,6 +56,7 @@ export interface OrchestratorOptions {
   model?: string;
   timeoutMs?: number;
   onProgress?: (message: string) => void;
+  /** Polytician, for enrichment and the saved result; its polyticianNamespace is the agent's namespace */
   polyticianServer?: MCPServerConfig;
   enableSemanticEnrichment?: boolean;
   saveResultAsConcept?: boolean;

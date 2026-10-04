@@ -77,7 +77,7 @@ The pipeline prints a checklist as it runs:
 1. **Export** — full (or `--since` incremental) NDJSON stream from `hypervault.store`.
 2. **Bundle** — build the snapshot bundle; compute per-entry SHA-256 and a Merkle root.
 3. **Encrypt** — AES-256-GCM per entry (via the audited `CanisterEncryption`), passphrase-wrapped.
-4. **Canister commit** — replay the mind DAG onto a `memory_repo` canister (topological, idempotent).
+4. **Canister commit** — replay the mind DAG onto a `memory_repo` canister (topological, idempotent). Only with `--canister-id`. The canister refuses anonymous writes, so the commits are signed with `--identity <pem>`, else `AGENTVAULT_ICP_IDENTITY_PEM_FILE`, else dfx's selected identity; with none of these, `archive --canister-id` exits before anything is archived. The principal must be the repo's owner or one it authorized (see [MemoryRepo](../memory-repo.md#who-can-write)).
 5. **Arweave upload** — signed bundle with `App-Name`, `Bundle-Format`, `HyperVault-User`, `State-Hash` tags.
 6. **Receipts** — an on-chain `archive-receipt:<tx>` commit, plus an optional POST to hypervault.
 7. **Verify** — re-fetch from Arweave and check the whole integrity chain.

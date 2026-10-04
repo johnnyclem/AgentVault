@@ -197,12 +197,14 @@ class-hierarchy fallback), with no embeddings.
 | File | Role |
 |---|---|
 | `src/orchestration/mcp-client.ts` | `PolyticianMCPClient` — spawns a Polytician MCP server from an entry-point command and speaks JSON-RPC over stdio (`initialize` then `notifications/initialized`, `tools/list`, `tools/call`). `callToolResult` returns a tool's `structuredContent` (or the JSON in `content[0].text`) and throws `MCPToolError`, carrying Polytician's error code, for an `isError` result. Plus an HTTP `/health` probe. |
-| `src/orchestration/polytician-tools.ts` | Polytician 3.0's tool contract as AgentVault calls it: argument types that mirror the strict input schemas, zod schemas that mirror each tool's `outputSchema`, and `callPolytician`. |
-| `cli/commands/polytician.ts` | `agentvault polytician -e "<entry>" <status\|search\|push-all\|pull\|archive\|register>`. `status` reads `get_stats` and `health_check` (the server version comes from the handshake); `search` sends `search_concepts { query, k }` and prints ids, scores, titles and tags; `push-all` calls `vault_memory_push` for every concept, `pull` calls `vault_memory_pull` and `archive` calls `vault_archive_concept`. |
-| `src/orchestration/polytician-enricher.ts` | `enrichWithPolyticianContext` searches concepts (`search_concepts { query, k }`), keeps hits scoring at least `minRelevanceScore` (default 0.65; a score is (1 + cosine similarity) / 2), reads their markdown (`read_concept { id, representations: ["markdown"] }`) and formats it as concept blocks (headings pushed below the block heading, code fences untouched), truncated by character count; `saveConceptFromOrchestration` saves a session's result as `save_concept { markdown, tags: ["orchestration", "session:<id>"] }`, titled with the task, and returns the concept's id. Used by `agentvault orchestrate --polytician-entry`, which puts the concept blocks in the user message, in a `<semantic_memory>` block labelled as reference data (not in the system prompt), on both the API and the local `claude` CLI path, and prints what Polytician did in its session summary. |
+| `src/orchestration/polytician-tools.ts` | Polytician 3.0's tool contract as AgentVault calls it: argument types that mirror the strict input schemas, zod schemas that mirror each tool's `outputSchema`, and `callPolytician`, which adds the client's Polytician namespace (`MCPServerConfig.polyticianNamespace`) to every call of a tool that takes one and turns `NAMESPACE_DENIED` into an error naming the namespace and the allowlist to change. |
+| `src/orchestration/polytician-config.ts` | How AgentVault starts Polytician (`polyticianServerConfig`): the namespace (checked against Polytician's rule), `--config <path>`, and `POLYTICIAN_AV_API_URL` / `POLYTICIAN_AV_API_TOKEN` taken from `AGENTVAULT_API_URL` / `AGENTVAULT_POLYTICIAN_API_TOKEN` when both are set and the operator set neither Polytician variable. A URL Polytician would refuse (not https, and not http to localhost) is an error before anything starts. Shared by the CLI, `orchestrate` and the webapp. |
+| `src/orchestration/polytician-config-file.ts` | Builds and writes Polytician's config file for `agentvault polytician config`: `agentVault.apiBaseUrl`, `apiToken` as the literal `${POLYTICIAN_AV_API_TOKEN}`, `memoryRepoBranch`, and an opt-in `archival` block; mode 0600, no overwrite without `--force`. |
+| `cli/commands/polytician.ts` | `agentvault polytician -e "<entry>" <status\|search\|push-all\|pull\|archive\|register>` and `agentvault polytician config`. `-n, --namespace` (default: the project's agent name, else `default`) is sent with every namespace-taking call. `status` reads `get_stats` and `health_check` (the server version comes from the handshake); `search` sends `search_concepts { query, k }` and prints ids, scores, titles and tags; `push-all` calls `vault_memory_push` for every concept in the namespace, `pull` calls `vault_memory_pull` and `archive` calls `vault_archive_concept`. |
+| `src/orchestration/polytician-enricher.ts` | `enrichWithPolyticianContext` searches concepts (`search_concepts { query, k }`), keeps hits scoring at least `minRelevanceScore` (default 0.65; a score is (1 + cosine similarity) / 2), reads their markdown (`read_concept { id, representations: ["markdown"] }`) and formats it as concept blocks (headings pushed below the block heading, code fences untouched), truncated by character count; `saveConceptFromOrchestration` saves a session's result as `save_concept { markdown, tags: ["orchestration", "session:<id>"] }`, titled with the task, and returns the concept's id. Used by `agentvault orchestrate --polytician-entry`, which puts the concept blocks in the user message, in a `<semantic_memory>` block labelled as reference data (not in the system prompt), on both the API and the local `claude` CLI path, and prints what Polytician did in its session summary. Both work in the agent's namespace (`--polytician-namespace`, default: the project's agent name, else `default`); `--polytician-config <path>` passes Polytician a config file. |
 | `src/packaging/parsers/polytician.ts`, `src/packaging/detector.ts` | The packager recognizes a `polytician.json` / `.polytician.json` config as the `polytician` agent type. |
-| `webapp/src/app/api/polytician/[agentId]/*`, `webapp/src/components/polytician/*` | Webapp API routes that proxy to the same client (`POLYTICIAN_ENTRY_POINT`) and return Polytician 3.0's results (search `?limit=` becomes `k`, a save takes `{ markdown, tags }`, archive calls `vault_archive_concept`), and concept components that no page renders yet. |
-| `tests/integration/polytician-contract.test.ts`, `tests/cli/commands/polytician.test.ts`, `tests/integration/polytician-real.test.ts` | The client, enricher, orchestrator prompt and CLI against a fake server (`tests/fixtures/polytician-3.0/fake-server.mjs`) that checks every call against Polytician 3.0's captured input schemas and answers with responses recorded from the real server; the last file runs the same flows against a real server when `POLYTICIAN_ENTRY` is set. |
+| `webapp/src/app/api/polytician/[agentId]/*`, `webapp/src/components/polytician/*` | Webapp API routes that proxy to the same client (`POLYTICIAN_ENTRY_POINT`) in the namespace `agentId` (the agent's name; 400 `INVALID_AGENT_ID` when it is not a valid namespace) and return Polytician 3.0's results (search `?limit=` becomes `k`, a save takes `{ markdown, tags }`, archive calls `vault_archive_concept`), and concept components that no page renders yet. |
+| `tests/integration/polytician-contract.test.ts`, `tests/integration/polytician-namespaces.test.ts`, `tests/cli/commands/polytician.test.ts`, `tests/webapp/polytician-routes.test.ts`, `tests/integration/polytician-real.test.ts` | The client, enricher, orchestrator prompt, CLI and webapp routes against a fake server (`tests/fixtures/polytician-3.0/fake-server.mjs`) that checks every call against Polytician 3.0's captured input schemas, keeps concepts per namespace, and answers with responses recorded from the real server; the last file runs the same flows against a real server when `POLYTICIAN_ENTRY` is set. |
 
 Against Polytician 3.0 (the recorded contract and a real 3.0.0 server):
 
@@ -210,33 +212,58 @@ Against Polytician 3.0 (the recorded contract and a real 3.0.0 server):
   `polytician status`, `search` and `register`, `mcp tools` and `mcp call`, and the webapp routes for
   search, list, read, save, delete and stats. A Polytician error is reported with its code (for example
   `search_concepts failed (VALIDATION_ERROR): ...`) instead of reading as an empty result.
-- **Needs configuration on Polytician's side:** `push-all`, `pull` and `archive`, and the webapp archive
-  route, use the `vault_*` tools, which Polytician registers only when its operator sets
-  `POLYTICIAN_AV_API_URL` and `POLYTICIAN_AV_API_TOKEN`. `vault_archive_concept` also needs
-  `agentVault.archival` enabled (with a tag filter and a backup key), and archives only concepts that
-  carry every archival tag. Without that configuration the CLI says which settings are missing and the
-  archive route answers 503 `NOT_CONFIGURED`. With it, the calls go to AgentVault's HTTP API, where
-  `push-all` cannot complete yet (next paragraph). AgentVault waits longer for these calls than Polytician
-  waits for AgentVault (archive 150 s, push 60 s, pull 150 s), and reports an archive or push that gets no
-  answer as `OUTCOME_UNKNOWN`, since the commit or the paid upload may have happened.
-- Concepts live in Polytician's `default` namespace. The `--health-port` probe gets an answer only when the
-  operator set `POLYTICIAN_HEALTH_PORT` or runs Polytician's HTTP transport, and it describes that running
-  instance, not the stdio server the CLI spawns; `status` asks that server's `health_check` tool.
+- **Needs AgentVault's URL and token:** `push-all`, `pull` and `archive`, and the webapp archive route, use
+  the `vault_*` tools, which Polytician registers only when it has an AgentVault URL and token. AgentVault
+  passes `AGENTVAULT_API_URL` and `AGENTVAULT_POLYTICIAN_API_TOKEN` to the Polytician it starts as
+  `POLYTICIAN_AV_API_URL` and `POLYTICIAN_AV_API_TOKEN` (when both are set and the operator set neither
+  Polytician variable), and `agentvault polytician config` writes Polytician's config file for a Polytician
+  started elsewhere. `vault_archive_concept` also needs `agentVault.archival` enabled (the config command's
+  `--archival-tag` and `--arweave-jwk`, plus a Polytician backup key), and archives only concepts that carry
+  every archival tag. Without that configuration the CLI says which settings are missing and the archive
+  route answers 503 `NOT_CONFIGURED`. AgentVault waits longer for these calls than Polytician waits for
+  AgentVault (archive 150 s, push 60 s, pull 150 s), and reports an archive or push that gets no answer as
+  `OUTCOME_UNKNOWN`, since the commit or the paid upload may have happened.
+- **One namespace per agent:** every surface sends the agent's namespace with each namespace-taking call: the
+  CLI's `--namespace` and `orchestrate`'s `--polytician-namespace`, both defaulting to the project's agent
+  name, and the webapp's `agentId`, which is that name. Concepts saved before this change are in `default`.
+  A namespace outside Polytician's `POLYTICIAN_NAMESPACES` allowlist fails with `NAMESPACE_DENIED`, explained.
+  Checked against a real Polytician 3.0.0: a concept saved from one agent's project is found by `search`
+  there; from another agent's project `search` finds nothing and a read is `NOT_FOUND`, and only its own
+  namespace's `get_stats` counts it.
+- The `--health-port` probe gets an answer only when the operator set `POLYTICIAN_HEALTH_PORT` or runs
+  Polytician's HTTP transport, and it describes that running instance, not the stdio server the CLI spawns;
+  `status` asks that server's `health_check` tool.
+
+Operator setup for all of this is in the [Polytician guide](../guides/polytician.md).
 
 In the other direction, Polytician 3.0's opt-in AgentVault integration calls AgentVault's HTTP API
 (`/api/inference`, `/api/memory-repo/*`, `/api/archival/upload`, `/api/secrets/:name`). Routes with those
 paths exist in `webapp/src/app/api/`. For memory sync they have been checked against Polytician's client:
 
-- **Push does not work yet.** The memory_repo write routes (`POST /api/memory-repo/commits`, which
-  `vault_memory_push` calls, and `POST /api/memory-repo/tombstone`) call the canister with the anonymous
-  principal. `commit`, `createBranch` and `switchBranch` are update calls behind `assertWriteAllowed`, and
-  `canister/memory-repo.mo` refuses the anonymous principal, so the call traps. These routes need to sign
-  with a principal the canister authorizes (its owner or one added with `addAuthorizedPrincipal`).
+- **Push is signed.** `canister/memory-repo.mo` refuses the anonymous principal on every update call
+  (`commit`, `createBranch`, `switchBranch`, ...). The memory_repo write routes (`POST /api/memory-repo/commits`,
+  which `vault_memory_push` calls, and `POST /api/memory-repo/tombstone`) sign with the server's identity,
+  loaded from `AGENTVAULT_ICP_IDENTITY_PEM_FILE` or `AGENTVAULT_ICP_IDENTITY_PEM`
+  (`src/canister/identity.ts`, `webapp/src/app/api/memory-repo/signed-actor.ts`), which the repo owner
+  authorizes with `agentvault memory authorize <principal>`. With no identity they answer 503
+  `SIGNING_IDENTITY_NOT_CONFIGURED` without calling the canister; a principal the owner has not authorized
+  gets 403 `SIGNER_NOT_AUTHORIZED`. The routes commit with the canister's `commitToBranch`, which names the
+  branch, instead of `switchBranch` followed by `commit`: the current branch is shared by every writer, and
+  concurrent pushes to two branches landed on each other's. A missing branch is created with
+  `createBranchFrom(branch, "main")`. Every error from the routes Polytician calls is in its client's
+  `AVErrorResponse` shape (`webapp/src/lib/server/polytician-client.ts`), so the guidance reaches the user
+  instead of `[object Object]`. AgentVault's tests check the signature on the call envelope, the routes' handling
+  of the canister's answers, and concurrent pushes against a fake canister with one shared current branch. A
+  push from a real Polytician 3.0 through the webapp to a memory_repo on a local dfx 0.32.0 replica has been
+  tried: two namespaces pushed to `polytician-main`, twelve concurrent pushes to two branches each landed on
+  their own, and the refusals (no identity, an unauthorized signer, a wrong token, a canister without
+  `commitToBranch`) reached the user with their codes. The CLI's memory_repo writes are signed too
+  (`--identity`, `AGENTVAULT_ICP_IDENTITY_PEM_FILE`, or dfx's selected identity); see `docs/memory-repo.md`.
 - **Pull reads the whole branch.** `GET /api/memory-repo/branches/:branch`, which `vault_memory_pull`
   reads, uses only the `getBranches` and `log` queries, which need no authorization, and replays every
   commit on the branch (newer entries win, tombstones remove a key). Polytician pushes one commit per
-  concept, so the newest commit alone would hold only the last concept pushed. Pull works against a branch
-  an authorized principal wrote.
+  concept, so the newest commit alone would hold only the last concept pushed. Polytician imports only the
+  entries recorded for the namespace it pulls into.
 
 The inference, archival upload and secrets routes have not been checked against Polytician's client.
 
@@ -309,10 +336,11 @@ the real system prompt ignored the enriched task.
 
 **Now:** the client, enricher, CLI and webapp routes make Polytician 3.0's calls (§3), and the real prompt
 carries the Polytician context (in the user message, as reference data). `tests/fixtures/polytician-3.0/`
-holds Polytician 3.0's recorded contract and the fake server the contract tests run against. What remains:
-configuring the `vault_*` tools on Polytician's side, signing AgentVault's memory_repo write routes with a
-principal the canister authorizes, and checking the inference, archival and secrets routes against
-Polytician's client (§3).
+holds Polytician 3.0's recorded contract and the fake server the contract tests run against. AgentVault
+passes Polytician its URL and token for the `vault_*` tools, signs its memory_repo write routes with a
+principal the canister authorizes, and keeps each agent's concepts in its own namespace. What remains:
+checking the inference, archival upload and secrets routes against Polytician's client, and a push through
+the webapp to a deployed canister (§3).
 
 ## 5. Suggested phased roadmap
 

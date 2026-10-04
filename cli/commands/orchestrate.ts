@@ -20,6 +20,12 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { ClaudeOrchestrator } from '../../src/orchestration/claude.js';
 import type { MCPServerConfig } from '../../src/orchestration/mcp-client.js';
+import {
+  checkPolyticianNamespace,
+  defaultPolyticianNamespace,
+  polyticianServerConfig,
+} from '../../src/orchestration/polytician-config.js';
+import { nearestProjectAgentId } from '../../src/hypervault/pipeline.js';
 
 // ---------------------------------------------------------------------------
 // Options interface
@@ -38,6 +44,7 @@ export interface OrchestrateCommandOptions {
   apiKey?: string;
   polyticianEntry?: string;
   polyticianNamespace?: string;
+  polyticianConfig?: string;
   /** false with --no-semantic-enrichment (Commander names a --no-* option after what it negates) */
   semanticEnrichment?: boolean;
   /** false with --no-save-concept */
@@ -71,7 +78,12 @@ export function orchestrateCmd(): Command {
     .option('--api-key <key>', 'Anthropic API key (overrides ANTHROPIC_API_KEY env var)')
     // Polytician semantic memory integration
     .option('--polytician-entry <command>', 'Polytician MCP server entry point (e.g., "node server.js")')
-    .option('--polytician-namespace <name>', "Name AgentVault registers the Polytician server under (concepts go to Polytician's default namespace)", 'polytician')
+    .option(
+      '--polytician-namespace <name>',
+      "Polytician namespace of the agent's concepts (default: the agent name in the nearest agent.json or " +
+        '.agentvault/config/agent.config.json, here or in a parent directory, the webapp\'s agentId for it; else "default")'
+    )
+    .option('--polytician-config <path>', "Polytician's config file, passed to it as --config (it reads ~/.polytician/config.json without)")
     .option('--no-semantic-enrichment', 'Disable semantic context enrichment')
     .option('--no-save-concept', 'Disable saving orchestration result as concept')
     .action(async (options: OrchestrateCommandOptions) => {
@@ -118,6 +130,26 @@ export function orchestrateCmd(): Command {
       const timeoutMs = isNaN(timeoutSeconds) ? 30 * 60 * 1000 : timeoutSeconds * 1000;
 
       // ----------------------------------------------------------------
+      // Polytician: the agent's namespace, its config file, and AgentVault's
+      // URL and token for its vault_* tools, checked before anything starts
+      // ----------------------------------------------------------------
+      let polyticianServer: MCPServerConfig | undefined;
+      if (options.polyticianEntry) {
+        try {
+          polyticianServer = polyticianServerConfig({
+            entryPoint: options.polyticianEntry,
+            namespace: options.polyticianNamespace !== undefined
+              ? checkPolyticianNamespace(options.polyticianNamespace, '--polytician-namespace')
+              : defaultPolyticianNamespace(nearestProjectAgentId(process.cwd()), '--polytician-namespace'),
+            configPath: options.polyticianConfig,
+          });
+        } catch (err) {
+          console.error(chalk.red(`Error: ${err instanceof Error ? err.message : String(err)}`));
+          process.exit(1);
+        }
+      }
+
+      // ----------------------------------------------------------------
       // Print session summary
       // ----------------------------------------------------------------
       console.log(chalk.cyan('Provider:'), 'Claude Code (Anthropic)');
@@ -126,6 +158,9 @@ export function orchestrateCmd(): Command {
         console.log(chalk.cyan('Canister:'), options.canisterId);
       }
       console.log(chalk.cyan('Network: '), options.network ?? 'local');
+      if (polyticianServer) {
+        console.log(chalk.cyan('Polytician namespace:'), polyticianServer.polyticianNamespace);
+      }
       if (options.dryRun) {
         console.log(chalk.yellow('\n[DRY RUN] No changes will be committed.\n'));
       }
@@ -148,14 +183,6 @@ export function orchestrateCmd(): Command {
       // ----------------------------------------------------------------
       try {
         const orchestrator = new ClaudeOrchestrator(process.cwd());
-
-        let polyticianServer: MCPServerConfig | undefined;
-        if (options.polyticianEntry) {
-          polyticianServer = {
-            namespace: options.polyticianNamespace ?? 'polytician',
-            entryPoint: options.polyticianEntry,
-          };
-        }
 
         const result = await orchestrator.orchestrate({
           task,

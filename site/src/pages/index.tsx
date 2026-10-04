@@ -251,7 +251,7 @@ const ecosystemComponents: EcosystemComponent[] = [
     description:
       'A local-first MCP server for semantic memory. Each concept can be stored as, and converted between, a 384-dimension vector, markdown and structured ThoughtForm JSON.',
     inAgentVault:
-      "AgentVault's orchestrate --polytician-entry option calls a Polytician 3.0 MCP server over stdio, adds the concepts most relevant to the task to Claude's prompt, and saves each session's result as a concept. The polytician status and search commands work with Polytician as installed; push-all, pull and archive use Polytician's vault_* tools, which its operator has to point at AgentVault first, and push-all cannot complete yet because AgentVault's memory_repo write routes call the canister anonymously, which it refuses.",
+      "AgentVault's orchestrate --polytician-entry option calls a Polytician 3.0 MCP server over stdio, adds the concepts most relevant to the task to Claude's prompt, and saves each session's result as a concept in the agent's own namespace. The polytician push-all, pull and archive commands use Polytician's vault_* tools, which AgentVault turns on by passing Polytician its webapp's URL and token. Pushes reach the memory_repo canister through webapp routes that sign with an identity the repo owner has authorized.",
     href: 'https://polytician.smallchat.dev',
     isCurrent: false,
   },

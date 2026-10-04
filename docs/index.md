@@ -33,10 +33,11 @@ next tool, a memory that survives, and keeping that memory inside a token budget
 AgentVault ships on its own schedule and does not depend on those packages. Its orchestration layer has its
 own selector-based dispatcher modeled on smallchat, and an MCP client for Polytician 3.0:
 `agentvault orchestrate --polytician-entry` adds the concepts most relevant to the task to Claude's prompt and
-saves each session's result as a concept. The `push-all`, `pull` and `archive` commands use Polytician's
-`vault_*` tools, which Polytician offers only when its operator points it at AgentVault, and `push-all`
-cannot complete yet: AgentVault's memory_repo write routes call the canister anonymously, which it refuses.
-Stenographer and Short-hand are not integrated yet.
+saves each session's result as a concept, in the agent's own Polytician namespace. The `push-all`, `pull` and
+`archive` commands use Polytician's `vault_*` tools, which AgentVault turns on by passing Polytician its
+webapp's URL and token; pushes reach the `memory_repo` canister through webapp routes that sign with an
+identity the repo owner has authorized. See the [Polytician guide](/docs/guides/polytician). Stenographer and
+Short-hand are not integrated yet.
 
 - [Ecosystem overview](/docs/ecosystem/executive-summary) — what each project does and how they fit together.
 - [Engineering guide](/docs/ecosystem/engineering-guide) — component reference, integration status, and a
@@ -50,6 +51,8 @@ Stenographer and Short-hand are not integrated yet.
 - [Deployment](/docs/user/deployment) — local and mainnet canister operations.
 - [Wallets](/docs/user/wallets) — cross-chain custody and transaction flows.
 - [Backups](/docs/user/backups) — snapshot, restore, and archival strategy.
+- [MemoryRepo](/docs/memory-repo) — git-style on-chain memory, and the identities that may write to it.
+- [Polytician](/docs/guides/polytician) — semantic memory per agent, connected to AgentVault's webapp.
 - [Monitoring](/docs/guides/monitoring) — health checks, metrics, and alerting.
 - [Troubleshooting](/docs/user/troubleshooting) — fast diagnostics and recovery.
 

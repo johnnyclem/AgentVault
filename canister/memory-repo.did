@@ -95,8 +95,11 @@ service : {
 
   // ── Commit Operations ───────────────────────────────────────────────────
 
-  commit       : (text, text, vec text) -> (variant { ok : text; err : text });
-  getCommit    : (text) -> (opt Commit) query;
+  commit         : (text, text, vec text) -> (variant { ok : text; err : text });
+  // (branch, message, diff, tags): commits onto that branch in one message,
+  // without moving the current branch
+  commitToBranch : (text, text, text, vec text) -> (variant { ok : text; err : text });
+  getCommit      : (text) -> (opt Commit) query;
 
   // ── Log & State Queries ─────────────────────────────────────────────────
 
@@ -106,9 +109,11 @@ service : {
 
   // ── Branch Operations ───────────────────────────────────────────────────
 
-  getBranches  : () -> (vec record { text; text }) query;
-  createBranch : (text) -> (variant { ok : text; err : text });
-  switchBranch : (text) -> (variant { ok : text; err : text });
+  getBranches      : () -> (vec record { text; text }) query;
+  createBranch     : (text) -> (variant { ok : text; err : text });
+  // (name, base): a branch at base's HEAD, whichever branch is current
+  createBranchFrom : (text, text) -> (variant { ok : text; err : text });
+  switchBranch     : (text) -> (variant { ok : text; err : text });
 
   // ── ThoughtForm Queries ────────────────────────────────────────────────
 

@@ -371,8 +371,59 @@ GET /api/tasks/:id
 GET /api/logs?canisterId=:id&level=:level
 ```
 
+### MemoryRepo and Polytician routes
+
+These routes serve Polytician's `vault_*` tools and Polytician's concepts. Each one requires
+`Authorization: Bearer <token>`, where the token is the server's `AGENTVAULT_POLYTICIAN_API_TOKEN`.
+
+| Route | What it does |
+|---|---|
+| `POST /api/memory-repo/commits` | Commit entries to a `memory_repo` branch (Polytician's `vault_memory_push`). Signed. |
+| `POST /api/memory-repo/tombstone` | Commit a deletion of one key. Signed. |
+| `GET /api/memory-repo/branches/:branch` | The branch's current entries, replayed from every commit (Polytician's `vault_memory_pull`). Anonymous query. |
+| `/api/polytician/:agentId/{stats,search,concepts,concepts/:id,archive}` | Polytician's concepts in the namespace `agentId`. |
+
+The `memory_repo` canister refuses anonymous writes, so the two write routes sign with the server's own
+identity, which the repo owner must authorize. With no identity configured they answer 503
+`SIGNING_IDENTITY_NOT_CONFIGURED` without calling the canister; a principal the owner has not authorized gets 403
+`SIGNER_NOT_AUTHORIZED`, a frozen or killed repo 423, and a canister older than this release 502
+`MEMORY_REPO_OUTDATED`. They commit onto the named branch in one canister call, so concurrent requests cannot
+land on each other's branch, and create a missing branch from `main`. A successful commit reports the signing
+principal as `author`. See [MemoryRepo: who can write](../memory-repo.md#who-can-write) for setting the identity
+up.
+
+These routes, and `/api/archival/upload`, `/api/inference` and `/api/secrets/:name`, are the ones Polytician's
+AgentVault client calls, so their errors (including a 401 for a wrong token) are in the shape it reads:
+`{ "success": false, "code": "<CODE>", "error": "<CODE>: <message>" }`. The other routes answer
+`{ "success": false, "error": { "message", "code" } }`. The Polytician the webapp starts never gets the signing
+key or AgentVault's wallet secrets in its environment.
+
+The Polytician routes start Polytician with `POLYTICIAN_ENTRY_POINT` and use the `agentId` in the path as the
+Polytician namespace: the agent's name, which `agentvault polytician` and `agentvault orchestrate` also default
+to. An `agentId` that is not a valid namespace gets 400 `INVALID_AGENT_ID`. See the
+[Polytician guide](../guides/polytician.md).
+
+### Server environment
+
+Set these where the webapp runs (`webapp/.env.local` in development, your host's settings in production). The
+routes read them on every request.
+
+| Variable | Used by | Description |
+|---|---|---|
+| `AGENTVAULT_POLYTICIAN_API_TOKEN` | all routes above | The bearer token the routes require. Polytician's `POLYTICIAN_AV_API_TOKEN` must equal it. |
+| `MEMORY_REPO_CANISTER_ID` | `/api/memory-repo/*` | The `memory_repo` canister. |
+| `ICP_LOCAL_URL` | `/api/memory-repo/*` | Replica host for a local replica; the default is `https://ic0.app`. |
+| `AGENTVAULT_ICP_IDENTITY_PEM_FILE` | memory_repo writes | Path of the PEM key the write routes sign with. |
+| `AGENTVAULT_ICP_IDENTITY_PEM` | memory_repo writes | The PEM text itself, for hosts without a filesystem (literal `\n` sequences are accepted). Set this or the file, not both. |
+| `POLYTICIAN_ENTRY_POINT` | `/api/polytician/*` | The command that starts Polytician over stdio, e.g. `polytician`. Add `--config <path>` to give it a config file. |
+| `AGENTVAULT_API_URL` | `/api/polytician/*` | The webapp's own base URL. With the token, it is passed to Polytician as `POLYTICIAN_AV_API_URL` and `POLYTICIAN_AV_API_TOKEN`, so Polytician offers its `vault_*` tools. https, or http to localhost. |
+
+The server never reads a signing key from the home directory of the user it runs as. `webapp/.env.example`
+lists these variables.
+
 ## Next Steps
 
 - [ ] Read [Getting Started](./getting-started.md) for CLI usage
 - [ ] Read [Deployment Guide](./deployment.md) for deployment details
+- [ ] Read [MemoryRepo](../memory-repo.md) and the [Polytician guide](../guides/polytician.md) to connect Polytician
 - [ ] Review [Security Best Practices](../security/best-practices.md)

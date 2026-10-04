@@ -20,6 +20,11 @@ describe('memory CLI Command', () => {
     expect(option).toBeDefined();
   });
 
+  it('should have the --identity option', () => {
+    const option = memoryCmd.options.find((o) => o.long === '--identity');
+    expect(option).toBeDefined();
+  });
+
   it('should have subcommand init', () => {
     const sub = memoryCmd.commands.find((c) => c.name() === 'init');
     expect(sub).toBeDefined();
@@ -92,20 +97,29 @@ describe('memory CLI Command', () => {
     expect(sub?.description()).toContain('Cherry-pick');
   });
 
-  it('should have all 10 subcommands', () => {
-    expect(memoryCmd.commands).toHaveLength(10);
+  it('should have subcommands whoami, authorize and deauthorize', () => {
+    expect(memoryCmd.commands.find((c) => c.name() === 'whoami')?.description()).toContain('principal');
+    expect(memoryCmd.commands.find((c) => c.name() === 'authorize')?.description()).toContain('owner');
+    expect(memoryCmd.commands.find((c) => c.name() === 'deauthorize')?.description()).toContain('owner');
+  });
+
+  it('should have all 13 subcommands', () => {
+    expect(memoryCmd.commands).toHaveLength(13);
     const names = memoryCmd.commands.map(c => c.name()).sort();
     expect(names).toEqual([
+      'authorize',
       'branch',
       'checkout',
       'cherry-pick',
       'commit',
+      'deauthorize',
       'init',
       'log',
       'merge',
       'rebase',
       'show',
       'status',
+      'whoami',
     ]);
   });
 });

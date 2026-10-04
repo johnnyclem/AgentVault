@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { validateAuthToken, unauthorizedResponse } from '@/lib/server/auth'
+import { validateAuthToken } from '@/lib/server/auth'
+import { polyticianClientError } from '@/lib/server/polytician-client'
 
 const SECRETS_PROVIDER = process.env.SECRETS_PROVIDER || 'environment'
 
@@ -60,7 +61,7 @@ export async function GET(
 ): Promise<NextResponse> {
   const authResult = validateAuthToken(request)
   if (!authResult.authorized) {
-    return unauthorizedResponse(authResult.error ?? 'Unauthorized')
+    return polyticianClientError(401, 'UNAUTHORIZED', authResult.error ?? 'Unauthorized')
   }
 
   const { name } = await params
@@ -69,10 +70,7 @@ export async function GET(
     const secret = await getSecretFromProvider(name)
     
     if (!secret) {
-      return NextResponse.json(
-        { success: false, error: { message: `Secret not found: ${name}`, code: 'SECRET_NOT_FOUND' } },
-        { status: 404 }
-      )
+      return polyticianClientError(404, 'SECRET_NOT_FOUND', `Secret not found: ${name}`)
     }
 
     const response: SecretResponse = {
@@ -85,9 +83,6 @@ export async function GET(
     return NextResponse.json({ success: true, data: response })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
-    return NextResponse.json(
-      { success: false, error: { message, code: 'INTERNAL_ERROR' } },
-      { status: 500 }
-    )
+    return polyticianClientError(500, 'INTERNAL_ERROR', message)
   }
 }

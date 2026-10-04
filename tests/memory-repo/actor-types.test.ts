@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { idlFactory } from '../../src/canister/memory-repo-actor.idl.js';
 import {
   createMemoryRepoActor,
@@ -41,15 +43,15 @@ describe('MemoryRepo Actor Types', () => {
       expect(typeof idlFactory).toBe('function');
     });
 
-    it('should produce a service with all 19 methods', () => {
+    it('should produce a service with all its methods', () => {
       const service = idlFactory({ IDL: mockIDL }) as Record<string, unknown>;
       const expectedMethods = [
         // Security (7)
         'freeze', 'manualUnlock', 'killCanister', 'reviveCanister',
         'addAuthorizedPrincipal', 'removeAuthorizedPrincipal', 'getSecurityStatus',
-        // Core (9)
-        'initRepo', 'commit', 'getCommit', 'log', 'getCurrentState',
-        'getRepoStatus', 'getBranches', 'createBranch', 'switchBranch',
+        // Core (11)
+        'initRepo', 'commit', 'commitToBranch', 'getCommit', 'log', 'getCurrentState',
+        'getRepoStatus', 'getBranches', 'createBranch', 'createBranchFrom', 'switchBranch',
         // Rebase + Merge (3)
         'rebase', 'merge', 'cherryPick',
       ];
@@ -57,7 +59,22 @@ describe('MemoryRepo Actor Types', () => {
       for (const method of expectedMethods) {
         expect(service).toHaveProperty(method);
       }
-      expect(Object.keys(service)).toHaveLength(22);
+      expect(Object.keys(service)).toHaveLength(24);
+    });
+
+    it('declares only methods canister/memory-repo.did has, with the same arity and query mode', () => {
+      const did = readFileSync(join(import.meta.dirname, '..', '..', 'canister', 'memory-repo.did'), 'utf8');
+      const service = did.slice(did.indexOf('service :'));
+      const declared = new Map<string, { args: number; query: boolean }>();
+      // One method per line: `name : (arg, ...) -> (result) [query];`
+      for (const match of service.matchAll(/^\s+(\w+)\s*:\s*\(([^)]*)\)\s*->\s*\(.*\)(\s+query)?\s*;\s*$/gm)) {
+        const args = match[2]!.trim() === '' ? 0 : match[2]!.split(',').length;
+        declared.set(match[1]!, { args, query: match[3] !== undefined });
+      }
+      const ts = idlFactory({ IDL: mockIDL }) as Record<string, { args: unknown[]; modes: string[] }>;
+      for (const [name, method] of Object.entries(ts)) {
+        expect(declared.get(name), name).toEqual({ args: method.args.length, query: method.modes.includes('query') });
+      }
     });
 
     it('should mark query methods correctly', () => {
@@ -71,7 +88,7 @@ describe('MemoryRepo Actor Types', () => {
       const updateMethods = [
         'freeze', 'manualUnlock', 'killCanister', 'reviveCanister',
         'addAuthorizedPrincipal', 'removeAuthorizedPrincipal',
-        'initRepo', 'commit', 'createBranch', 'switchBranch',
+        'initRepo', 'commit', 'commitToBranch', 'createBranch', 'createBranchFrom', 'switchBranch',
         'rebase', 'merge', 'cherryPick',
       ];
       for (const m of updateMethods) {
@@ -84,6 +101,8 @@ describe('MemoryRepo Actor Types', () => {
 
       expect(service.initRepo.args).toHaveLength(1);
       expect(service.commit.args).toHaveLength(3);
+      expect(service.commitToBranch.args).toHaveLength(4);
+      expect(service.createBranchFrom.args).toHaveLength(2);
       expect(service.getCommit.args).toHaveLength(1);
       expect(service.log.args).toHaveLength(1);
       expect(service.getCurrentState.args).toHaveLength(0);

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAuthToken, unauthorizedResponse } from '@/lib/server/auth'
-import { withPolytician, polyticianErrorResponse } from '@/lib/server/polytician'
+import { invalidAgentIdResponse, withPolytician, polyticianErrorResponse } from '@/lib/server/polytician'
 
 export async function GET(
   request: NextRequest,
@@ -12,6 +12,10 @@ export async function GET(
   }
 
   const { agentId } = await params
+  const invalidAgentId = invalidAgentIdResponse(agentId)
+  if (invalidAgentId) {
+    return invalidAgentId
+  }
 
   try {
     const polyticianEntry = process.env.POLYTICIAN_ENTRY_POINT
@@ -33,6 +37,8 @@ export async function GET(
       success: true,
       data: {
         agentId,
+        // The Polytician namespace the stats are for: the agentId
+        namespace: agentId,
         health: {
           status: health.server,
           version: serverInfo?.version ?? 'unknown',

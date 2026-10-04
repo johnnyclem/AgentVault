@@ -979,6 +979,23 @@ export function projectAgentId(projectRoot: string): string | undefined {
   return undefined;
 }
 
+/**
+ * The agent name of the project `startDir` is in: projectAgentId of the
+ * nearest directory, startDir or one above it, holding an agent.json or a
+ * .agentvault/config/agent.config.json. Undefined outside any project.
+ */
+export function nearestProjectAgentId(startDir: string): string | undefined {
+  let dir = path.resolve(startDir);
+  for (;;) {
+    if (fs.existsSync(path.join(dir, 'agent.json')) || fs.existsSync(path.join(dir, '.agentvault', 'config', 'agent.config.json'))) {
+      return projectAgentId(dir);
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return undefined;
+    dir = parent;
+  }
+}
+
 function countMarkdown(dir: string): number {
   if (!fs.existsSync(dir)) return 0;
   return fs.readdirSync(dir).filter((f) => f.endsWith('.md')).length;

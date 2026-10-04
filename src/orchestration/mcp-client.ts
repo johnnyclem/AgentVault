@@ -1,12 +1,51 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 
+/**
+ * AgentVault's own secrets, kept out of every server's environment, from
+ * AgentVault's environment and from MCPServerConfig.env alike: the key the
+ * webapp signs memory_repo writes with (the PEM or its path) and the wallet
+ * secrets. Polytician reaches memory_repo through the webapp's API and needs
+ * none of them, and a key that reached a child process could not be revoked
+ * by rotating the API token.
+ */
+export const WITHHELD_SERVER_ENV = [
+  'AGENTVAULT_ICP_IDENTITY_PEM',
+  'AGENTVAULT_ICP_IDENTITY_PEM_FILE',
+  'AGENTVAULT_MNEMONIC',
+  'AGENTVAULT_PRIVATE_KEY',
+  'AGENTVAULT_PASSWORD',
+  'AGENTVAULT_BUNDLE_SECRET',
+] as const;
+
+/** The environment a server is started with: AgentVault's, then config.env over it, without WITHHELD_SERVER_ENV. */
+export function serverEnvironment(config: Pick<MCPServerConfig, 'env'>, env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const childEnv: NodeJS.ProcessEnv = { ...env, ...config.env, MCP_MODE: 'stdio' };
+  for (const name of WITHHELD_SERVER_ENV) {
+    delete childEnv[name];
+  }
+  return childEnv;
+}
+
 export interface MCPServerConfig {
+  /**
+   * The name AgentVault knows the server by (registration, display). It is not
+   * a Polytician namespace: see polyticianNamespace.
+   */
   namespace: string;
   entryPoint: string;
   healthPort?: number;
   tools?: string[];
   metadata?: Record<string, string>;
+  /**
+   * The Polytician namespace every call to a tool that takes one names (see
+   * callPolytician). Unset, those calls name none and Polytician uses "default".
+   */
+  polyticianNamespace?: string;
+  /** Polytician's config file, passed to the server as --config <path>. */
+  configPath?: string;
+  /** Environment variables for the server, over AgentVault's own environment (see serverEnvironment). */
+  env?: Record<string, string>;
 }
 
 export interface MCPServerRegistration extends MCPServerConfig {
@@ -199,13 +238,14 @@ export class PolyticianMCPClient extends EventEmitter {
     if (!command) {
       throw new Error('Invalid entry point: empty command');
     }
+    // A separate argument, so a path with spaces survives
+    if (this.config.configPath) {
+      args.push('--config', this.config.configPath);
+    }
 
     const child = spawn(command, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: {
-        ...process.env,
-        MCP_MODE: 'stdio',
-      },
+      env: serverEnvironment(this.config),
     });
     this.process = child;
     this.buffer = '';
