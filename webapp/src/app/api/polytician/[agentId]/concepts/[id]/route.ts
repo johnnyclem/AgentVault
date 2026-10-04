@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAuthToken, unauthorizedResponse } from '@/lib/server/auth'
-import { withPolytician, polyticianErrorResponse } from '@/lib/server/polytician'
+import { invalidAgentIdResponse, withPolytician, polyticianErrorResponse } from '@/lib/server/polytician'
 
 export async function GET(
   request: NextRequest,
@@ -12,6 +12,10 @@ export async function GET(
   }
 
   const { agentId, id } = await params
+  const invalidAgentId = invalidAgentIdResponse(agentId)
+  if (invalidAgentId) {
+    return invalidAgentId
+  }
 
   try {
     const polyticianEntry = process.env.POLYTICIAN_ENTRY_POINT
@@ -23,7 +27,7 @@ export async function GET(
     }
 
     // An unknown id is Polytician's NOT_FOUND (404); a malformed one, VALIDATION_ERROR (400)
-    const concept = await withPolytician(polyticianEntry, 'polytician', (client, tools) =>
+    const concept = await withPolytician(polyticianEntry, agentId, (client, tools) =>
       tools.callPolytician(client, 'read_concept', { id })
     )
 
@@ -43,6 +47,10 @@ export async function DELETE(
   }
 
   const { agentId, id } = await params
+  const invalidAgentId = invalidAgentIdResponse(agentId)
+  if (invalidAgentId) {
+    return invalidAgentId
+  }
 
   try {
     const polyticianEntry = process.env.POLYTICIAN_ENTRY_POINT
@@ -53,7 +61,7 @@ export async function DELETE(
       )
     }
 
-    const deleted = await withPolytician(polyticianEntry, 'polytician', (client, tools) =>
+    const deleted = await withPolytician(polyticianEntry, agentId, (client, tools) =>
       tools.callPolytician(client, 'delete_concept', { id })
     )
 

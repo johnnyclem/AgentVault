@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAuthToken, unauthorizedResponse } from '@/lib/server/auth'
-import { withPolytician, polyticianErrorResponse, readJsonObject } from '@/lib/server/polytician'
+import { invalidAgentIdResponse, withPolytician, polyticianErrorResponse, readJsonObject } from '@/lib/server/polytician'
 
 export async function GET(
   request: NextRequest,
@@ -12,6 +12,10 @@ export async function GET(
   }
 
   const { agentId } = await params
+  const invalidAgentId = invalidAgentIdResponse(agentId)
+  if (invalidAgentId) {
+    return invalidAgentId
+  }
   const { searchParams } = new URL(request.url)
   const limit = searchParams.get('limit')
   const offset = Math.max(0, parseInt(searchParams.get('offset') ?? '0', 10) || 0)
@@ -26,7 +30,7 @@ export async function GET(
   }
 
     // { concepts: [{ id, namespace, version, createdAt, updatedAt, tags, representations, assertionStatus }], total }
-    const concepts = await withPolytician(polyticianEntry, 'polytician', (client, tools) =>
+    const concepts = await withPolytician(polyticianEntry, agentId, (client, tools) =>
       tools.callPolytician(client, 'list_concepts', {
         limit: tools.clampCount(limit, tools.LIST_LIMIT_MAX, 50),
         offset,
@@ -49,6 +53,10 @@ export async function POST(
   }
 
   const { agentId } = await params
+  const invalidAgentId = invalidAgentIdResponse(agentId)
+  if (invalidAgentId) {
+    return invalidAgentId
+  }
 
   const body = await readJsonObject(request)
 
@@ -77,7 +85,7 @@ export async function POST(
       )
     }
 
-    const saved = await withPolytician(polyticianEntry, 'polytician', (client, tools) =>
+    const saved = await withPolytician(polyticianEntry, agentId, (client, tools) =>
       tools.callPolytician(client, 'save_concept', { markdown, ...(tags ? { tags: tags as string[] } : {}) })
     )
 

@@ -107,10 +107,38 @@ describe('Polytician 3.0 output schemas', () => {
   });
 });
 
+const fakeClient = (callToolResult: (...args: unknown[]) => Promise<unknown>, polyticianNamespace?: string) =>
+  ({
+    callToolResult: vi.fn(callToolResult),
+    getConfig: () => ({ namespace: 'polytician', entryPoint: 'node polytician.js', polyticianNamespace }),
+  }) as unknown as PolyticianMCPClient & { callToolResult: ReturnType<typeof vi.fn> };
+
+describe('callPolytician namespaces', () => {
+  const stats = { conceptCount: 0, vectorCount: 0, representationCounts: { markdown: 0, thoughtform: 0, vector: 0 } };
+
+  it("adds the client's Polytician namespace to the tools that take one, and not to the others", async () => {
+    const client = fakeClient(async () => stats, 'agent-a');
+    await callPolytician(client, 'get_stats', {});
+    expect(client.callToolResult).toHaveBeenLastCalledWith('get_stats', { namespace: 'agent-a' }, {});
+
+    client.callToolResult.mockImplementation(async () => ({ branch: 'b', headSha: 's', entryCount: 0, conceptKeys: [] }));
+    await callPolytician(client, 'vault_memory_repo_log', {});
+    expect(client.callToolResult).toHaveBeenLastCalledWith('vault_memory_repo_log', {}, {});
+  });
+
+  it('keeps a namespace the arguments name, and adds none when the client has none', async () => {
+    const client = fakeClient(async () => stats, 'agent-a');
+    await callPolytician(client, 'get_stats', { namespace: 'other' });
+    expect(client.callToolResult).toHaveBeenLastCalledWith('get_stats', { namespace: 'other' }, {});
+
+    const plain = fakeClient(async () => stats);
+    await callPolytician(plain, 'get_stats', {});
+    expect(plain.callToolResult).toHaveBeenLastCalledWith('get_stats', {}, {});
+  });
+});
+
 describe('callPolytician timeouts', () => {
   const receipt = { archived: true, encrypted: true, txId: 'tx', url: 'https://arweave.net/tx', size: 10 };
-  const fakeClient = (callToolResult: (...args: unknown[]) => Promise<unknown>) =>
-    ({ callToolResult: vi.fn(callToolResult) }) as unknown as PolyticianMCPClient & { callToolResult: ReturnType<typeof vi.fn> };
 
   it('gives the vault_* tools longer than Polytician gives its own AgentVault requests', async () => {
     // Polytician's upload timeout is 120 s by default; its memory_repo requests, 30 s (a pull retries twice).

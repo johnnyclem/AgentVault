@@ -7,6 +7,10 @@
  * result AgentVault cannot read is reported instead of being taken for an
  * empty one; keys they do not name are ignored, so a newer server can add
  * fields. The recorded contract is in tests/fixtures/polytician-3.0/.
+ *
+ * Every call to a tool that takes a namespace names the client's Polytician
+ * namespace (MCPServerConfig.polyticianNamespace), so one agent's concepts stay
+ * in one namespace whichever AgentVault surface wrote them.
  */
 
 import { z } from 'zod';
@@ -75,6 +79,22 @@ export class PolyticianOutcomeUnknownError extends MCPToolError {
     const effect = UNANSWERED_EFFECT[tool] ?? 'it may have changed AgentVault';
     super(tool, `no answer within ${timeoutMs / 1000} s. ${effect}.`, 'OUTCOME_UNKNOWN');
     this.message = `${tool} outcome unknown: ${this.serverMessage}`;
+  }
+}
+
+/**
+ * A call Polytician refused because its POLYTICIAN_NAMESPACES allowlist does
+ * not include the namespace AgentVault addressed. Its code stays
+ * NAMESPACE_DENIED; the message adds the namespace and how to allow it.
+ */
+export class PolyticianNamespaceDeniedError extends MCPToolError {
+  readonly namespace: string;
+
+  constructor(tool: string, serverMessage: string, namespace: string) {
+    super(tool, serverMessage, 'NAMESPACE_DENIED');
+    this.namespace = namespace;
+    this.message = `${this.message}. AgentVault keeps each agent's concepts in its own namespace and addressed '${namespace}': ` +
+      `add '${namespace}' to Polytician's POLYTICIAN_NAMESPACES (or "namespaces" in its config file), or use a namespace it allows`;
   }
 }
 
@@ -181,7 +201,7 @@ export type PolyticianToolResult<N extends PolyticianToolName> = z.infer<(typeof
 
 type AssertionStatus = 'asserted' | 'verified' | 'contested' | 'retracted';
 type Representation = 'vector' | 'markdown' | 'thoughtform';
-/** Omitted, the namespace is "default". */
+/** Omitted, callPolytician sends the client's polyticianNamespace; with neither, Polytician uses "default". */
 type InNamespace = { namespace?: string };
 
 export interface PolyticianToolArgs {
@@ -215,6 +235,25 @@ export interface PolyticianToolArgs {
   vault_memory_repo_log: Record<string, never>;
 }
 
+/**
+ * The tools AgentVault calls whose input schema takes a namespace (Polytician
+ * defaults to "default" when it is omitted). vault_memory_repo_log reads the
+ * whole branch and takes none; vault_memory_pull imports only the entries
+ * recorded for the namespace it names.
+ */
+export const NAMESPACED_POLYTICIAN_TOOLS: ReadonlySet<PolyticianToolName> = new Set<PolyticianToolName>([
+  'save_concept',
+  'read_concept',
+  'delete_concept',
+  'list_concepts',
+  'search_concepts',
+  'get_stats',
+  'health_check',
+  'vault_memory_push',
+  'vault_memory_pull',
+  'vault_archive_concept',
+]);
+
 // ---------------------------------------------------------------------------
 // Calls
 // ---------------------------------------------------------------------------
@@ -229,10 +268,12 @@ export function parsePolyticianResult<N extends PolyticianToolName>(tool: N, res
 }
 
 /**
- * Call a Polytician tool and return its typed result. Throws MCPToolError with
- * Polytician's error code when the tool fails, and with INVALID_RESULT when
- * the result does not match the tool's output schema. Waits
- * POLYTICIAN_TOOL_TIMEOUT_MS for the vault_* tools unless options say
+ * Call a Polytician tool and return its typed result. A tool that takes a
+ * namespace gets the client's polyticianNamespace unless args name one. Throws
+ * MCPToolError with Polytician's error code when the tool fails
+ * (PolyticianNamespaceDeniedError for NAMESPACE_DENIED), and with
+ * INVALID_RESULT when the result does not match the tool's output schema.
+ * Waits POLYTICIAN_TOOL_TIMEOUT_MS for the vault_* tools unless options say
  * otherwise; when an archive or push gets no answer, throws
  * PolyticianOutcomeUnknownError (OUTCOME_UNKNOWN) instead of a timeout.
  */
@@ -243,12 +284,19 @@ export async function callPolytician<N extends PolyticianToolName>(
   options: MCPRequestOptions = {},
 ): Promise<PolyticianToolResult<N>> {
   const timeoutMs = options.timeoutMs ?? POLYTICIAN_TOOL_TIMEOUT_MS[tool];
+  const namespace = client.getConfig().polyticianNamespace;
+  const callArgs: Record<string, unknown> = NAMESPACED_POLYTICIAN_TOOLS.has(tool) && namespace !== undefined && !('namespace' in args)
+    ? { ...args, namespace }
+    : args;
   let result: Record<string, unknown>;
   try {
-    result = await client.callToolResult(tool, args, timeoutMs === undefined ? {} : { timeoutMs });
+    result = await client.callToolResult(tool, callArgs, timeoutMs === undefined ? {} : { timeoutMs });
   } catch (error) {
     if (error instanceof MCPTimeoutError && UNANSWERED_EFFECT[tool] !== undefined) {
       throw new PolyticianOutcomeUnknownError(tool, error.timeoutMs);
+    }
+    if (error instanceof MCPToolError && error.code === 'NAMESPACE_DENIED') {
+      throw new PolyticianNamespaceDeniedError(tool, error.serverMessage, String(callArgs['namespace'] ?? 'default'));
     }
     throw error;
   }
@@ -262,9 +310,11 @@ export function isUnknownToolError(error: unknown, tool: string): boolean {
 
 /** Why a vault_* tool is missing from a Polytician server. */
 export function vaultToolUnavailableMessage(tool: string): string {
-  const archival = tool === 'vault_archive_concept' ? ', and vault_archive_concept also needs agentVault.archival enabled' : '';
-  return `Polytician does not offer ${tool}: its vault_* tools are registered only when POLYTICIAN_AV_API_URL and ` +
-    `POLYTICIAN_AV_API_TOKEN point it at AgentVault${archival}`;
+  const archival = tool === 'vault_archive_concept' ? '; vault_archive_concept also needs agentVault.archival enabled in its config file' : '';
+  return `Polytician does not offer ${tool}: it registers its vault_* tools only when it is configured for AgentVault. ` +
+    'Set AGENTVAULT_API_URL (AgentVault\'s base URL) and AGENTVAULT_POLYTICIAN_API_TOKEN, which AgentVault passes to the ' +
+    'Polytician it starts as POLYTICIAN_AV_API_URL and POLYTICIAN_AV_API_TOKEN, or set those for Polytician yourself ' +
+    `(agentvault polytician config writes its config file)${archival}`;
 }
 
 // ---------------------------------------------------------------------------

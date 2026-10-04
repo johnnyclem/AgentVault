@@ -41,7 +41,8 @@ export interface ConceptReference {
 export const DEFAULT_MIN_RELEVANCE_SCORE = 0.65;
 
 /**
- * Prepend the Polytician concepts most relevant to the prompt. Throws when
+ * Prepend the Polytician concepts most relevant to the prompt, from the
+ * server's Polytician namespace (mcpServer.polyticianNamespace). Throws when
  * Polytician reports an error (an MCPToolError carrying its code), so the
  * caller can report it.
  */
@@ -225,8 +226,9 @@ function previewBody(markdown: string): string {
 
 /**
  * Save an orchestration session's result as a Polytician concept (markdown,
- * tagged "orchestration" and "session:<id>") and return the stored concept's
- * id. Throws when Polytician reports an error.
+ * tagged "orchestration" and "session:<id>") in the server's Polytician
+ * namespace and return the stored concept's id. Throws when Polytician
+ * reports an error.
  */
 export async function saveConceptFromOrchestration(
   sessionId: string,

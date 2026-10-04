@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAuthToken, unauthorizedResponse } from '@/lib/server/auth'
-import { withPolytician, polyticianErrorResponse, readJsonObject } from '@/lib/server/polytician'
+import { invalidAgentIdResponse, withPolytician, polyticianErrorResponse, readJsonObject } from '@/lib/server/polytician'
 
 export async function POST(
   request: NextRequest,
@@ -12,6 +12,10 @@ export async function POST(
   }
 
   const { agentId } = await params
+  const invalidAgentId = invalidAgentIdResponse(agentId)
+  if (invalidAgentId) {
+    return invalidAgentId
+  }
 
   const body = await readJsonObject(request)
   const conceptId = body?.conceptId
@@ -35,10 +39,12 @@ export async function POST(
     }
 
     // vault_archive_concept exists only when Polytician is configured for
-    // AgentVault with archival enabled. Returns { archived, encrypted, txId, url, size }.
+    // AgentVault (AGENTVAULT_API_URL here, passed on by withPolytician) with
+    // archival enabled in its config file. It archives the concept in the
+    // agent's namespace. Returns { archived, encrypted, txId, url, size }.
     // It waits up to 150 s (Polytician gives the upload 120 s); with no answer,
     // the response is 504 OUTCOME_UNKNOWN, since the paid upload may have happened.
-    const outcome = await withPolytician(polyticianEntry, 'polytician', async (client, tools) => {
+    const outcome = await withPolytician(polyticianEntry, agentId, async (client, tools) => {
       try {
         return { archived: await tools.callPolytician(client, 'vault_archive_concept', { conceptId }) }
       } catch (error) {

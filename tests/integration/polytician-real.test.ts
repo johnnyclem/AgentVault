@@ -22,6 +22,8 @@ import {
   enrichWithPolyticianContext,
   saveConceptFromOrchestration,
 } from '../../src/orchestration/polytician-enricher.js';
+import { polyticianServerConfig } from '../../src/orchestration/polytician-config.js';
+import { buildPolyticianConfig, writePolyticianConfigFile } from '../../src/orchestration/polytician-config-file.js';
 
 const ENTRY = process.env['POLYTICIAN_ENTRY'];
 const MODELS_DIR = process.env['POLYTICIAN_MODELS_DIR'];
@@ -121,4 +123,76 @@ describe.runIf(ENTRY)('Polytician flows against a real server', () => {
       await client.disconnect();
     }
   }, 120_000);
+
+  async function listToolNames(config: MCPServerConfig): Promise<string[]> {
+    const client = new PolyticianMCPClient(config);
+    await client.connect();
+    try {
+      return (await client.listTools()).map((t) => t.name);
+    } finally {
+      await client.disconnect();
+    }
+  }
+
+  it("keeps one agent's concepts in its namespace: another agent's searches, reads and pushes do not reach them", async () => {
+    const agentA = polyticianServerConfig({ entryPoint: ENTRY ?? '', namespace: 'agent-a' }, {});
+    const agentB = polyticianServerConfig({ entryPoint: ENTRY ?? '', namespace: 'agent-b' }, {});
+    const saved = await saveConceptFromOrchestration('ns-1', 'Teach the lexer to stream tokens', 'Streamed the lexer.', [], agentA);
+
+    const searchIn = async (config: MCPServerConfig) => {
+      const client = new PolyticianMCPClient(config);
+      await client.connect();
+      try {
+        return (await callPolytician(client, 'search_concepts', { query: 'stream tokens in the lexer' })).results;
+      } finally {
+        await client.disconnect();
+      }
+    };
+    expect((await searchIn(agentA)).map((r) => [r.id, r.namespace])).toContainEqual([saved, 'agent-a']);
+    expect((await searchIn(agentB)).map((r) => r.id)).not.toContain(saved);
+    expect((await enrichWithPolyticianContext('Stream tokens in the lexer', { mcpServer: agentB })).conceptsUsed).toEqual([]);
+
+    const client = new PolyticianMCPClient(agentB);
+    await client.connect();
+    try {
+      await expect(callPolytician(client, 'read_concept', { id: saved })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    } finally {
+      await client.disconnect();
+    }
+  }, 120_000);
+
+  it('answers NAMESPACE_DENIED for a namespace outside POLYTICIAN_NAMESPACES, with how to allow it', async () => {
+    const config = polyticianServerConfig({ entryPoint: ENTRY ?? '', namespace: 'agent-a', env: { POLYTICIAN_NAMESPACES: 'agent-b' } }, {});
+    const client = new PolyticianMCPClient(config);
+    await client.connect();
+    try {
+      const error = await callPolytician(client, 'get_stats', {}).catch((e: unknown) => e);
+      expect(error).toMatchObject({ code: 'NAMESPACE_DENIED', namespace: 'agent-a' });
+      expect((error as Error).message).toMatch(/add 'agent-a' to Polytician's POLYTICIAN_NAMESPACES/);
+    } finally {
+      await client.disconnect();
+    }
+  }, 60_000);
+
+  it('registers the vault_* tools with the settings AgentVault passes on, or with the config file AgentVault writes', async () => {
+    // A closed loopback port: nothing leaves the machine
+    expect(await listToolNames(polyticianServerConfig({ entryPoint: ENTRY ?? '', namespace: 'agent-a' }, {})))
+      .not.toContain('vault_memory_push');
+    const injected = polyticianServerConfig(
+      { entryPoint: ENTRY ?? '', namespace: 'agent-a' },
+      { AGENTVAULT_API_URL: 'http://127.0.0.1:9', AGENTVAULT_POLYTICIAN_API_TOKEN: 'av-token' },
+    );
+    expect(await listToolNames(injected)).toEqual(expect.arrayContaining(['vault_memory_push', 'vault_memory_pull', 'vault_memory_repo_log']));
+
+    const configDir = mkdtempSync(join(tmpdir(), 'av-polytician-config-'));
+    dirs.push(configDir);
+    const configFile = join(configDir, 'config.json');
+    writePolyticianConfigFile(configFile, buildPolyticianConfig({ apiBaseUrl: 'http://127.0.0.1:9' }), { force: false });
+    const fromFile = polyticianServerConfig(
+      { entryPoint: ENTRY ?? '', namespace: 'agent-a', configPath: configFile, env: { POLYTICIAN_AV_API_TOKEN: 'av-token' } },
+      {},
+    );
+    expect(await listToolNames(fromFile)).toEqual(expect.arrayContaining(['vault_memory_push', 'vault_memory_pull']));
+  }, 120_000);
 });
+

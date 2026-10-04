@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAuthToken, unauthorizedResponse } from '@/lib/server/auth'
-import { withPolytician, polyticianErrorResponse } from '@/lib/server/polytician'
+import { invalidAgentIdResponse, withPolytician, polyticianErrorResponse } from '@/lib/server/polytician'
 
 export async function GET(
   request: NextRequest,
@@ -12,6 +12,10 @@ export async function GET(
   }
 
   const { agentId } = await params
+  const invalidAgentId = invalidAgentIdResponse(agentId)
+  if (invalidAgentId) {
+    return invalidAgentId
+  }
   const { searchParams } = new URL(request.url)
   const query = searchParams.get('q') ?? searchParams.get('query') ?? ''
   const limit = searchParams.get('limit')
@@ -34,7 +38,7 @@ export async function GET(
 
     // ?limit= becomes search_concepts' k (1-100, default 10). Results are
     // { id, namespace, score, tags, representations, assertionStatus }, best first.
-    const { results } = await withPolytician(polyticianEntry, 'polytician', (client, tools) =>
+    const { results } = await withPolytician(polyticianEntry, agentId, (client, tools) =>
       tools.callPolytician(client, 'search_concepts', {
         query: query.slice(0, tools.MAX_QUERY_LENGTH),
         k: tools.clampCount(limit, tools.SEARCH_K_MAX, 10),
