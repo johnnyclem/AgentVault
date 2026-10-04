@@ -37,6 +37,68 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   responses. The client, enricher, orchestrator prompt and
   `agentvault polytician` run against it; `tests/integration/polytician-real.test.ts`
   runs the same flows against a real server when `POLYTICIAN_ENTRY` is set.
+- **Signing identities for memory_repo writes (`src/canister/identity.ts`).**
+  AgentVault loads a key from a PEM as `dfx identity export` (or icp-cli)
+  writes it: Ed25519 PKCS#8, or secp256k1 SEC1 or PKCS#8. Encrypted PEMs and
+  other key types are refused, and no key material is logged or put in an
+  error message.
+  - The CLI uses `--identity <pem>`, else `AGENTVAULT_ICP_IDENTITY_PEM_FILE`,
+    else dfx's selected identity (`~/.config/dfx/identity.json`, then
+    `identity/<name>/identity.pem`; `DFX_CONFIG_ROOT` is honoured). dfx's
+    `anonymous` identity counts as none. A source that is set but unusable
+    (a missing file, an encrypted key, a password-protected or keyring dfx
+    identity) is an error that says what to do; it does not fall through.
+  - The webapp reads `AGENTVAULT_ICP_IDENTITY_PEM_FILE` or
+    `AGENTVAULT_ICP_IDENTITY_PEM` (the PEM text, for hosts without a
+    filesystem; literal `\n` sequences are accepted), not both, and never the
+    home directory.
+  - New dependencies `@dfinity/identity` and `@dfinity/identity-secp256k1`
+    `^3.4.3`, matching `@dfinity/agent`.
+  - `src/canister/memory-repo-actor.ts` gains `createMemoryRepoAgent(host,
+    identity?)`, `isLocalReplicaHost`, `memoryRepoErrorText` (the replica's
+    reject text without agent-js's request and certificate dump) and
+    `explainMemoryRepoWriteError`, which turns the canister's refusals into
+    `SIGNER_NOT_AUTHORIZED`, `SIGNER_NOT_OWNER`, `REPO_FROZEN`, `REPO_KILLED`
+    and `MEMORY_REPO_OUTDATED` (a method the canister lacks) with a message
+    naming the signer's principal.
+  - A key file that users other than its owner can read or write loads with
+    a warning (`SigningIdentity.warning`), which the CLI prints on stderr and
+    the webapp logs once per file.
+- **`commitToBranch(branch, message, diff, tags)` and
+  `createBranchFrom(name, base)` in the memory_repo canister.** Both name
+  their branch, so a writer neither depends on nor moves the canister's
+  shared current branch, and each is one message, so no other write lands in
+  between. `canister/memory-repo.did`, the TypeScript IDL and `_SERVICE` have
+  them; a test checks the IDL against the `.did`.
+- **`agentvault memory whoami`, `authorize <principal>` and
+  `deauthorize <principal>`.** `whoami` prints the configured identity's
+  principal alone on stdout (its key type and source go to stderr), so
+  `agentvault memory authorize "$(agentvault memory whoami --identity ~/.config/agentvault/webapp.pem)"`
+  works. `authorize` / `deauthorize` have the repo owner call
+  `addAuthorizedPrincipal` / `removeAuthorizedPrincipal`. `agentvault memory`,
+  `agentvault merge` and `agentvault hypervault archive` take `--identity <pem>`.
+- **`agentvault polytician config`** writes Polytician's JSON config file
+  (default `~/.polytician/config.json`, which Polytician reads without
+  `--config`; the parent `--config <path>` writes elsewhere) with
+  `agentVault.apiBaseUrl` (`--api-url`, else `AGENTVAULT_API_URL`),
+  `apiToken` as the literal `${POLYTICIAN_AV_API_TOKEN}` so no secret is
+  written, and `memoryRepoBranch` (`--branch`, default `polytician-main`).
+  Archival is added only with `--archival-tag <tag>` (repeatable) and
+  `--arweave-jwk <path>`, with a warning that Arweave uploads are permanent,
+  public and paid and that Polytician needs a backup key. The wallet must be
+  an Arweave keyfile (a JSON RSA private key with `n` and `d`). The file is
+  mode 0600 (a new directory 0700); an existing file is refused without
+  `--force`, which sets `apiBaseUrl`, `apiToken` and `memoryRepoBranch`,
+  keeps every other setting (including `agentVault.sync`, `inference`,
+  `agentPrincipal` and an existing archival block, unless archival options
+  are given) and lists the `agentVault` settings it kept; `--no-archival`
+  removes the archival block. When `AGENTVAULT_POLYTICIAN_API_TOKEN` is set
+  without `AGENTVAULT_API_URL` it says that AgentVault will not pass the
+  token on.
+- **Polytician config file option.** `agentvault polytician --config <path>`
+  and `agentvault orchestrate --polytician-config <path>` start Polytician with
+  `--config <path>`. `MCPServerConfig` gains `configPath`, `env` (merged over
+  `process.env` when the server is spawned) and `polyticianNamespace`.
 
 ### Changed
 - **Polytician 3.0 (`polytician@^3`) is the Polytician AgentVault talks to.**
@@ -76,18 +138,95 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
     `POLYTICIAN_UNAVAILABLE` or 504 `POLYTICIAN_TIMEOUT`, since the message
     can carry Polytician's stderr. A body that is not JSON is a 400. Auth is
     unchanged.
-  - `push-all`, `pull` and `archive` (and the webapp archive route) need
-    configuration on Polytician's side: Polytician registers its `vault_*`
-    tools only when `POLYTICIAN_AV_API_URL` and `POLYTICIAN_AV_API_TOKEN` are
-    set, and `vault_archive_concept` only with `agentVault.archival` enabled.
-    `push-all` still cannot complete against AgentVault's own HTTP API: the
-    memory_repo commit and tombstone routes call the canister with the
-    anonymous principal, and the canister refuses anonymous writes.
+  - `push-all`, `pull` and `archive` (and the webapp archive route) use
+    Polytician's `vault_*` tools, which Polytician registers only when it has
+    an AgentVault URL and token (which AgentVault now passes it; see below),
+    and `vault_archive_concept` only with `agentVault.archival` enabled.
   - The `vault_*` calls wait longer than Polytician's own AgentVault requests
     (archive 150 s, push 60 s, pull 150 s; other tools 30 s), so Polytician
     answers first. An archive or push that still gets no answer is reported
     as `OUTCOME_UNKNOWN` (`... outcome unknown: ...`), not as a failure: the
     commit or the paid Arweave upload may have happened.
+- **memory_repo writes are signed, and fail closed without an identity.**
+  The canister refuses anonymous writes. Reads (queries) stay anonymous.
+  - CLI: `memory init`, `commit`, `branch <name>`, `checkout`, `rebase`,
+    `merge`, `cherry-pick`, `authorize` and `deauthorize`, the top-level
+    `agentvault merge`, and `hypervault archive --canister-id` print
+    `Signing as <principal> (<source>)`, or exit 1 with setup guidance before
+    calling the canister. `memory init` prints the owner, and a refused write
+    names the principal and the `agentvault memory authorize` command to run.
+    `executeMerge` takes a required `signer`.
+  - Webapp: `POST /api/memory-repo/commits` and `/tombstone` sign with the
+    server's identity. With none they answer 503
+    `SIGNING_IDENTITY_NOT_CONFIGURED` (with setup guidance) without calling
+    the canister; an unusable key is 503 `SIGNING_IDENTITY_INVALID`, with the
+    reason in the server log only. The canister's refusal of the signer is
+    403 `SIGNER_NOT_AUTHORIZED` or `SIGNER_NOT_OWNER`, a frozen or killed repo
+    423 `REPO_FROZEN` or `REPO_KILLED`, and a canister that predates
+    `commitToBranch` 502 `MEMORY_REPO_OUTDATED`. A commit's `author` is the
+    signing principal (it was the branch name) and its `timestamp` the
+    commit's own (it was the newest commit's on the branch). The memory_repo
+    routes read their environment on every request.
+  - The commits and tombstone routes commit with `commitToBranch` instead of
+    `switchBranch` then `commit`, and the commits route creates a missing
+    branch with `createBranchFrom(branch, "main")`. The top-level
+    `agentvault merge` commits with `commitToBranch` and refuses a branch
+    that does not exist. `agentvault memory commit` prints the branch the
+    canister recorded the commit on.
+  - Error bodies of the routes Polytician's AgentVault client calls
+    (`/api/memory-repo/*`, `/api/archival/upload`, `/api/inference`,
+    `/api/secrets/:name`, and the API's 401 on those paths) are in that
+    client's shape: `{ success: false, code, error: "<CODE>: <message>" }`.
+    They were `error: { message, code }`, which Polytician showed as
+    `[object Object]`. The webapp's other routes are unchanged.
+  - The replica's root key is fetched only for a local replica (`localhost`,
+    `*.localhost`, `127.0.0.1`, `[::1]`). The CLI fetched it for any host other
+    than `ic0.app` and `icp0.io`, so a replica at another address, such as a
+    Docker host name, is now verified against the IC root key.
+- **Each agent's Polytician concepts live in their own namespace.** Every
+  call AgentVault makes to a Polytician tool that takes a namespace now names
+  the agent's; before, every concept went to Polytician's `default`
+  namespace.
+  - `agentvault polytician -n, --namespace` and `agentvault orchestrate
+    --polytician-namespace` are sent to Polytician. Both default to the
+    project's agent name (`agent.json`, else
+    `.agentvault/config/agent.config.json`, in the current directory or the
+    nearest one above it that has either), else `default`. A name that is
+    not a valid Polytician namespace (`^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$`)
+    is refused rather than replaced by `default`.
+    `--polytician-namespace` used to set only the name AgentVault registered
+    the server under (default `polytician`); that name is now always
+    `polytician`.
+  - The webapp's `/api/polytician/[agentId]/*` routes use `agentId` (the
+    agent's name) as the namespace, answer 400 `INVALID_AGENT_ID` for one
+    that is not a valid namespace, and the stats response has `namespace`.
+  - `NAMESPACE_DENIED` from Polytician's `POLYTICIAN_NAMESPACES` allowlist
+    is a `PolyticianNamespaceDeniedError` (code unchanged) whose message names
+    the namespace and says to add it to the allowlist; the webapp answers 403.
+  - `polytician status` and `register` print the namespace, `search`,
+    `push-all` and `pull` name it, and `orchestrate` prints it in its header. `pull` imports
+    only the memory_repo entries recorded for the namespace and lists the
+    others as skipped.
+  - **Migration:** concepts saved before this change are in `default`, so
+    they no longer appear in an agent's enrichment, search, list or stats.
+    Polytician cannot move a concept between namespaces: keep using
+    `default` for that agent (`--namespace default`,
+    `--polytician-namespace default`, webapp `agentId` `default`), or save the
+    concepts' markdown again in the agent's namespace (see
+    `docs/guides/polytician.md`).
+- **AgentVault passes Polytician its webapp's URL and token.** When
+  `AGENTVAULT_API_URL` and `AGENTVAULT_POLYTICIAN_API_TOKEN` are both set, the
+  Polytician AgentVault starts (CLI, `orchestrate`, webapp routes) gets them
+  as `POLYTICIAN_AV_API_URL` and `POLYTICIAN_AV_API_TOKEN`, so it registers
+  its `vault_*` tools. Nothing is passed when the operator set either
+  `POLYTICIAN_AV_*` variable: theirs win (an empty one counts as unset, as
+  it does for Polytician). A URL Polytician would refuse (not https, and not
+  http to `localhost`, `127.0.0.1` or `[::1]`), or one carrying credentials,
+  stops AgentVault before Polytician starts, with a message showing neither
+  credentials nor path; the webapp answers 503 `POLYTICIAN_CONFIG_ERROR`. The
+  messages for a missing `vault_*` tool name these settings, and
+  `polytician status` warns when Polytician offers its `vault_*` tools but
+  has no token to send.
 
 ### Fixed
 - **Polytician enrichment and concept saving were silently empty against
@@ -149,8 +288,69 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   before its title is read; that hit is listed without a title.
 - **`agentvault orchestrate --no-semantic-enrichment` and `--no-save-concept`
   had no effect:** the command read option names Commander never sets.
+- **No memory_repo write from AgentVault could succeed.** The CLI's `memory`
+  commands, `agentvault merge`, `hypervault archive --canister-id` and the
+  webapp's commit and tombstone routes all called the canister with the
+  anonymous principal, which it refuses (`initRepo` with an error, every
+  other write with a trap). So `agentvault memory init` and `commit` failed,
+  and Polytician's `vault_memory_push` (`agentvault polytician push-all`)
+  could not complete through `POST /api/memory-repo/commits`. They now sign
+  (see Changed).
+- **Concurrent memory_repo pushes landed on the wrong branch.** The commits
+  route switched the canister's current branch and then committed, in two
+  calls, while other requests (and `agentvault memory checkout`) moved the
+  same shared current branch; a push could land on another push's branch
+  and still be answered 200. The first push to a new branch also landed on
+  the current branch, and a new branch forked from whatever branch was
+  current, so Polytician's sync branch could start with another branch's
+  entries. The routes now use `commitToBranch` and `createBranchFrom` (see
+  Changed).
+- **memory_repo did not build with current dfx (0.32.0, moc 1.4.1).**
+  `canister/memory-repo.mo` is now a `persistent actor` with `transient`
+  constants, and a mistyped `Too many tags` message is fixed. `dfx.json`
+  builds it with `--enhanced-orthogonal-persistence`, which lets a canister
+  deployed from an earlier release (classical persistence) be upgraded in
+  place with its commits, owner and authorized principals; without the flag
+  the upgrade traps. `docs/memory-repo.md` runs
+  `dfx canister create memory_repo --no-wallet` before `dfx deploy`, which
+  refuses to create a canister with `wasm_memory_limit` through the wallet.
+- **Polytician users saw `[object Object]` for every AgentVault refusal**
+  (no signing identity, an unauthorized signer, a wrong token, a bad
+  request): see the error shape under Changed.
+- **The default Polytician namespace was looked up in the current directory
+  only**, so a command run from a project's subdirectory used `default`.
+- **An empty `POLYTICIAN_AV_API_URL` or `POLYTICIAN_AV_API_TOKEN` stopped
+  AgentVault from passing its own settings on**, and the `vault_*` tools
+  disappeared.
+- **Unsupported keys (brainpool and other curves JWK cannot express, DSA,
+  DH) and out-of-range secp256k1 scalars** raised raw Node or OpenSSL
+  errors, which the webapp answered with 500; they are now
+  `SIGNING_IDENTITY_INVALID` (503), and the webapp treats any failure to load
+  its key that way.
+- **`hypervault archive` did not fetch a local replica's root key** for its
+  warm tier; it now does.
 
 ### Security
+- **Signing keys stay out of logs, and the Polytician token off disk.**
+  Signing keys are read from a PEM file or the server's environment and
+  never logged or echoed in errors; the webapp never reads a key from the
+  home directory. `agentvault polytician config` writes a reference to
+  `POLYTICIAN_AV_API_TOKEN`, not the token, and AgentVault never sends its
+  token to an AgentVault URL the operator set for Polytician directly.
+- **AgentVault's secrets are withheld from the MCP servers it starts.** The
+  webapp's signing key (`AGENTVAULT_ICP_IDENTITY_PEM`,
+  `AGENTVAULT_ICP_IDENTITY_PEM_FILE`) and the wallet secrets
+  (`AGENTVAULT_MNEMONIC`, `AGENTVAULT_PRIVATE_KEY`, `AGENTVAULT_PASSWORD`,
+  `AGENTVAULT_BUNDLE_SECRET`) were in the environment of every Polytician
+  process the webapp, CLI and `orchestrate` started.
+- **Exported keys are kept out of git.** The key-export hints and docs wrote
+  the plaintext key into the current directory with the default mode; they
+  now export to `~/.config/agentvault/<name>.pem` under `umask 077`. `*.pem`
+  is in the repository's `.gitignore` and in the one `agentvault init`
+  writes.
+- **An AgentVault URL with credentials is refused**: Node's fetch refuses
+  it, Polytician repeated it (password included) in its errors, and
+  `agentvault polytician config` wrote and printed it.
 - **C-1 (CRITICAL):** `vetkeys.decryptJSON` now validates the AES-256-GCM /
   ChaCha20-Poly1305 authentication tag before returning plaintext (previously
   `setAuthTag` was never called, so tampered ciphertext decrypted silently).

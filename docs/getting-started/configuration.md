@@ -130,6 +130,18 @@ AGENTVAULT_LOG_LEVEL=info               # Log level
 AGENTVAULT_CACHE_DIR=~/.agentvault      # Cache directory
 ```
 
+### MemoryRepo and Polytician
+
+```bash
+MEMORY_REPO_CANISTER_ID=<canister id>              # memory_repo canister
+AGENTVAULT_ICP_IDENTITY_PEM_FILE=~/.config/agentvault/owner.pem  # signs memory_repo writes (else dfx's selected identity); keep it mode 600, outside the project
+AGENTVAULT_API_URL=https://agentvault.example.com  # webapp URL, passed to Polytician for its vault_* tools
+AGENTVAULT_POLYTICIAN_API_TOKEN=<token>            # the webapp's API token, passed to Polytician
+```
+
+See [MemoryRepo](../memory-repo.md#who-can-write) for signing identities and the
+[Polytician guide](../guides/polytician.md) for namespaces and Polytician's config file.
+
 ## .env File
 
 Create a `.env` file in your project root:

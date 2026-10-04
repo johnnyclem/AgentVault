@@ -58,6 +58,7 @@ AgentVault uses AES-256-GCM and ChaCha20-Poly1305 for data encryption:
 | Key Type | Storage | Protection |
 |----------|---------|------------|
 | ICP Identity | `~/.config/dfx/` | dfx managed |
+| MemoryRepo signing key | PEM file or `AGENTVAULT_ICP_IDENTITY_PEM` (webapp) | Unencrypted PEM: file mode 600 or host secret store |
 | Wallet Private Keys | `~/.agentvault/wallets/` | CBOR serialized |
 | Mnemonics | Not stored after import | Memory only |
 | API Keys | Environment variables | User responsibility |
@@ -66,6 +67,14 @@ AgentVault uses AES-256-GCM and ChaCha20-Poly1305 for data encryption:
 
 - **ICP Identity**: Ed25519 key pairs managed by dfx
 - **Canister Controllers**: Principal-based access control
+- **MemoryRepo writes**: Signed by the repo owner or a principal it authorized; the canister refuses anonymous
+  writes, and AgentVault's CLI and webapp refuse to send a write with no signing identity configured. Reads are
+  anonymous queries. Exported signing keys belong outside the project, owner-only
+  (`(umask 077; mkdir -p ~/.config/agentvault && dfx identity export <name> > ~/.config/agentvault/<name>.pem)`);
+  `*.pem` is git-ignored, and AgentVault warns about a key file other users can read. The signing key and the
+  wallet secrets (`AGENTVAULT_ICP_IDENTITY_PEM*`, `AGENTVAULT_MNEMONIC`, `AGENTVAULT_PRIVATE_KEY`,
+  `AGENTVAULT_PASSWORD`, `AGENTVAULT_BUNDLE_SECRET`) are withheld from every MCP server AgentVault starts,
+  Polytician included. See [MemoryRepo](../memory-repo.md#who-can-write).
 - **Anonymous Access**: Local development only
 
 ### 4. Network Security

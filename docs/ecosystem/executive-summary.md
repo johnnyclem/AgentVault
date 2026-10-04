@@ -62,12 +62,12 @@ AgentVault depends on no suite package (`package.json` lists none). What it has 
 - **Polytician — an MCP client for Polytician 3.0.** `agentvault polytician` and
   `agentvault orchestrate --polytician-entry` call a Polytician 3.0 MCP server over stdio
   (`src/orchestration/mcp-client.ts`, `polytician-enricher.ts`). The orchestrator adds the concepts most
-  relevant to the task to Claude's prompt and saves each session's result as a concept; `status` and
-  `search` work against Polytician as installed. `push-all`, `pull` and `archive` use Polytician's opt-in
-  `vault_*` tools, which Polytician offers only once its operator points it at AgentVault
-  (`POLYTICIAN_AV_API_URL` and `POLYTICIAN_AV_API_TOKEN`, plus archival settings for `archive`). Even then,
-  `push-all` cannot complete against AgentVault's own API yet: its memory_repo write routes call the
-  canister anonymously, and the canister refuses anonymous writes.
+  relevant to the task to Claude's prompt and saves each session's result as a concept, in the agent's own
+  Polytician namespace; `status` and `search` work against Polytician as installed. `push-all`, `pull` and
+  `archive` use Polytician's opt-in `vault_*` tools: AgentVault passes the Polytician it starts its webapp's
+  URL and token when `AGENTVAULT_API_URL` and `AGENTVAULT_POLYTICIAN_API_TOKEN` are set, and
+  `agentvault polytician config` writes Polytician's config file (archival is a further opt-in). A push goes
+  through AgentVault's memory_repo routes, which sign with an identity the repo owner has authorized.
 - **Stenographer and Short-hand — not integrated.** Neither is referenced anywhere in AgentVault's
   source, tests, `package.json` or plan files.
 

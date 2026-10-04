@@ -62,6 +62,35 @@ Global options and environment variables for AgentVault CLI.
 | `AGENTVAULT_CONFIG_DIR` | Config directory | `~/.agentvault/config` |
 | `AGENTVAULT_DATA_DIR` | Data directory | `~/.agentvault/data` |
 
+### MemoryRepo Signing
+
+The `memory_repo` canister refuses anonymous writes. Write commands (`memory init`, `commit`, `authorize`, the
+top-level `merge`, `hypervault archive --canister-id`, ...) sign with `--identity <pem>`, else
+`AGENTVAULT_ICP_IDENTITY_PEM_FILE`, else dfx's selected identity, and exit 1 when none is set up. Reads stay
+anonymous. See [MemoryRepo: who can write](../memory-repo.md#who-can-write).
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MEMORY_REPO_CANISTER_ID` | `memory_repo` canister for `agentvault memory` | `canister_ids.json` |
+| `AGENTVAULT_ICP_IDENTITY_PEM_FILE` | PEM key (Ed25519 or secp256k1, unencrypted) to sign writes with | dfx's selected identity |
+| `DFX_CONFIG_ROOT` | Directory that holds `.config/dfx`, as for dfx | home directory |
+
+`ICP_IDENTITY` does not select the signing identity.
+
+### Polytician
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `AGENTVAULT_API_URL` | AgentVault webapp base URL; passed to the Polytician AgentVault starts as `POLYTICIAN_AV_API_URL` | - |
+| `AGENTVAULT_POLYTICIAN_API_TOKEN` | The webapp's API token; passed to Polytician as `POLYTICIAN_AV_API_TOKEN` | - |
+| `POLYTICIAN_AV_API_URL`, `POLYTICIAN_AV_API_TOKEN` | Set explicitly, they win, and AgentVault passes neither of its own | - |
+
+AgentVault passes the two values only when both are set (an empty `POLYTICIAN_AV_*` counts as unset), and
+refuses an `AGENTVAULT_API_URL` that carries credentials. The namespace comes from `--namespace` /
+`--polytician-namespace`, else the agent name in the nearest `agent.json` or
+`.agentvault/config/agent.config.json` (in the current directory or above). See the
+[Polytician guide](../guides/polytician.md).
+
 ## Configuration Files
 
 ### agent.yaml

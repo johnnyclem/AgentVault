@@ -162,6 +162,15 @@ ICP_HOST=https://ic0.app
 AGENT_VAULT_DEBUG=false
 ```
 
+### MemoryRepo writes
+
+The `memory_repo` canister refuses anonymous writes. `agentvault memory` write commands sign with
+`--identity <pem>`, `AGENTVAULT_ICP_IDENTITY_PEM_FILE` or dfx's selected identity (`ICP_IDENTITY` is not used).
+A deployed webapp signs its memory_repo writes with `AGENTVAULT_ICP_IDENTITY_PEM_FILE` or
+`AGENTVAULT_ICP_IDENTITY_PEM`, whose principal the repo owner authorizes with
+`agentvault memory authorize <principal>`. See [MemoryRepo](../memory-repo.md#setting-up-the-webapps-identity)
+and the webapp's [server environment](./webapp.md#server-environment).
+
 ## Troubleshooting Deployments
 
 ### Compilation Errors
