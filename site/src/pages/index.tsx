@@ -251,7 +251,7 @@ const ecosystemComponents: EcosystemComponent[] = [
     description:
       'A local-first MCP server for semantic memory. Each concept can be stored as, and converted between, a 384-dimension vector, markdown and structured ThoughtForm JSON.',
     inAgentVault:
-      "AgentVault's polytician CLI commands and the --polytician-entry option of orchestrate call a Polytician MCP server over stdio to search, read and save concepts. The client was written against Polytician 2.x; 3.0 tightened the tool contract, so it needs an update before it works with 3.0.",
+      "AgentVault's orchestrate --polytician-entry option calls a Polytician 3.0 MCP server over stdio, adds the concepts most relevant to the task to Claude's prompt, and saves each session's result as a concept. The polytician status and search commands work with Polytician as installed; push-all, pull and archive use Polytician's vault_* tools, which its operator has to point at AgentVault first, and push-all cannot complete yet because AgentVault's memory_repo write routes call the canister anonymously, which it refuses.",
     href: 'https://polytician.smallchat.dev',
     isCurrent: false,
   },
@@ -341,8 +341,8 @@ function EcosystemSection() {
             Long-running agents need more than a place to execute. They need a way to pick the next tool, a
             memory that survives, and a way to keep that memory inside a token budget. The smallchat suite
             covers those layers and just shipped 1.0. AgentVault ships on its own schedule: today it has its own
-            dispatcher modeled on smallchat and a Polytician MCP client, and Stenographer and Short-hand are not
-            integrated yet.
+            dispatcher modeled on smallchat and an MCP client for Polytician 3.0, and Stenographer and Short-hand
+            are not integrated yet.
           </p>
         </div>
 

@@ -31,9 +31,12 @@ next tool, a memory that survives, and keeping that memory inside a token budget
 | [Polytician](https://polytician.smallchat.dev) ([repo](https://github.com/johnnyclem/polytician)) | Local-first MCP server for semantic memory (concepts as vectors, markdown and ThoughtForm JSON) | `polytician` 3.0.0 |
 
 AgentVault ships on its own schedule and does not depend on those packages. Its orchestration layer has its
-own selector-based dispatcher modeled on smallchat, and a Polytician MCP client written against Polytician 2.x
-(Polytician 3.0 tightened its tool contract; see its MIGRATION.md). Stenographer and Short-hand are not
-integrated yet.
+own selector-based dispatcher modeled on smallchat, and an MCP client for Polytician 3.0:
+`agentvault orchestrate --polytician-entry` adds the concepts most relevant to the task to Claude's prompt and
+saves each session's result as a concept. The `push-all`, `pull` and `archive` commands use Polytician's
+`vault_*` tools, which Polytician offers only when its operator points it at AgentVault, and `push-all`
+cannot complete yet: AgentVault's memory_repo write routes call the canister anonymously, which it refuses.
+Stenographer and Short-hand are not integrated yet.
 
 - [Ecosystem overview](/docs/ecosystem/executive-summary) — what each project does and how they fit together.
 - [Engineering guide](/docs/ecosystem/engineering-guide) — component reference, integration status, and a
