@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAuthToken, unauthorizedResponse } from '@/lib/server/auth'
+import { withPolytician, polyticianErrorResponse } from '@/lib/server/polytician'
 
 export async function GET(
   request: NextRequest,
@@ -21,44 +22,28 @@ export async function GET(
       )
     }
 
-    const { PolyticianMCPClient } = await import('@/orchestration/mcp-client')
-    
-    const client = new PolyticianMCPClient({
-      namespace: agentId,
-      entryPoint: polyticianEntry,
-    })
-
-    await client.connect()
-
-    const statsResult = await client.callTool('get_stats', {})
-    const healthResult = await client.callTool('health_check', {})
-
-    await client.disconnect()
-
-    const statsData = statsResult.content[0]?.data as Record<string, unknown> | undefined
-    const healthData = healthResult.content[0]?.data as Record<string, unknown> | undefined
+    const { serverInfo, stats, health } = await withPolytician(polyticianEntry, agentId, async (client, tools) => ({
+      // health_check has no version; it comes from the MCP handshake
+      serverInfo: client.getServerInfo(),
+      stats: await tools.callPolytician(client, 'get_stats', {}),
+      health: await tools.callPolytician(client, 'health_check', {}),
+    }))
 
     return NextResponse.json({
       success: true,
       data: {
         agentId,
         health: {
-          status: healthData?.status ?? 'unknown',
-          version: healthData?.version ?? 'unknown',
+          status: health.server,
+          version: serverInfo?.version ?? 'unknown',
+          embedding: health.embedding,
+          llm: health.llm,
         },
-        stats: {
-          totalConcepts: statsData?.totalConcepts ?? statsData?.concepts ?? 0,
-          totalRelations: statsData?.totalRelations ?? statsData?.relations ?? 0,
-          embeddingsCached: statsData?.embeddingsCached ?? statsData?.embeddings ?? 0,
-          lastSync: statsData?.lastSync ?? null,
-        },
+        // { conceptCount, vectorCount, representationCounts: { markdown, thoughtform, vector } }
+        stats,
       },
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error'
-    return NextResponse.json(
-      { success: false, error: { message, code: 'POLYTICIAN_ERROR' } },
-      { status: 500 }
-    )
+    return polyticianErrorResponse(error)
   }
 }

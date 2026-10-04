@@ -1,22 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAuthToken, unauthorizedResponse } from '@/lib/server/auth'
-import { createMemoryRepoActor, createAnonymousAgent, type Commit } from '@/canister/memory-repo-actor'
+import { createMemoryRepoActor, createAnonymousAgent } from '@/canister/memory-repo-actor'
+import { branchStateFromLog } from '@/canister/memory-repo-branch-state'
 
 const MEMORY_REPO_CANISTER_ID = process.env.MEMORY_REPO_CANISTER_ID
-
-interface MemoryEntry {
-  key: string
-  contentType: string
-  data: string
-  tags: string[]
-  metadata: Record<string, unknown>
-}
-
-interface BranchResponse {
-  branch: string
-  headSha: string | null
-  entries: MemoryEntry[]
-}
 
 async function getActor() {
   if (!MEMORY_REPO_CANISTER_ID) {
@@ -33,31 +20,6 @@ async function getActor() {
   return createMemoryRepoActor(MEMORY_REPO_CANISTER_ID, agent)
 }
 
-function parseDiffToEntries(diff: string): MemoryEntry[] {
-  const entries: MemoryEntry[] = []
-  
-  try {
-    const parsed = JSON.parse(diff)
-    if (Array.isArray(parsed)) {
-      for (const item of parsed) {
-        if (item && typeof item === 'object') {
-          entries.push({
-            key: item.key ?? '',
-            contentType: item.contentType ?? 'application/json',
-            data: item.data ?? '',
-            tags: Array.isArray(item.tags) ? item.tags : [],
-            metadata: item.metadata ?? {},
-          })
-        }
-      }
-    }
-  } catch {
-    // If diff is not JSON, return empty entries
-  }
-  
-  return entries
-}
-
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ branch: string }> }
@@ -71,33 +33,23 @@ export async function GET(
 
   try {
     const actor = await getActor()
-    
-    const switchResult = await actor.switchBranch(branch)
-    if ('err' in switchResult) {
+
+    // Queries only: switchBranch is an update call, which the canister refuses
+    // from the anonymous principal, and it would move the canister's current branch.
+    const branches = await actor.getBranches()
+    if (!branches.some(([name]) => name === branch)) {
       return NextResponse.json(
-        { success: false, error: { message: switchResult.err, code: 'BRANCH_NOT_FOUND' } },
+        { success: false, error: { message: `Branch '${branch}' does not exist`, code: 'BRANCH_NOT_FOUND' } },
         { status: 404 }
       )
     }
-    
+
+    // Every entry committed on the branch (newer commits win, tombstones
+    // remove a key), not only the newest commit's: Polytician pushes one
+    // commit per concept.
     const commits = await actor.log([branch])
-    const headSha = commits.length > 0 ? commits[0]?.id ?? null : null
-    
-    let entries: MemoryEntry[] = []
-    if (commits.length > 0) {
-      const latestCommit = commits[0]
-      if (latestCommit) {
-        entries = parseDiffToEntries(latestCommit.diff)
-      }
-    }
-    
-    const response: BranchResponse = {
-      branch,
-      headSha,
-      entries,
-    }
-    
-    return NextResponse.json({ success: true, data: response })
+
+    return NextResponse.json({ success: true, data: branchStateFromLog(branch, commits) })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
     return NextResponse.json(

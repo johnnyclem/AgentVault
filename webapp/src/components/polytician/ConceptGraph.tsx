@@ -269,10 +269,15 @@ function generateNodePositions(concept: Record<string, unknown>): {
   const nodes: GraphNode[] = []
   const edges: GraphEdge[] = []
 
+  // Polytician 3.0 concepts have no name or content: the text is the markdown
+  // representation and the title its first heading
+  const content = typeof concept.markdown === 'string' ? concept.markdown : ''
+  const title = content.match(/^ {0,3}#{1,6}[ \t]+(.+)$/m)?.[1]?.trim()
+
   // Main concept node
   nodes.push({
     id: concept.id as string,
-    name: (concept.name as string) || 'Concept',
+    name: title || 'Concept',
     type: 'concept',
     x: 300 + (Math.random() - 0.5) * 100,
     y: 200 + (Math.random() - 0.5) * 100,
@@ -281,7 +286,6 @@ function generateNodePositions(concept: Record<string, unknown>): {
   })
 
   // Extract entities from content if available
-  const content = (concept.content as string) || ''
   const words = content.split(/\s+/).filter((w) => w.length > 4)
   const entities = [...new Set(words.slice(0, 5))]
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAuthToken, unauthorizedResponse } from '@/lib/server/auth'
+import { withPolytician, polyticianErrorResponse } from '@/lib/server/polytician'
 
 export async function GET(
   request: NextRequest,
@@ -13,7 +14,7 @@ export async function GET(
   const { agentId } = await params
   const { searchParams } = new URL(request.url)
   const query = searchParams.get('q') ?? searchParams.get('query') ?? ''
-  const limit = parseInt(searchParams.get('limit') ?? '10', 10)
+  const limit = searchParams.get('limit')
 
   if (!query.trim()) {
     return NextResponse.json(
@@ -31,27 +32,17 @@ export async function GET(
       )
     }
 
-    const { PolyticianMCPClient } = await import('@/orchestration/mcp-client')
-    const client = new PolyticianMCPClient({
-      namespace: 'polytician',
-      entryPoint: polyticianEntry,
-    })
-
-    await client.connect()
-    const result = await client.callTool('search_concepts', {
-      query,
-      limit,
-    })
-    await client.disconnect()
-
-    const concepts = result.content[0]?.data ?? { concepts: [] }
-
-    return NextResponse.json({ success: true, data: concepts })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error'
-    return NextResponse.json(
-      { success: false, error: { message, code: 'INTERNAL_ERROR' } },
-      { status: 500 }
+    // ?limit= becomes search_concepts' k (1-100, default 10). Results are
+    // { id, namespace, score, tags, representations, assertionStatus }, best first.
+    const { results } = await withPolytician(polyticianEntry, 'polytician', (client, tools) =>
+      tools.callPolytician(client, 'search_concepts', {
+        query: query.slice(0, tools.MAX_QUERY_LENGTH),
+        k: tools.clampCount(limit, tools.SEARCH_K_MAX, 10),
+      })
     )
+
+    return NextResponse.json({ success: true, data: { results } })
+  } catch (error) {
+    return polyticianErrorResponse(error)
   }
 }

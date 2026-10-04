@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAuthToken, unauthorizedResponse } from '@/lib/server/auth'
+import { withPolytician, polyticianErrorResponse } from '@/lib/server/polytician'
 
 export async function GET(
   request: NextRequest,
@@ -21,32 +22,14 @@ export async function GET(
       )
     }
 
-    const { PolyticianMCPClient } = await import('@/orchestration/mcp-client')
-    const client = new PolyticianMCPClient({
-      namespace: 'polytician',
-      entryPoint: polyticianEntry,
-    })
-
-    await client.connect()
-    const result = await client.callTool('read_concept', { id })
-    await client.disconnect()
-
-    const concept = result.content[0]?.data
-
-    if (!concept) {
-      return NextResponse.json(
-        { success: false, error: { message: 'Concept not found', code: 'NOT_FOUND' } },
-        { status: 404 }
-      )
-    }
+    // An unknown id is Polytician's NOT_FOUND (404); a malformed one, VALIDATION_ERROR (400)
+    const concept = await withPolytician(polyticianEntry, 'polytician', (client, tools) =>
+      tools.callPolytician(client, 'read_concept', { id })
+    )
 
     return NextResponse.json({ success: true, data: concept })
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error'
-    return NextResponse.json(
-      { success: false, error: { message, code: 'INTERNAL_ERROR' } },
-      { status: 500 }
-    )
+    return polyticianErrorResponse(error)
   }
 }
 
@@ -70,24 +53,12 @@ export async function DELETE(
       )
     }
 
-    const { PolyticianMCPClient } = await import('@/orchestration/mcp-client')
-    const client = new PolyticianMCPClient({
-      namespace: 'polytician',
-      entryPoint: polyticianEntry,
-    })
-
-    await client.connect()
-    const result = await client.callTool('delete_concept', { id })
-    await client.disconnect()
-
-    const deleted = result.content[0]?.data ?? { id }
+    const deleted = await withPolytician(polyticianEntry, 'polytician', (client, tools) =>
+      tools.callPolytician(client, 'delete_concept', { id })
+    )
 
     return NextResponse.json({ success: true, data: deleted })
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error'
-    return NextResponse.json(
-      { success: false, error: { message, code: 'INTERNAL_ERROR' } },
-      { status: 500 }
-    )
+    return polyticianErrorResponse(error)
   }
 }
