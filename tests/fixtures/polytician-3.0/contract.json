@@ -1,0 +1,4237 @@
+{
+  "source": {
+    "polytician": {
+      "name": "polytician",
+      "version": "3.0.0"
+    },
+    "captured": "2026-10-04",
+    "capturedWith": "tests/fixtures/polytician-3.0/capture.mjs: spawns the server over stdio (newline-delimited JSON-RPC 2.0), each run with a fresh temporary POLYTICIAN_DATA_DIR and HOME, no inherited POLYTICIAN_* settings, POLYTICIAN_NLP_PIPELINE=rule-based and the embedding model copied in from a local cache. The client identifies as AgentVault does (protocolVersion 2024-11-05, clientInfo agentvault 1.0.0).",
+    "command": "node <polytician>/dist/index.js",
+    "volatile": {
+      "conceptIds": "Concept ids (UUID v4) are replaced, everywhere including content[0].text and error messages, by stable UUIDs 11111111-1111-4111-8111-00000000000N in the order the concepts were created; ids the server generated but never stored (a rejected save) become 22222222-2222-4222-8222-00000000000N.",
+      "timestamps": "createdAt/updatedAt are epoch milliseconds (numbers, not ISO strings); they are replaced by 1791072000000 (2026-10-04T00:00:00.000Z), so list_concepts order (updatedAt descending) shows only in the array order.",
+      "agentVaultPort": "The closed loopback port the vault_* run points at is replaced by <agentvault-port>.",
+      "modelDependent": "search scores and the embedding arrays in save_concept/read_concept responses are real Xenova/all-MiniLM-L6-v2 (q8) output: assert ranges, order and length (384), not exact floats.",
+      "runtimeDependent": "UPSTREAM_ERROR messages for an unreachable AgentVault (\"fetch failed\") come from the Node.js fetch implementation."
+    }
+  },
+  "handshake": {
+    "initialize": {
+      "note": "Written at spawn time, before the server has opened its transport; the pipe buffers it and the server answers once ready.",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+          "protocolVersion": "2024-11-05",
+          "capabilities": {},
+          "clientInfo": {
+            "name": "agentvault",
+            "version": "1.0.0"
+          }
+        }
+      },
+      "response": {
+        "result": {
+          "protocolVersion": "2024-11-05",
+          "capabilities": {
+            "tools": {
+              "listChanged": true
+            }
+          },
+          "serverInfo": {
+            "name": "polytician",
+            "version": "3.0.0"
+          }
+        },
+        "jsonrpc": "2.0",
+        "id": 1
+      }
+    },
+    "initializedNotification": {
+      "jsonrpc": "2.0",
+      "method": "notifications/initialized"
+    },
+    "stdinClosed": {
+      "exitCode": 0,
+      "signal": null,
+      "note": "Closing stdin is enough to stop the server."
+    },
+    "nonJsonStdoutLines": 0,
+    "protocolVersions": [
+      {
+        "requested": "2024-11-05",
+        "answered": "2024-11-05",
+        "error": null
+      },
+      {
+        "requested": "2024-10-07",
+        "answered": "2024-10-07",
+        "error": null
+      },
+      {
+        "requested": "2025-03-26",
+        "answered": "2025-03-26",
+        "error": null
+      },
+      {
+        "requested": "2025-06-18",
+        "answered": "2025-06-18",
+        "error": null
+      },
+      {
+        "requested": "2025-11-25",
+        "answered": "2025-11-25",
+        "error": null
+      },
+      {
+        "requested": "1999-01-01",
+        "answered": "2025-11-25",
+        "error": null
+      }
+    ],
+    "initializeWithoutInitializedNotification": {
+      "note": "initialize, then tools/list and tools/call with no notifications/initialized (AgentVault's client today).",
+      "initializeAnswered": true,
+      "toolsList": {
+        "request": {
+          "jsonrpc": "2.0",
+          "id": 2,
+          "method": "tools/list",
+          "params": {}
+        },
+        "toolCount": 14,
+        "error": null
+      },
+      "toolsCall": {
+        "request": {
+          "jsonrpc": "2.0",
+          "id": 3,
+          "method": "tools/call",
+          "params": {
+            "name": "get_stats",
+            "arguments": {}
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "{\n  \"conceptCount\": 0,\n  \"vectorCount\": 0,\n  \"representationCounts\": {\n    \"markdown\": 0,\n    \"thoughtform\": 0,\n    \"vector\": 0\n  }\n}"
+              }
+            ],
+            "structuredContent": {
+              "conceptCount": 0,
+              "vectorCount": 0,
+              "representationCounts": {
+                "markdown": 0,
+                "thoughtform": 0,
+                "vector": 0
+              }
+            }
+          },
+          "jsonrpc": "2.0",
+          "id": 3
+        }
+      }
+    },
+    "noInitialize": {
+      "note": "tools/list and tools/call without any initialize request.",
+      "toolsList": {
+        "request": {
+          "jsonrpc": "2.0",
+          "id": 1,
+          "method": "tools/list",
+          "params": {}
+        },
+        "toolCount": 14,
+        "error": null
+      },
+      "toolsCall": {
+        "request": {
+          "jsonrpc": "2.0",
+          "id": 2,
+          "method": "tools/call",
+          "params": {
+            "name": "get_stats",
+            "arguments": {}
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "{\n  \"conceptCount\": 0,\n  \"vectorCount\": 0,\n  \"representationCounts\": {\n    \"markdown\": 0,\n    \"thoughtform\": 0,\n    \"vector\": 0\n  }\n}"
+              }
+            ],
+            "structuredContent": {
+              "conceptCount": 0,
+              "vectorCount": 0,
+              "representationCounts": {
+                "markdown": 0,
+                "thoughtform": 0,
+                "vector": 0
+              }
+            }
+          },
+          "jsonrpc": "2.0",
+          "id": 2
+        }
+      }
+    },
+    "startupFailure": {
+      "note": "POLYTICIAN_AV_API_URL=http://example.com (plain http off loopback) is a configuration error: the process exits before answering, so a client must fail pending requests when the process closes instead of waiting for its request timeout.",
+      "initializeRequest": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+          "protocolVersion": "2024-11-05",
+          "capabilities": {},
+          "clientInfo": {
+            "name": "agentvault",
+            "version": "1.0.0"
+          }
+        }
+      },
+      "initializeResponse": null,
+      "exitCode": 1,
+      "stdoutLines": 0
+    }
+  },
+  "toolsList": {
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "method": "tools/list",
+      "params": {}
+    },
+    "names": [
+      "batch_save_concepts",
+      "convert_concept",
+      "delete_concept",
+      "embed_text",
+      "export_backup",
+      "get_stats",
+      "health_check",
+      "import_backup",
+      "list_backups",
+      "list_concepts",
+      "read_concept",
+      "reembed_concepts",
+      "save_concept",
+      "search_concepts"
+    ],
+    "namesWithAgentVault": [
+      "batch_save_concepts",
+      "convert_concept",
+      "delete_concept",
+      "embed_text",
+      "export_backup",
+      "get_stats",
+      "health_check",
+      "import_backup",
+      "list_backups",
+      "list_concepts",
+      "read_concept",
+      "reembed_concepts",
+      "save_concept",
+      "search_concepts",
+      "vault_archive_concept",
+      "vault_get_secret",
+      "vault_infer",
+      "vault_memory_pull",
+      "vault_memory_push",
+      "vault_memory_repo_log"
+    ],
+    "tools": [
+      {
+        "name": "save_concept",
+        "description": "Create or update a concept with one or more representations (vector, markdown, thoughtform). A new concept needs at least one. Tags are merged on update. The vector is derived from the text unless autoEmbed is false. An update must name the namespace the concept lives in; expectedVersion guards against concurrent writers. Each representation written records its provenance (source), and a concept can carry an assertionStatus and ledgerRef.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Concept UUID. Auto-generated if omitted."
+            },
+            "expectedVersion": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "description": "Expected current version. The write is rejected with VERSION_CONFLICT unless it matches."
+            },
+            "markdown": {
+              "type": "string",
+              "maxLength": 1000000,
+              "description": "Markdown text representation"
+            },
+            "thoughtform": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "rawText": {
+                      "type": "string"
+                    },
+                    "language": {
+                      "type": "string",
+                      "default": "en"
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "properties": {
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "author": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "default": null
+                        },
+                        "tags": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "default": []
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "user_input",
+                            "converted",
+                            "extracted"
+                          ],
+                          "default": "user_input"
+                        }
+                      },
+                      "required": [
+                        "createdAt",
+                        "updatedAt"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "entities": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "type": "string"
+                          },
+                          "confidence": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "offset": {
+                            "type": "object",
+                            "properties": {
+                              "start": {
+                                "type": "number"
+                              },
+                              "end": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "start",
+                              "end"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "text",
+                          "type",
+                          "confidence",
+                          "offset"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "default": []
+                    },
+                    "relationships": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "subjectId": {
+                            "type": "string"
+                          },
+                          "predicate": {
+                            "type": "string"
+                          },
+                          "objectId": {
+                            "type": "string"
+                          },
+                          "confidence": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          }
+                        },
+                        "required": [
+                          "subjectId",
+                          "predicate",
+                          "objectId"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "default": []
+                    },
+                    "contextGraph": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "default": {}
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "rawText",
+                    "metadata"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "schemaVersion": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "rawText": {
+                      "type": "string"
+                    },
+                    "entities": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "type": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "value": {
+                            "type": "string"
+                          },
+                          "confidence": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "type",
+                          "value"
+                        ],
+                        "additionalProperties": true
+                      }
+                    },
+                    "relationships": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "type": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "from": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "to": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "weight": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "type",
+                          "from",
+                          "to"
+                        ],
+                        "additionalProperties": true
+                      }
+                    },
+                    "contextGraph": {
+                      "type": "object",
+                      "additionalProperties": {}
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "properties": {
+                        "createdAtMs": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "updatedAtMs": {
+                          "$ref": "#/properties/thoughtform/anyOf/1/properties/metadata/properties/createdAtMs"
+                        },
+                        "source": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "sourceDeviceId": {
+                          "type": "string"
+                        },
+                        "authorPrincipal": {
+                          "type": "string"
+                        },
+                        "contentHash": {
+                          "type": "string",
+                          "minLength": 16
+                        },
+                        "redaction": {
+                          "type": "object",
+                          "properties": {
+                            "rawTextOmitted": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "rawTextOmitted"
+                          ],
+                          "additionalProperties": true
+                        },
+                        "tombstone": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "createdAtMs",
+                        "updatedAtMs",
+                        "source",
+                        "contentHash",
+                        "redaction"
+                      ],
+                      "additionalProperties": true
+                    },
+                    "extensions": {
+                      "type": "object",
+                      "additionalProperties": {}
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "id",
+                    "entities",
+                    "relationships",
+                    "contextGraph",
+                    "metadata"
+                  ],
+                  "additionalProperties": true
+                }
+              ],
+              "description": "ThoughtForm JSON: the native shape (ISO timestamps, entities with text) or a PolyVault v1 ThoughtForm"
+            },
+            "embedding": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 384,
+              "maxItems": 384,
+              "description": "Vector embedding (384 finite numbers, not all zero)"
+            },
+            "tags": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "maxItems": 64,
+              "description": "Tags, merged on update (at most 64, each 128 characters or fewer)"
+            },
+            "source": {
+              "type": "object",
+              "properties": {
+                "origin": {
+                  "type": "string",
+                  "enum": [
+                    "user",
+                    "import"
+                  ],
+                  "description": "\"user\" (default) for content written by the caller, \"import\" for content copied from another system"
+                },
+                "createdBy": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200,
+                  "description": "Who wrote the content (an agent, person or system); recorded as given, not authenticated"
+                },
+                "model": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200,
+                  "description": "Model that wrote the content, if the caller knows it"
+                }
+              },
+              "additionalProperties": false,
+              "description": "Provenance recorded on the representations this call writes (default origin \"user\")"
+            },
+            "assertionStatus": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "asserted",
+                    "verified",
+                    "contested",
+                    "retracted"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Truth status of a concept that records a claim (e.g. a stenographer TB/UV entry); null clears it, omitted keeps it. Stored as given, not checked."
+            },
+            "ledgerRef": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The ledger entry this concept mirrors (id, path#id or hash); null clears it"
+            },
+            "namespace": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$",
+              "description": "Namespace (default: \"default\"). Must be in POLYTICIAN_NAMESPACES when the operator set one."
+            },
+            "autoEmbed": {
+              "type": "boolean",
+              "description": "Derive the vector from the markdown (else the thoughtform text) when no embedding is given, so the concept is searchable (default true). Never replaces a caller-supplied vector."
+            }
+          },
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "namespace": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            },
+            "createdAt": {
+              "type": "number"
+            },
+            "updatedAt": {
+              "type": "number"
+            },
+            "tags": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "markdown": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "thoughtform": {},
+            "embedding": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "provenance": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "origin": {
+                    "type": "string",
+                    "enum": [
+                      "user",
+                      "derived",
+                      "llm",
+                      "import"
+                    ]
+                  },
+                  "derivedFrom": {
+                    "type": "string",
+                    "enum": [
+                      "vector",
+                      "markdown",
+                      "thoughtform"
+                    ]
+                  },
+                  "model": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "createdBy": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "sources": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "origin"
+                ],
+                "additionalProperties": false
+              },
+              "propertyNames": {
+                "enum": [
+                  "vector",
+                  "markdown",
+                  "thoughtform"
+                ]
+              }
+            },
+            "assertionStatus": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "asserted",
+                    "verified",
+                    "contested",
+                    "retracted"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "ledgerRef": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "namespace",
+            "version",
+            "createdAt",
+            "updatedAt",
+            "tags",
+            "provenance",
+            "assertionStatus",
+            "ledgerRef"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": true,
+          "idempotentHint": false,
+          "openWorldHint": false
+        }
+      },
+      {
+        "name": "read_concept",
+        "description": "Read all available representations for a concept in a namespace, with their provenance, assertionStatus and ledgerRef. Optionally filter to specific representations.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Concept UUID"
+            },
+            "namespace": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$",
+              "description": "Namespace (default: \"default\"). Must be in POLYTICIAN_NAMESPACES when the operator set one."
+            },
+            "representations": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "vector",
+                  "markdown",
+                  "thoughtform"
+                ]
+              },
+              "description": "Filter to specific representations"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "namespace": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            },
+            "createdAt": {
+              "type": "number"
+            },
+            "updatedAt": {
+              "type": "number"
+            },
+            "tags": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "markdown": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "thoughtform": {},
+            "embedding": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "provenance": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "origin": {
+                    "type": "string",
+                    "enum": [
+                      "user",
+                      "derived",
+                      "llm",
+                      "import"
+                    ]
+                  },
+                  "derivedFrom": {
+                    "type": "string",
+                    "enum": [
+                      "vector",
+                      "markdown",
+                      "thoughtform"
+                    ]
+                  },
+                  "model": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "createdBy": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "sources": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "origin"
+                ],
+                "additionalProperties": false
+              },
+              "propertyNames": {
+                "enum": [
+                  "vector",
+                  "markdown",
+                  "thoughtform"
+                ]
+              }
+            },
+            "assertionStatus": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "asserted",
+                    "verified",
+                    "contested",
+                    "retracted"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "ledgerRef": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "namespace",
+            "version",
+            "createdAt",
+            "updatedAt",
+            "tags",
+            "provenance",
+            "assertionStatus",
+            "ledgerRef"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        }
+      },
+      {
+        "name": "delete_concept",
+        "description": "Delete a concept (in the given namespace) and all its representations.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Concept UUID"
+            },
+            "namespace": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$",
+              "description": "Namespace (default: \"default\"). Must be in POLYTICIAN_NAMESPACES when the operator set one."
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "deleted": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "deleted"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        }
+      },
+      {
+        "name": "list_concepts",
+        "description": "List concepts with pagination and optional tag (exact match) and assertionStatus filtering. Results are scoped to the namespace.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "namespace": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$",
+              "description": "Namespace (default: \"default\"). Must be in POLYTICIAN_NAMESPACES when the operator set one."
+            },
+            "limit": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 100,
+              "description": "Max results (default 50)"
+            },
+            "offset": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Pagination offset"
+            },
+            "tags": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "maxItems": 64,
+              "description": "Only concepts carrying every one of these tags"
+            },
+            "assertionStatus": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "asserted",
+                  "verified",
+                  "contested",
+                  "retracted"
+                ]
+              },
+              "minItems": 1,
+              "maxItems": 4,
+              "description": "Only concepts whose assertionStatus is one of these (concepts without one are left out)"
+            }
+          },
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "concepts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "namespace": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "integer"
+                  },
+                  "createdAt": {
+                    "type": "number"
+                  },
+                  "updatedAt": {
+                    "type": "number"
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "representations": {
+                    "type": "object",
+                    "properties": {
+                      "vector": {
+                        "type": "boolean"
+                      },
+                      "markdown": {
+                        "type": "boolean"
+                      },
+                      "thoughtform": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "vector",
+                      "markdown",
+                      "thoughtform"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "assertionStatus": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "asserted",
+                          "verified",
+                          "contested",
+                          "retracted"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "namespace",
+                  "version",
+                  "createdAt",
+                  "updatedAt",
+                  "tags",
+                  "representations",
+                  "assertionStatus"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "total": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "concepts",
+            "total"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        }
+      },
+      {
+        "name": "search_concepts",
+        "description": "Semantic similarity search over one namespace. Provide a text query (auto-embedded) or a raw vector. Namespace, tag and assertionStatus filters are applied inside the vector search. Returns { results }, each with score = (1 + cosine similarity) / 2 in [0, 1], best first, ties by id. crossNamespace (without namespace) searches the namespaces the operator allowed via POLYTICIAN_NAMESPACES and is refused if none are configured.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100000,
+              "description": "Text query (embedded automatically)"
+            },
+            "vector": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 384,
+              "maxItems": 384,
+              "description": "Raw vector (384 dimensions)"
+            },
+            "k": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 100,
+              "description": "Number of results (default 10)"
+            },
+            "tags": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "maxItems": 64,
+              "description": "Only concepts carrying every one of these tags"
+            },
+            "assertionStatus": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "asserted",
+                  "verified",
+                  "contested",
+                  "retracted"
+                ]
+              },
+              "minItems": 1,
+              "maxItems": 4,
+              "description": "Only concepts whose assertionStatus is one of these (concepts without one are left out)"
+            },
+            "namespace": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$",
+              "description": "Namespace (default: \"default\"). Must be in POLYTICIAN_NAMESPACES when the operator set one."
+            },
+            "crossNamespace": {
+              "type": "boolean",
+              "description": "Search every namespace the operator allowed (POLYTICIAN_NAMESPACES) instead of one; cannot be combined with namespace"
+            }
+          },
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "results": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "namespace": {
+                    "type": "string"
+                  },
+                  "score": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "representations": {
+                    "type": "object",
+                    "properties": {
+                      "vector": {
+                        "type": "boolean"
+                      },
+                      "markdown": {
+                        "type": "boolean"
+                      },
+                      "thoughtform": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "vector",
+                      "markdown",
+                      "thoughtform"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "assertionStatus": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "asserted",
+                          "verified",
+                          "contested",
+                          "retracted"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "namespace",
+                  "score",
+                  "tags",
+                  "representations",
+                  "assertionStatus"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "results"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        }
+      },
+      {
+        "name": "health_check",
+        "description": "Server status, embedding model status, DB stats for a namespace, LLM provider status.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "namespace": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$",
+              "description": "Namespace (default: \"default\"). Must be in POLYTICIAN_NAMESPACES when the operator set one."
+            }
+          },
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "server": {
+              "type": "string",
+              "const": "ok"
+            },
+            "embedding": {
+              "type": "object",
+              "properties": {
+                "loaded": {
+                  "type": "boolean"
+                },
+                "model": {
+                  "type": "string"
+                },
+                "dimension": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "loaded",
+                "model",
+                "dimension"
+              ],
+              "additionalProperties": false
+            },
+            "llm": {
+              "type": "object",
+              "properties": {
+                "provider": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "provider"
+              ],
+              "additionalProperties": false
+            },
+            "database": {
+              "type": "object",
+              "properties": {
+                "conceptCount": {
+                  "type": "integer"
+                },
+                "vectorCount": {
+                  "type": "integer"
+                },
+                "representationCounts": {
+                  "type": "object",
+                  "properties": {
+                    "markdown": {
+                      "type": "integer"
+                    },
+                    "thoughtform": {
+                      "type": "integer"
+                    },
+                    "vector": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "markdown",
+                    "thoughtform",
+                    "vector"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "conceptCount",
+                "vectorCount",
+                "representationCounts"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "server",
+            "embedding",
+            "llm",
+            "database"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        }
+      },
+      {
+        "name": "get_stats",
+        "description": "Concept count, vector count, representation breakdown for a namespace.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "namespace": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$",
+              "description": "Namespace (default: \"default\"). Must be in POLYTICIAN_NAMESPACES when the operator set one."
+            }
+          },
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "conceptCount": {
+              "type": "integer"
+            },
+            "vectorCount": {
+              "type": "integer"
+            },
+            "representationCounts": {
+              "type": "object",
+              "properties": {
+                "markdown": {
+                  "type": "integer"
+                },
+                "thoughtform": {
+                  "type": "integer"
+                },
+                "vector": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "markdown",
+                "thoughtform",
+                "vector"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "conceptCount",
+            "vectorCount",
+            "representationCounts"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        }
+      }
+    ],
+    "vaultTools": [
+      {
+        "name": "vault_infer",
+        "description": "Run a prompt through AgentVault's inference fallback chain (Bittensor -> Venice AI -> local) and optionally save the result as a concept (provenance origin \"llm\").",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000000,
+              "description": "Prompt text to send to the inference chain"
+            },
+            "systemPrompt": {
+              "type": "string",
+              "maxLength": 1000000,
+              "description": "Optional system prompt"
+            },
+            "maxTokens": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "temperature": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 2
+            },
+            "saveAsConceptNamespace": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$",
+              "description": "If set, save the inference result as a markdown concept in this namespace"
+            },
+            "tags": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "maxItems": 64
+            }
+          },
+          "required": [
+            "prompt"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "backend": {
+              "type": "string"
+            },
+            "latencyMs": {
+              "type": "number"
+            },
+            "savedConceptId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "text",
+            "backend",
+            "latencyMs"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": true
+        }
+      },
+      {
+        "name": "vault_memory_push",
+        "description": "Push a Polytician concept to AgentVault's memory_repo canister immediately.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "conceptId": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Concept UUID to push"
+            },
+            "namespace": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$",
+              "description": "Namespace the concept lives in (default: \"default\")"
+            }
+          },
+          "required": [
+            "conceptId"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "pushed": {
+              "type": "boolean",
+              "const": true
+            },
+            "sha": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "pushed",
+            "sha"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": true,
+          "idempotentHint": false,
+          "openWorldHint": true
+        }
+      },
+      {
+        "name": "vault_memory_pull",
+        "description": "Pull markdown entries from AgentVault's memory_repo branch into concepts in one namespace (provenance origin \"import\"), last write wins: an entry replaces a local concept only when its updatedAt is newer, entries recorded for another namespace (or whose id lives in another namespace) are skipped, and ids must be UUIDs. Skipped entries are reported with a reason.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "namespace": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$",
+              "description": "Namespace the concept lives in (default: \"default\")"
+            }
+          },
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "pulled": {
+              "type": "boolean",
+              "const": true
+            },
+            "branch": {
+              "type": "string"
+            },
+            "headSha": {
+              "type": "string"
+            },
+            "imported": {
+              "type": "integer"
+            },
+            "skipped": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "key",
+                  "reason"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "pulled",
+            "branch",
+            "headSha",
+            "imported"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": true,
+          "idempotentHint": true,
+          "openWorldHint": true
+        }
+      },
+      {
+        "name": "vault_archive_concept",
+        "description": "Archive the current version of a concept to Arweave via AgentVault: permanent, public and paid, so it cannot be undone. The content is encrypted with the backup key before upload. Only concepts carrying every archival tag (archive) can be archived, and each version is archived once. Returns the Arweave transaction ID and URL.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "conceptId": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Concept UUID to archive"
+            },
+            "namespace": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$",
+              "description": "Namespace the concept lives in (default: \"default\")"
+            }
+          },
+          "required": [
+            "conceptId"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "archived": {
+              "type": "boolean",
+              "const": true
+            },
+            "encrypted": {
+              "type": "boolean",
+              "const": true
+            },
+            "txId": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            },
+            "size": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "archived",
+            "encrypted",
+            "txId",
+            "url",
+            "size"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": true
+        }
+      },
+      {
+        "name": "vault_get_secret",
+        "description": "Retrieve a named secret from AgentVault's secret provider. Returns metadata only, never the raw value.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "description": "Secret name in AgentVault"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "rotatedAt": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "valueLength": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "name",
+            "provider",
+            "valueLength"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": true
+        }
+      },
+      {
+        "name": "vault_memory_repo_log",
+        "description": "Read the current state of the AgentVault memory_repo branch Polytician syncs with (agentVault.memoryRepoBranch): its head and the keys of the concept entries on it, from every namespace. Takes no namespace.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "branch": {
+              "type": "string"
+            },
+            "headSha": {
+              "type": "string"
+            },
+            "entryCount": {
+              "type": "integer"
+            },
+            "conceptKeys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "branch",
+            "headSha",
+            "entryCount",
+            "conceptKeys"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": true
+        }
+      }
+    ]
+  },
+  "calls": {
+    "health_check.cold": {
+      "note": "Before any embedding: the model loads lazily on the first save/search.",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "tools/call",
+        "params": {
+          "name": "health_check",
+          "arguments": {}
+        }
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"server\": \"ok\",\n  \"embedding\": {\n    \"loaded\": false,\n    \"model\": \"Xenova/all-MiniLM-L6-v2\",\n    \"dimension\": 384\n  },\n  \"llm\": {\n    \"provider\": \"none\"\n  },\n  \"database\": {\n    \"conceptCount\": 0,\n    \"vectorCount\": 0,\n    \"representationCounts\": {\n      \"markdown\": 0,\n      \"thoughtform\": 0,\n      \"vector\": 0\n    }\n  }\n}"
+            }
+          ],
+          "structuredContent": {
+            "server": "ok",
+            "embedding": {
+              "loaded": false,
+              "model": "Xenova/all-MiniLM-L6-v2",
+              "dimension": 384
+            },
+            "llm": {
+              "provider": "none"
+            },
+            "database": {
+              "conceptCount": 0,
+              "vectorCount": 0,
+              "representationCounts": {
+                "markdown": 0,
+                "thoughtform": 0,
+                "vector": 0
+              }
+            }
+          }
+        },
+        "jsonrpc": "2.0",
+        "id": 3
+      }
+    },
+    "save_concept": {
+      "note": "The corrected orchestration save: markdown + tags. The response is the stored concept; its id is in structuredContent.id.",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 4,
+        "method": "tools/call",
+        "params": {
+          "name": "save_concept",
+          "arguments": {
+            "markdown": "# Orchestration Result: session-1\n\n## Task\nRefactor the parser to stream tokens\n\n## Files Changed\n- src/parser.ts\n- tests/parser.test.ts\n\n## Result\nReplaced the recursive descent loop with a streaming tokenizer.",
+            "tags": [
+              "orchestration",
+              "session:session-1"
+            ]
+          }
+        }
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"id\": \"11111111-1111-4111-8111-000000000001\",\n  \"namespace\": \"default\",\n  \"version\": 1,\n  \"createdAt\": 1791072000000,\n  \"updatedAt\": 1791072000000,\n  \"tags\": [\n    \"orchestration\",\n    \"session:session-1\"\n  ],\n  \"markdown\": \"# Orchestration Result: session-1\\n\\n## Task\\nRefactor the parser to stream tokens\\n\\n## Files Changed\\n- src/parser.ts\\n- tests/parser.test.ts\\n\\n## Result\\nReplaced the recursive descent loop with a streaming tokenizer.\",\n  \"thoughtform\": null,\n  \"embedding\": [\n    -0.04613310098648071,\n    -0.012748509645462036,\n    0.015912210568785667,\n    0.006855312269181013,\n    -0.04891939088702202,\n    -0.03857812657952309,\n    0.0354711189866066,\n    0.05510374531149864,\n    -0.032203685492277145,\n    0.07496120780706406,\n    -0.057302363216876984,\n    -0.01918930746614933,\n    -0.07839524745941162,\n    0.07099620252847672,\n    0.0549192912876606,\n    -0.053953345865011215,\n    0.010635214857757092,\n    -0.0013543595559895039,\n    0.001288343803025782,\n    -0.11843369156122208,\n    0.0020332871936261654,\n    0.013527186587452888,\n    -0.04509503394365311,\n    -0.024816950783133507,\n    0.05569719523191452,\n    0.03946099802851677,\n    -0.053857479244470596,\n    -0.09120076149702072,\n    0.06283773481845856,\n    0.039698872715234756,\n    0.042711853981018066,\n    0.006354444660246372,\n    -0.031502630561590195,\n    0.02034897357225418,\n    0.0756249949336052,\n    0.06095840409398079,\n    0.08882945775985718,\n    -0.03711060434579849,\n    0.04037684202194214,\n    0.013435913249850273,\n    0.0794830247759819,\n    0.002478394890204072,\n    -0.04049982875585556,\n    -0.06627095490694046,\n    0.006496054120361805,\n    -0.03096397966146469,\n    -0.029865974560379982,\n    -0.04755916818976402,\n    -0.1239505186676979,\n    0.05255322903394699,\n    -0.026497922837734222,\n    -0.003636839333921671,\n    -0.02257591485977173,\n    0.0338393896818161,\n    -0.02269325964152813,\n    -0.011335095390677452,\n    -0.02255551517009735,\n    0.08260886371135712,\n    0.04081125929951668,\n    -0.005072351079434156,\n    -0.00020137419051025063,\n    -0.1062297523021698,\n    -0.02617698535323143,\n    -0.045008860528469086,\n    0.02250584401190281,\n    0.03197309747338295,\n    -0.014835198409855366,\n    0.022844858467578888,\n    0.0756683349609375,\n    -0.016284361481666565,\n    -0.03299333155155182,\n    0.03892448544502258,\n    -0.01315609086304903,\n    -0.003396941116079688,\n    0.0025704160798341036,\n    -0.008484934456646442,\n    0.028991540893912315,\n    -0.014500033110380173,\n    0.0065390500240027905,\n    -0.11228013038635254,\n    0.08955153077840805,\n    -0.02141728438436985,\n    0.05664140358567238,\n    0.016592836007475853,\n    0.02201012521982193,\n    0.002872083568945527,\n    0.02585664577782154,\n    -0.010347899049520493,\n    0.00644940510392189,\n    -0.0015516055282205343,\n    -0.047674134373664856,\n    -0.07143115997314453,\n    0.020579447969794273,\n    0.030747300013899803,\n    -0.030611634254455566,\n    0.06529691815376282,\n    -0.11216814815998077,\n    -0.010171807371079922,\n    0.0733080506324768,\n    0.06339976191520691,\n    -0.037433985620737076,\n    0.042458489537239075,\n    0.08359304070472717,\n    -0.0679313912987709,\n    -0.06421196460723877,\n    -0.004210920538753271,\n    -0.0007920024218037724,\n    0.031019024550914764,\n    0.07294788956642151,\n    -0.06256753206253052,\n    -0.006547387223690748,\n    0.10720334947109222,\n    0.023650411516427994,\n    -0.007862657308578491,\n    -0.03322086110711098,\n    -0.06932225823402405,\n    -0.014145140536129475,\n    0.0017764295917004347,\n    -0.016449715942144394,\n    0.14206133782863617,\n    0.0038943986874073744,\n    -0.023066483438014984,\n    -0.12456014752388,\n    0.05921727418899536,\n    0.03318743035197258,\n    -0.016790151596069336,\n    0.0408821627497673,\n    4.4689025874600147e-33,\n    -0.03956626355648041,\n    -0.04672122374176979,\n    0.014606192708015442,\n    0.006486567202955484,\n    0.08190029114484787,\n    -0.007369350176304579,\n    0.0333537720143795,\n    -0.020195497199892998,\n    -0.06170688197016716,\n    0.02092151530086994,\n    0.008245249278843403,\n    -0.05941743403673172,\n    -0.008638644590973854,\n    0.001031824853271246,\n    -0.041673582047224045,\n    -0.10202859342098236,\n    -0.024162407964468002,\n    0.026300372555851936,\n    0.008728737942874432,\n    -0.010975420475006104,\n    0.01364661380648613,\n    0.025636564940214157,\n    -0.05801285430788994,\n    -0.059522394090890884,\n    0.035150911659002304,\n    -0.002259307773783803,\n    0.051563385874032974,\n    -0.03630853444337845,\n    0.035997603088617325,\n    0.011549616232514381,\n    0.025835581123828888,\n    -0.02951475791633129,\n    0.003791739931330085,\n    0.08351636677980423,\n    0.02301865629851818,\n    -0.03339223936200142,\n    0.08822270482778549,\n    0.002978759352117777,\n    -0.03213168680667877,\n    -0.07223591208457947,\n    -0.04976723715662956,\n    0.012048655189573765,\n    -0.1110086739063263,\n    0.07282283157110214,\n    -0.09622146189212799,\n    -0.0715673416852951,\n    -0.0780363455414772,\n    0.008665192872285843,\n    0.12417330592870712,\n    -0.04538082703948021,\n    0.005627042148262262,\n    0.12848694622516632,\n    0.011172267608344555,\n    -0.03741872310638428,\n    0.0764637440443039,\n    0.008308553136885166,\n    -0.017337974160909653,\n    0.07396844774484634,\n    0.07793664187192917,\n    0.006020266097038984,\n    0.09149061143398285,\n    -0.008192179724574089,\n    -0.09206485003232956,\n    -0.010632866993546486,\n    0.07470576465129852,\n    0.0004642599087674171,\n    0.03174455836415291,\n    -0.05127379670739174,\n    0.03672051802277565,\n    -0.005879763048142195,\n    -0.09059371054172516,\n    0.02895066887140274,\n    -0.04706611484289169,\n    -0.00866930466145277,\n    0.08932662755250931,\n    -0.01803259737789631,\n    0.027624735608696938,\n    0.04297681152820587,\n    -0.06862486898899078,\n    -0.06693480908870697,\n    -0.035333480685949326,\n    -0.06393139064311981,\n    -0.019425371661782265,\n    0.06689534336328506,\n    -0.008706772699952126,\n    -0.014421708881855011,\n    -0.06978286802768707,\n    -0.12094201892614365,\n    -0.015323011204600334,\n    -0.07914123684167862,\n    0.005758472252637148,\n    0.008670556358993053,\n    -0.007355412468314171,\n    0.045918986201286316,\n    -0.0031027242075651884,\n    -2.7837001107967596e-33,\n    0.05388498678803444,\n    0.03862050175666809,\n    -0.12407632917165756,\n    0.037606701254844666,\n    -0.0036371557507663965,\n    -0.03575053811073303,\n    0.06927372515201569,\n    -0.03186938166618347,\n    -0.054186150431632996,\n    0.0582975335419178,\n    0.01857748068869114,\n    -0.004726753104478121,\n    -0.08373624831438065,\n    0.047685135155916214,\n    -0.050010763108730316,\n    0.047602612525224686,\n    0.0532790943980217,\n    -0.032735083252191544,\n    0.013180469162762165,\n    -0.06350047886371613,\n    -0.013526104390621185,\n    0.09897937625646591,\n    0.04393826425075531,\n    0.023515131324529648,\n    -0.04654275253415108,\n    0.0647190734744072,\n    0.03276563435792923,\n    0.09577996283769608,\n    0.043667811900377274,\n    0.013649133034050465,\n    -0.001993844285607338,\n    0.03822352737188339,\n    -0.020605172961950302,\n    -0.023823540657758713,\n    -0.05341266468167305,\n    0.011095949448645115,\n    0.005366974044591188,\n    0.025084620341658592,\n    -0.033149782568216324,\n    0.021383795887231827,\n    0.029938651248812675,\n    0.01024253387004137,\n    0.026477830484509468,\n    0.04159225896000862,\n    0.03780035674571991,\n    -0.007736627012491226,\n    0.050765350461006165,\n    0.03863302618265152,\n    -0.0980570912361145,\n    -0.017839465290308,\n    0.019992154091596603,\n    -0.025371549651026726,\n    -0.04245670512318611,\n    -0.012576195411384106,\n    -0.018455203622579575,\n    -0.01293803472071886,\n    0.08321546763181686,\n    -0.15783649682998657,\n    -0.10850131511688232,\n    -0.06274770200252533,\n    0.03773748129606247,\n    0.010456643998622894,\n    0.06151839345693588,\n    0.0002772341831587255,\n    0.08051491528749466,\n    -0.002038111910223961,\n    -0.03567546233534813,\n    0.005420310888439417,\n    0.0364471971988678,\n    0.02129804901778698,\n    0.02293490432202816,\n    -0.01349907647818327,\n    -0.023929590359330177,\n    0.041186291724443436,\n    0.05235826224088669,\n    -0.030378783121705055,\n    -0.04626148194074631,\n    -0.02942575328052044,\n    0.04085347056388855,\n    -0.000676793628372252,\n    -0.084424689412117,\n    0.0017156448448076844,\n    -0.0511200912296772,\n    0.024784840643405914,\n    0.06445381790399551,\n    0.005510706454515457,\n    0.03857964649796486,\n    0.0983314961194992,\n    -0.004468277562409639,\n    0.06631074845790863,\n    0.0215930063277483,\n    -0.025490866973996162,\n    0.04054206237196922,\n    0.05060713738203049,\n    0.08054140210151672,\n    -3.479100030290283e-8,\n    -0.11550859361886978,\n    -0.05028581619262695,\n    -0.13718697428703308,\n    0.0989462360739708,\n    -0.005669198930263519,\n    0.022150371223688126,\n    -0.0632956475019455,\n    0.00963536649942398,\n    -0.003806011751294136,\n    -0.06546169519424438,\n    -0.06740476191043854,\n    -0.0420151948928833,\n    0.049821991473436356,\n    0.01264283712953329,\n    0.04793068394064903,\n    0.0017957056406885386,\n    -0.0007821356412023306,\n    0.009779125452041626,\n    -0.05213240906596184,\n    -0.009225869551301003,\n    0.0003630924329627305,\n    0.03231755271553993,\n    0.024732785299420357,\n    0.01740196719765663,\n    -0.0008513580542057753,\n    0.06799672544002533,\n    0.09199225157499313,\n    0.02615121565759182,\n    -0.02646036446094513,\n    -0.014050574973225594,\n    -0.02705594152212143,\n    0.08995194733142853,\n    -0.044238459318876266,\n    -0.06217067316174507,\n    -0.04128839075565338,\n    0.07233714312314987,\n    -0.004639112390577793,\n    0.029417462646961212,\n    -0.003135878359898925,\n    0.043212875723838806,\n    0.022712409496307373,\n    0.04728778451681137,\n    -0.017168162390589714,\n    0.07076007127761841,\n    -0.05725323408842087,\n    -0.053386956453323364,\n    -0.08478264510631561,\n    0.05980638042092323,\n    0.06771960854530334,\n    -0.09565390646457672,\n    0.00874214619398117,\n    0.012521718628704548,\n    -0.1155027374625206,\n    0.048043712973594666,\n    0.018720334395766258,\n    -0.02024630643427372,\n    0.004537761677056551,\n    -0.03752389922738075,\n    -0.005365511868149042,\n    0.04618242010474205,\n    0.07206013798713684,\n    0.009424405172467232,\n    -0.018664196133613586,\n    -0.052856527268886566\n  ],\n  \"provenance\": {\n    \"markdown\": {\n      \"origin\": \"user\"\n    },\n    \"vector\": {\n      \"origin\": \"derived\",\n      \"derivedFrom\": \"markdown\",\n      \"model\": \"Xenova/all-MiniLM-L6-v2\"\n    }\n  },\n  \"assertionStatus\": null,\n  \"ledgerRef\": null\n}"
+            }
+          ],
+          "structuredContent": {
+            "id": "11111111-1111-4111-8111-000000000001",
+            "namespace": "default",
+            "version": 1,
+            "createdAt": 1791072000000,
+            "updatedAt": 1791072000000,
+            "tags": [
+              "orchestration",
+              "session:session-1"
+            ],
+            "markdown": "# Orchestration Result: session-1\n\n## Task\nRefactor the parser to stream tokens\n\n## Files Changed\n- src/parser.ts\n- tests/parser.test.ts\n\n## Result\nReplaced the recursive descent loop with a streaming tokenizer.",
+            "thoughtform": null,
+            "embedding": [
+              -0.04613310098648071,
+              -0.012748509645462036,
+              0.015912210568785667,
+              0.006855312269181013,
+              -0.04891939088702202,
+              -0.03857812657952309,
+              0.0354711189866066,
+              0.05510374531149864,
+              -0.032203685492277145,
+              0.07496120780706406,
+              -0.057302363216876984,
+              -0.01918930746614933,
+              -0.07839524745941162,
+              0.07099620252847672,
+              0.0549192912876606,
+              -0.053953345865011215,
+              0.010635214857757092,
+              -0.0013543595559895039,
+              0.001288343803025782,
+              -0.11843369156122208,
+              0.0020332871936261654,
+              0.013527186587452888,
+              -0.04509503394365311,
+              -0.024816950783133507,
+              0.05569719523191452,
+              0.03946099802851677,
+              -0.053857479244470596,
+              -0.09120076149702072,
+              0.06283773481845856,
+              0.039698872715234756,
+              0.042711853981018066,
+              0.006354444660246372,
+              -0.031502630561590195,
+              0.02034897357225418,
+              0.0756249949336052,
+              0.06095840409398079,
+              0.08882945775985718,
+              -0.03711060434579849,
+              0.04037684202194214,
+              0.013435913249850273,
+              0.0794830247759819,
+              0.002478394890204072,
+              -0.04049982875585556,
+              -0.06627095490694046,
+              0.006496054120361805,
+              -0.03096397966146469,
+              -0.029865974560379982,
+              -0.04755916818976402,
+              -0.1239505186676979,
+              0.05255322903394699,
+              -0.026497922837734222,
+              -0.003636839333921671,
+              -0.02257591485977173,
+              0.0338393896818161,
+              -0.02269325964152813,
+              -0.011335095390677452,
+              -0.02255551517009735,
+              0.08260886371135712,
+              0.04081125929951668,
+              -0.005072351079434156,
+              -0.00020137419051025063,
+              -0.1062297523021698,
+              -0.02617698535323143,
+              -0.045008860528469086,
+              0.02250584401190281,
+              0.03197309747338295,
+              -0.014835198409855366,
+              0.022844858467578888,
+              0.0756683349609375,
+              -0.016284361481666565,
+              -0.03299333155155182,
+              0.03892448544502258,
+              -0.01315609086304903,
+              -0.003396941116079688,
+              0.0025704160798341036,
+              -0.008484934456646442,
+              0.028991540893912315,
+              -0.014500033110380173,
+              0.0065390500240027905,
+              -0.11228013038635254,
+              0.08955153077840805,
+              -0.02141728438436985,
+              0.05664140358567238,
+              0.016592836007475853,
+              0.02201012521982193,
+              0.002872083568945527,
+              0.02585664577782154,
+              -0.010347899049520493,
+              0.00644940510392189,
+              -0.0015516055282205343,
+              -0.047674134373664856,
+              -0.07143115997314453,
+              0.020579447969794273,
+              0.030747300013899803,
+              -0.030611634254455566,
+              0.06529691815376282,
+              -0.11216814815998077,
+              -0.010171807371079922,
+              0.0733080506324768,
+              0.06339976191520691,
+              -0.037433985620737076,
+              0.042458489537239075,
+              0.08359304070472717,
+              -0.0679313912987709,
+              -0.06421196460723877,
+              -0.004210920538753271,
+              -0.0007920024218037724,
+              0.031019024550914764,
+              0.07294788956642151,
+              -0.06256753206253052,
+              -0.006547387223690748,
+              0.10720334947109222,
+              0.023650411516427994,
+              -0.007862657308578491,
+              -0.03322086110711098,
+              -0.06932225823402405,
+              -0.014145140536129475,
+              0.0017764295917004347,
+              -0.016449715942144394,
+              0.14206133782863617,
+              0.0038943986874073744,
+              -0.023066483438014984,
+              -0.12456014752388,
+              0.05921727418899536,
+              0.03318743035197258,
+              -0.016790151596069336,
+              0.0408821627497673,
+              4.4689025874600147e-33,
+              -0.03956626355648041,
+              -0.04672122374176979,
+              0.014606192708015442,
+              0.006486567202955484,
+              0.08190029114484787,
+              -0.007369350176304579,
+              0.0333537720143795,
+              -0.020195497199892998,
+              -0.06170688197016716,
+              0.02092151530086994,
+              0.008245249278843403,
+              -0.05941743403673172,
+              -0.008638644590973854,
+              0.001031824853271246,
+              -0.041673582047224045,
+              -0.10202859342098236,
+              -0.024162407964468002,
+              0.026300372555851936,
+              0.008728737942874432,
+              -0.010975420475006104,
+              0.01364661380648613,
+              0.025636564940214157,
+              -0.05801285430788994,
+              -0.059522394090890884,
+              0.035150911659002304,
+              -0.002259307773783803,
+              0.051563385874032974,
+              -0.03630853444337845,
+              0.035997603088617325,
+              0.011549616232514381,
+              0.025835581123828888,
+              -0.02951475791633129,
+              0.003791739931330085,
+              0.08351636677980423,
+              0.02301865629851818,
+              -0.03339223936200142,
+              0.08822270482778549,
+              0.002978759352117777,
+              -0.03213168680667877,
+              -0.07223591208457947,
+              -0.04976723715662956,
+              0.012048655189573765,
+              -0.1110086739063263,
+              0.07282283157110214,
+              -0.09622146189212799,
+              -0.0715673416852951,
+              -0.0780363455414772,
+              0.008665192872285843,
+              0.12417330592870712,
+              -0.04538082703948021,
+              0.005627042148262262,
+              0.12848694622516632,
+              0.011172267608344555,
+              -0.03741872310638428,
+              0.0764637440443039,
+              0.008308553136885166,
+              -0.017337974160909653,
+              0.07396844774484634,
+              0.07793664187192917,
+              0.006020266097038984,
+              0.09149061143398285,
+              -0.008192179724574089,
+              -0.09206485003232956,
+              -0.010632866993546486,
+              0.07470576465129852,
+              0.0004642599087674171,
+              0.03174455836415291,
+              -0.05127379670739174,
+              0.03672051802277565,
+              -0.005879763048142195,
+              -0.09059371054172516,
+              0.02895066887140274,
+              -0.04706611484289169,
+              -0.00866930466145277,
+              0.08932662755250931,
+              -0.01803259737789631,
+              0.027624735608696938,
+              0.04297681152820587,
+              -0.06862486898899078,
+              -0.06693480908870697,
+              -0.035333480685949326,
+              -0.06393139064311981,
+              -0.019425371661782265,
+              0.06689534336328506,
+              -0.008706772699952126,
+              -0.014421708881855011,
+              -0.06978286802768707,
+              -0.12094201892614365,
+              -0.015323011204600334,
+              -0.07914123684167862,
+              0.005758472252637148,
+              0.008670556358993053,
+              -0.007355412468314171,
+              0.045918986201286316,
+              -0.0031027242075651884,
+              -2.7837001107967596e-33,
+              0.05388498678803444,
+              0.03862050175666809,
+              -0.12407632917165756,
+              0.037606701254844666,
+              -0.0036371557507663965,
+              -0.03575053811073303,
+              0.06927372515201569,
+              -0.03186938166618347,
+              -0.054186150431632996,
+              0.0582975335419178,
+              0.01857748068869114,
+              -0.004726753104478121,
+              -0.08373624831438065,
+              0.047685135155916214,
+              -0.050010763108730316,
+              0.047602612525224686,
+              0.0532790943980217,
+              -0.032735083252191544,
+              0.013180469162762165,
+              -0.06350047886371613,
+              -0.013526104390621185,
+              0.09897937625646591,
+              0.04393826425075531,
+              0.023515131324529648,
+              -0.04654275253415108,
+              0.0647190734744072,
+              0.03276563435792923,
+              0.09577996283769608,
+              0.043667811900377274,
+              0.013649133034050465,
+              -0.001993844285607338,
+              0.03822352737188339,
+              -0.020605172961950302,
+              -0.023823540657758713,
+              -0.05341266468167305,
+              0.011095949448645115,
+              0.005366974044591188,
+              0.025084620341658592,
+              -0.033149782568216324,
+              0.021383795887231827,
+              0.029938651248812675,
+              0.01024253387004137,
+              0.026477830484509468,
+              0.04159225896000862,
+              0.03780035674571991,
+              -0.007736627012491226,
+              0.050765350461006165,
+              0.03863302618265152,
+              -0.0980570912361145,
+              -0.017839465290308,
+              0.019992154091596603,
+              -0.025371549651026726,
+              -0.04245670512318611,
+              -0.012576195411384106,
+              -0.018455203622579575,
+              -0.01293803472071886,
+              0.08321546763181686,
+              -0.15783649682998657,
+              -0.10850131511688232,
+              -0.06274770200252533,
+              0.03773748129606247,
+              0.010456643998622894,
+              0.06151839345693588,
+              0.0002772341831587255,
+              0.08051491528749466,
+              -0.002038111910223961,
+              -0.03567546233534813,
+              0.005420310888439417,
+              0.0364471971988678,
+              0.02129804901778698,
+              0.02293490432202816,
+              -0.01349907647818327,
+              -0.023929590359330177,
+              0.041186291724443436,
+              0.05235826224088669,
+              -0.030378783121705055,
+              -0.04626148194074631,
+              -0.02942575328052044,
+              0.04085347056388855,
+              -0.000676793628372252,
+              -0.084424689412117,
+              0.0017156448448076844,
+              -0.0511200912296772,
+              0.024784840643405914,
+              0.06445381790399551,
+              0.005510706454515457,
+              0.03857964649796486,
+              0.0983314961194992,
+              -0.004468277562409639,
+              0.06631074845790863,
+              0.0215930063277483,
+              -0.025490866973996162,
+              0.04054206237196922,
+              0.05060713738203049,
+              0.08054140210151672,
+              -3.479100030290283e-8,
+              -0.11550859361886978,
+              -0.05028581619262695,
+              -0.13718697428703308,
+              0.0989462360739708,
+              -0.005669198930263519,
+              0.022150371223688126,
+              -0.0632956475019455,
+              0.00963536649942398,
+              -0.003806011751294136,
+              -0.06546169519424438,
+              -0.06740476191043854,
+              -0.0420151948928833,
+              0.049821991473436356,
+              0.01264283712953329,
+              0.04793068394064903,
+              0.0017957056406885386,
+              -0.0007821356412023306,
+              0.009779125452041626,
+              -0.05213240906596184,
+              -0.009225869551301003,
+              0.0003630924329627305,
+              0.03231755271553993,
+              0.024732785299420357,
+              0.01740196719765663,
+              -0.0008513580542057753,
+              0.06799672544002533,
+              0.09199225157499313,
+              0.02615121565759182,
+              -0.02646036446094513,
+              -0.014050574973225594,
+              -0.02705594152212143,
+              0.08995194733142853,
+              -0.044238459318876266,
+              -0.06217067316174507,
+              -0.04128839075565338,
+              0.07233714312314987,
+              -0.004639112390577793,
+              0.029417462646961212,
+              -0.003135878359898925,
+              0.043212875723838806,
+              0.022712409496307373,
+              0.04728778451681137,
+              -0.017168162390589714,
+              0.07076007127761841,
+              -0.05725323408842087,
+              -0.053386956453323364,
+              -0.08478264510631561,
+              0.05980638042092323,
+              0.06771960854530334,
+              -0.09565390646457672,
+              0.00874214619398117,
+              0.012521718628704548,
+              -0.1155027374625206,
+              0.048043712973594666,
+              0.018720334395766258,
+              -0.02024630643427372,
+              0.004537761677056551,
+              -0.03752389922738075,
+              -0.005365511868149042,
+              0.04618242010474205,
+              0.07206013798713684,
+              0.009424405172467232,
+              -0.018664196133613586,
+              -0.052856527268886566
+            ],
+            "provenance": {
+              "markdown": {
+                "origin": "user"
+              },
+              "vector": {
+                "origin": "derived",
+                "derivedFrom": "markdown",
+                "model": "Xenova/all-MiniLM-L6-v2"
+              }
+            },
+            "assertionStatus": null,
+            "ledgerRef": null
+          }
+        },
+        "jsonrpc": "2.0",
+        "id": 4
+      }
+    },
+    "save_concept.second": {
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 5,
+        "method": "tools/call",
+        "params": {
+          "name": "save_concept",
+          "arguments": {
+            "markdown": "# Deployment checklist\n\nRotate the canister controller keys before every mainnet upgrade.",
+            "tags": [
+              "notes"
+            ]
+          }
+        }
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"id\": \"11111111-1111-4111-8111-000000000002\",\n  \"namespace\": \"default\",\n  \"version\": 1,\n  \"createdAt\": 1791072000000,\n  \"updatedAt\": 1791072000000,\n  \"tags\": [\n    \"notes\"\n  ],\n  \"markdown\": \"# Deployment checklist\\n\\nRotate the canister controller keys before every mainnet upgrade.\",\n  \"thoughtform\": null,\n  \"embedding\": [\n    0.037360962480306625,\n    -0.040030233561992645,\n    -0.01625010557472706,\n    -0.070064477622509,\n    0.05174640193581581,\n    0.01403818093240261,\n    0.0730171799659729,\n    -0.08015956729650497,\n    -0.041842032223939896,\n    0.07072977721691132,\n    0.14968165755271912,\n    0.11291729658842087,\n    0.013728169724345207,\n    -0.01562470756471157,\n    -0.005629267543554306,\n    0.08792532235383987,\n    -0.01920316182076931,\n    -0.04245856776833534,\n    -0.03436395898461342,\n    0.004636284429579973,\n    0.012583241797983646,\n    0.009469583630561829,\n    0.013538863509893417,\n    0.042938102036714554,\n    -0.05445889011025429,\n    0.02524412050843239,\n    -0.05531919375061989,\n    0.016668159514665604,\n    -0.029488150030374527,\n    -0.05266527831554413,\n    -0.13281114399433136,\n    0.053359441459178925,\n    -0.07693073898553848,\n    -0.003200887469574809,\n    0.06056226044893265,\n    -0.0369081050157547,\n    0.025477973744273186,\n    0.06454034894704819,\n    0.02918495424091816,\n    -0.05605824291706085,\n    0.027561182156205177,\n    -0.010368750430643559,\n    0.04210386797785759,\n    0.03720821440219879,\n    -0.03903349116444588,\n    0.04033667966723442,\n    0.00042182925972156227,\n    -0.030065178871154785,\n    0.05949701741337776,\n    -0.047129563987255096,\n    0.05794626846909523,\n    -0.018103592097759247,\n    0.031993184238672256,\n    -0.049440160393714905,\n    0.04229605570435524,\n    0.028605114668607712,\n    -0.040278270840644836,\n    -0.0524897426366806,\n    0.1036645844578743,\n    -0.01474724244326353,\n    0.026289355009794235,\n    0.03431195020675659,\n    -0.01675581932067871,\n    -0.007740417029708624,\n    -0.08377546072006226,\n    0.005897304508835077,\n    0.06910043209791183,\n    -0.09614229202270508,\n    0.029451899230480194,\n    -0.030792750418186188,\n    0.020629899576306343,\n    0.054008498787879944,\n    0.033888570964336395,\n    -0.020982705056667328,\n    0.015837321057915688,\n    0.05498844385147095,\n    0.031697142869234085,\n    -0.0040245745331048965,\n    0.026685839518904686,\n    -0.0691101998090744,\n    -0.024748453870415688,\n    0.03099318966269493,\n    0.017191726714372635,\n    0.03935237228870392,\n    0.0070902276784181595,\n    -0.037077464163303375,\n    -0.09713565558195114,\n    -0.03543929010629654,\n    -0.004431900102645159,\n    0.019625796005129814,\n    -0.022528614848852158,\n    -0.11367148160934448,\n    0.0856129452586174,\n    0.030248375609517097,\n    -0.06627298146486282,\n    0.03966781124472618,\n    -0.04855544492602348,\n    -0.06729383766651154,\n    -0.07578874379396439,\n    0.038854606449604034,\n    -0.028267866000533104,\n    -0.0874798595905304,\n    0.05407203733921051,\n    0.026332691311836243,\n    0.009657880291342735,\n    0.03390797972679138,\n    0.09123781323432922,\n    -0.0004311056691221893,\n    -0.06880295276641846,\n    -0.07428756356239319,\n    -0.04760017618536949,\n    0.05584735423326492,\n    0.02679484896361828,\n    -0.047573503106832504,\n    -0.03653285652399063,\n    0.03651959449052811,\n    -0.021737659350037575,\n    -0.004508694633841515,\n    -0.05702107027173042,\n    0.01948794163763523,\n    0.004117369651794434,\n    -0.04975120350718498,\n    -0.0012772732879966497,\n    -0.011805922724306583,\n    -0.015970097854733467,\n    0.07513125985860825,\n    -0.051747627556324005,\n    1.7661742009677406e-33,\n    0.04909685254096985,\n    0.06626510620117188,\n    -0.01580926589667797,\n    0.10514847189188004,\n    -0.0008184522157534957,\n    0.0035071291495114565,\n    0.10026828944683075,\n    -0.030127085745334625,\n    0.04761123284697533,\n    -0.02419339492917061,\n    -0.006658133119344711,\n    0.0017183595336973667,\n    -0.07516437768936157,\n    -0.06568585336208344,\n    -0.017222139984369278,\n    -0.14781811833381653,\n    0.017841437831521034,\n    0.0914306789636612,\n    0.0562710203230381,\n    -0.05628076568245888,\n    0.006193163339048624,\n    -0.01675444096326828,\n    -0.037477295845746994,\n    -0.09635143727064133,\n    0.05819305032491684,\n    0.032759975641965866,\n    -0.006579753942787647,\n    0.041742317378520966,\n    0.022153547033667564,\n    0.05312168598175049,\n    0.04019252210855484,\n    0.04818367213010788,\n    0.025620967149734497,\n    -0.029230479151010513,\n    -0.08793974667787552,\n    -0.02770065888762474,\n    0.01663062535226345,\n    -0.01730627939105034,\n    -0.011718456633388996,\n    -0.028830453753471375,\n    -0.089372918009758,\n    -0.022477228194475174,\n    -0.12420438230037689,\n    -0.030659949406981468,\n    0.048406511545181274,\n    0.007543145678937435,\n    0.003835401963442564,\n    0.02520175650715828,\n    0.1407908797264099,\n    -0.013603181578218937,\n    -0.009527944028377533,\n    0.049784719944000244,\n    0.004879704210907221,\n    -0.005896578077226877,\n    -0.003430468961596489,\n    -0.017770588397979736,\n    0.08249155431985855,\n    0.020357770845294,\n    0.04020925983786583,\n    0.06629668176174164,\n    -0.07130461186170578,\n    -0.007569143548607826,\n    -0.062390897423028946,\n    -0.01606828160583973,\n    0.06442113220691681,\n    -0.02957221120595932,\n    0.018010158091783524,\n    0.04552594572305679,\n    0.010108168236911297,\n    0.01573626510798931,\n    -0.02698524482548237,\n    -0.03283666446805,\n    -0.02281128242611885,\n    0.03141167387366295,\n    -0.009350833483040333,\n    -0.028939587995409966,\n    -0.0936722606420517,\n    0.013841083273291588,\n    0.01656988263130188,\n    0.014543146826326847,\n    0.01809054985642433,\n    0.046751853078603745,\n    -0.045089591294527054,\n    0.07162012159824371,\n    0.024011222645640373,\n    0.0006744149723090231,\n    -0.0022962759248912334,\n    -0.042582917958498,\n    0.012997189536690712,\n    0.05292484536767006,\n    0.03748700022697449,\n    0.009937971830368042,\n    0.012909782119095325,\n    0.015714647248387337,\n    -0.06052963435649872,\n    -1.283593913349859e-33,\n    0.0022379837464541197,\n    0.0034069984685629606,\n    -0.05889047309756279,\n    0.059376638382673264,\n    -0.022661292925477028,\n    -0.020436007529497147,\n    -0.044921617954969406,\n    0.049559418112039566,\n    0.0018125405767932534,\n    -0.04262753948569298,\n    0.12811635434627533,\n    0.03691345080733299,\n    -0.044005632400512695,\n    -0.03475435823202133,\n    -0.040165141224861145,\n    -0.0005318674957379699,\n    -0.0579448901116848,\n    0.024639800190925598,\n    0.047901034355163574,\n    0.029888229444622993,\n    0.03540433570742607,\n    0.004111494868993759,\n    -0.08136121183633804,\n    0.04071928560733795,\n    -0.07842285186052322,\n    0.011924206279218197,\n    -0.04039856791496277,\n    0.14126655459403992,\n    0.08880037069320679,\n    0.04331335425376892,\n    0.06284387409687042,\n    -0.022006485611200333,\n    0.009486659429967403,\n    -0.009858955629169941,\n    -0.011304104700684547,\n    0.004510010592639446,\n    -0.09573867172002792,\n    0.03927243500947952,\n    -0.04798537865281105,\n    0.057876333594322205,\n    0.01997864805161953,\n    -0.029757454991340637,\n    0.03779225796461105,\n    -0.03778340294957161,\n    -0.08379102498292923,\n    -0.03705470263957977,\n    0.10654149949550629,\n    -0.09075845032930374,\n    0.005659068468958139,\n    0.006885389797389507,\n    -0.051416829228401184,\n    -0.04707680270075798,\n    0.009991386905312538,\n    -0.010010527446866035,\n    0.004235521890223026,\n    0.06979316473007202,\n    0.07444219291210175,\n    0.06653054058551788,\n    0.01037429179996252,\n    0.03714350610971451,\n    0.04396535083651543,\n    -0.008067052811384201,\n    0.01910567469894886,\n    -0.045250214636325836,\n    -0.012808935716748238,\n    0.040303848683834076,\n    0.02067134715616703,\n    0.04748894274234772,\n    0.027138428762555122,\n    0.02552763558924198,\n    -0.033777784556150436,\n    -0.040606237947940826,\n    -0.041354015469551086,\n    -0.05412480980157852,\n    -0.0606275238096714,\n    -0.11287478357553482,\n    0.07834677398204803,\n    -0.06715694814920425,\n    0.04915692284703255,\n    -0.09240901470184326,\n    -0.06521438807249069,\n    -0.07619786262512207,\n    -0.08752628415822983,\n    -0.039071209728717804,\n    -0.0030127549543976784,\n    -0.026826828718185425,\n    0.043285202234983444,\n    0.01619935967028141,\n    0.04639662057161331,\n    0.030746953561902046,\n    -0.06279731541872025,\n    -0.06205879524350166,\n    0.0011015967465937138,\n    -0.010423489846289158,\n    0.012511102482676506,\n    -1.9722545374634137e-8,\n    -0.06729955971240997,\n    0.10614839941263199,\n    0.02180975116789341,\n    0.05468740314245224,\n    0.051725175231695175,\n    0.004572094883769751,\n    0.08157046139240265,\n    0.030437350273132324,\n    -0.041568491607904434,\n    -0.0034567946568131447,\n    0.02286064252257347,\n    0.08392176777124405,\n    0.006683246698230505,\n    0.010719678364694118,\n    0.04017569497227669,\n    0.05227211117744446,\n    -0.09965720772743225,\n    0.05825386941432953,\n    0.005793849006295204,\n    -0.10425723344087601,\n    -0.10476888716220856,\n    -0.010369377210736275,\n    0.06033004820346832,\n    0.011449686251580715,\n    -0.06115240976214409,\n    0.04827158898115158,\n    0.010528969578444958,\n    0.040629684925079346,\n    0.10850821435451508,\n    0.08965262770652771,\n    -0.026578295975923538,\n    -0.04064210504293442,\n    0.019472356885671616,\n    -0.015067020431160927,\n    -0.013908582739531994,\n    0.10257448256015778,\n    -0.029225917533040047,\n    0.046200230717659,\n    0.08242049068212509,\n    0.002004391048103571,\n    -0.05084102600812912,\n    0.00014128901239018887,\n    -0.06834156811237335,\n    0.023996345698833466,\n    -0.06384843587875366,\n    0.06838133186101913,\n    -0.06492964178323746,\n    0.07398099452257156,\n    -0.06400138884782791,\n    -0.036737922579050064,\n    0.030775820836424828,\n    -0.054944220930337906,\n    0.0034829869400709867,\n    0.03526708111166954,\n    -0.03512699902057648,\n    0.067007876932621,\n    0.020449507981538773,\n    0.014559870585799217,\n    0.07909759879112244,\n    0.034071072936058044,\n    0.03319607675075531,\n    0.008030635304749012,\n    -0.06328096240758896,\n    -0.031155655160546303\n  ],\n  \"provenance\": {\n    \"markdown\": {\n      \"origin\": \"user\"\n    },\n    \"vector\": {\n      \"origin\": \"derived\",\n      \"derivedFrom\": \"markdown\",\n      \"model\": \"Xenova/all-MiniLM-L6-v2\"\n    }\n  },\n  \"assertionStatus\": null,\n  \"ledgerRef\": null\n}"
+            }
+          ],
+          "structuredContent": {
+            "id": "11111111-1111-4111-8111-000000000002",
+            "namespace": "default",
+            "version": 1,
+            "createdAt": 1791072000000,
+            "updatedAt": 1791072000000,
+            "tags": [
+              "notes"
+            ],
+            "markdown": "# Deployment checklist\n\nRotate the canister controller keys before every mainnet upgrade.",
+            "thoughtform": null,
+            "embedding": [
+              0.037360962480306625,
+              -0.040030233561992645,
+              -0.01625010557472706,
+              -0.070064477622509,
+              0.05174640193581581,
+              0.01403818093240261,
+              0.0730171799659729,
+              -0.08015956729650497,
+              -0.041842032223939896,
+              0.07072977721691132,
+              0.14968165755271912,
+              0.11291729658842087,
+              0.013728169724345207,
+              -0.01562470756471157,
+              -0.005629267543554306,
+              0.08792532235383987,
+              -0.01920316182076931,
+              -0.04245856776833534,
+              -0.03436395898461342,
+              0.004636284429579973,
+              0.012583241797983646,
+              0.009469583630561829,
+              0.013538863509893417,
+              0.042938102036714554,
+              -0.05445889011025429,
+              0.02524412050843239,
+              -0.05531919375061989,
+              0.016668159514665604,
+              -0.029488150030374527,
+              -0.05266527831554413,
+              -0.13281114399433136,
+              0.053359441459178925,
+              -0.07693073898553848,
+              -0.003200887469574809,
+              0.06056226044893265,
+              -0.0369081050157547,
+              0.025477973744273186,
+              0.06454034894704819,
+              0.02918495424091816,
+              -0.05605824291706085,
+              0.027561182156205177,
+              -0.010368750430643559,
+              0.04210386797785759,
+              0.03720821440219879,
+              -0.03903349116444588,
+              0.04033667966723442,
+              0.00042182925972156227,
+              -0.030065178871154785,
+              0.05949701741337776,
+              -0.047129563987255096,
+              0.05794626846909523,
+              -0.018103592097759247,
+              0.031993184238672256,
+              -0.049440160393714905,
+              0.04229605570435524,
+              0.028605114668607712,
+              -0.040278270840644836,
+              -0.0524897426366806,
+              0.1036645844578743,
+              -0.01474724244326353,
+              0.026289355009794235,
+              0.03431195020675659,
+              -0.01675581932067871,
+              -0.007740417029708624,
+              -0.08377546072006226,
+              0.005897304508835077,
+              0.06910043209791183,
+              -0.09614229202270508,
+              0.029451899230480194,
+              -0.030792750418186188,
+              0.020629899576306343,
+              0.054008498787879944,
+              0.033888570964336395,
+              -0.020982705056667328,
+              0.015837321057915688,
+              0.05498844385147095,
+              0.031697142869234085,
+              -0.0040245745331048965,
+              0.026685839518904686,
+              -0.0691101998090744,
+              -0.024748453870415688,
+              0.03099318966269493,
+              0.017191726714372635,
+              0.03935237228870392,
+              0.0070902276784181595,
+              -0.037077464163303375,
+              -0.09713565558195114,
+              -0.03543929010629654,
+              -0.004431900102645159,
+              0.019625796005129814,
+              -0.022528614848852158,
+              -0.11367148160934448,
+              0.0856129452586174,
+              0.030248375609517097,
+              -0.06627298146486282,
+              0.03966781124472618,
+              -0.04855544492602348,
+              -0.06729383766651154,
+              -0.07578874379396439,
+              0.038854606449604034,
+              -0.028267866000533104,
+              -0.0874798595905304,
+              0.05407203733921051,
+              0.026332691311836243,
+              0.009657880291342735,
+              0.03390797972679138,
+              0.09123781323432922,
+              -0.0004311056691221893,
+              -0.06880295276641846,
+              -0.07428756356239319,
+              -0.04760017618536949,
+              0.05584735423326492,
+              0.02679484896361828,
+              -0.047573503106832504,
+              -0.03653285652399063,
+              0.03651959449052811,
+              -0.021737659350037575,
+              -0.004508694633841515,
+              -0.05702107027173042,
+              0.01948794163763523,
+              0.004117369651794434,
+              -0.04975120350718498,
+              -0.0012772732879966497,
+              -0.011805922724306583,
+              -0.015970097854733467,
+              0.07513125985860825,
+              -0.051747627556324005,
+              1.7661742009677406e-33,
+              0.04909685254096985,
+              0.06626510620117188,
+              -0.01580926589667797,
+              0.10514847189188004,
+              -0.0008184522157534957,
+              0.0035071291495114565,
+              0.10026828944683075,
+              -0.030127085745334625,
+              0.04761123284697533,
+              -0.02419339492917061,
+              -0.006658133119344711,
+              0.0017183595336973667,
+              -0.07516437768936157,
+              -0.06568585336208344,
+              -0.017222139984369278,
+              -0.14781811833381653,
+              0.017841437831521034,
+              0.0914306789636612,
+              0.0562710203230381,
+              -0.05628076568245888,
+              0.006193163339048624,
+              -0.01675444096326828,
+              -0.037477295845746994,
+              -0.09635143727064133,
+              0.05819305032491684,
+              0.032759975641965866,
+              -0.006579753942787647,
+              0.041742317378520966,
+              0.022153547033667564,
+              0.05312168598175049,
+              0.04019252210855484,
+              0.04818367213010788,
+              0.025620967149734497,
+              -0.029230479151010513,
+              -0.08793974667787552,
+              -0.02770065888762474,
+              0.01663062535226345,
+              -0.01730627939105034,
+              -0.011718456633388996,
+              -0.028830453753471375,
+              -0.089372918009758,
+              -0.022477228194475174,
+              -0.12420438230037689,
+              -0.030659949406981468,
+              0.048406511545181274,
+              0.007543145678937435,
+              0.003835401963442564,
+              0.02520175650715828,
+              0.1407908797264099,
+              -0.013603181578218937,
+              -0.009527944028377533,
+              0.049784719944000244,
+              0.004879704210907221,
+              -0.005896578077226877,
+              -0.003430468961596489,
+              -0.017770588397979736,
+              0.08249155431985855,
+              0.020357770845294,
+              0.04020925983786583,
+              0.06629668176174164,
+              -0.07130461186170578,
+              -0.007569143548607826,
+              -0.062390897423028946,
+              -0.01606828160583973,
+              0.06442113220691681,
+              -0.02957221120595932,
+              0.018010158091783524,
+              0.04552594572305679,
+              0.010108168236911297,
+              0.01573626510798931,
+              -0.02698524482548237,
+              -0.03283666446805,
+              -0.02281128242611885,
+              0.03141167387366295,
+              -0.009350833483040333,
+              -0.028939587995409966,
+              -0.0936722606420517,
+              0.013841083273291588,
+              0.01656988263130188,
+              0.014543146826326847,
+              0.01809054985642433,
+              0.046751853078603745,
+              -0.045089591294527054,
+              0.07162012159824371,
+              0.024011222645640373,
+              0.0006744149723090231,
+              -0.0022962759248912334,
+              -0.042582917958498,
+              0.012997189536690712,
+              0.05292484536767006,
+              0.03748700022697449,
+              0.009937971830368042,
+              0.012909782119095325,
+              0.015714647248387337,
+              -0.06052963435649872,
+              -1.283593913349859e-33,
+              0.0022379837464541197,
+              0.0034069984685629606,
+              -0.05889047309756279,
+              0.059376638382673264,
+              -0.022661292925477028,
+              -0.020436007529497147,
+              -0.044921617954969406,
+              0.049559418112039566,
+              0.0018125405767932534,
+              -0.04262753948569298,
+              0.12811635434627533,
+              0.03691345080733299,
+              -0.044005632400512695,
+              -0.03475435823202133,
+              -0.040165141224861145,
+              -0.0005318674957379699,
+              -0.0579448901116848,
+              0.024639800190925598,
+              0.047901034355163574,
+              0.029888229444622993,
+              0.03540433570742607,
+              0.004111494868993759,
+              -0.08136121183633804,
+              0.04071928560733795,
+              -0.07842285186052322,
+              0.011924206279218197,
+              -0.04039856791496277,
+              0.14126655459403992,
+              0.08880037069320679,
+              0.04331335425376892,
+              0.06284387409687042,
+              -0.022006485611200333,
+              0.009486659429967403,
+              -0.009858955629169941,
+              -0.011304104700684547,
+              0.004510010592639446,
+              -0.09573867172002792,
+              0.03927243500947952,
+              -0.04798537865281105,
+              0.057876333594322205,
+              0.01997864805161953,
+              -0.029757454991340637,
+              0.03779225796461105,
+              -0.03778340294957161,
+              -0.08379102498292923,
+              -0.03705470263957977,
+              0.10654149949550629,
+              -0.09075845032930374,
+              0.005659068468958139,
+              0.006885389797389507,
+              -0.051416829228401184,
+              -0.04707680270075798,
+              0.009991386905312538,
+              -0.010010527446866035,
+              0.004235521890223026,
+              0.06979316473007202,
+              0.07444219291210175,
+              0.06653054058551788,
+              0.01037429179996252,
+              0.03714350610971451,
+              0.04396535083651543,
+              -0.008067052811384201,
+              0.01910567469894886,
+              -0.045250214636325836,
+              -0.012808935716748238,
+              0.040303848683834076,
+              0.02067134715616703,
+              0.04748894274234772,
+              0.027138428762555122,
+              0.02552763558924198,
+              -0.033777784556150436,
+              -0.040606237947940826,
+              -0.041354015469551086,
+              -0.05412480980157852,
+              -0.0606275238096714,
+              -0.11287478357553482,
+              0.07834677398204803,
+              -0.06715694814920425,
+              0.04915692284703255,
+              -0.09240901470184326,
+              -0.06521438807249069,
+              -0.07619786262512207,
+              -0.08752628415822983,
+              -0.039071209728717804,
+              -0.0030127549543976784,
+              -0.026826828718185425,
+              0.043285202234983444,
+              0.01619935967028141,
+              0.04639662057161331,
+              0.030746953561902046,
+              -0.06279731541872025,
+              -0.06205879524350166,
+              0.0011015967465937138,
+              -0.010423489846289158,
+              0.012511102482676506,
+              -1.9722545374634137e-8,
+              -0.06729955971240997,
+              0.10614839941263199,
+              0.02180975116789341,
+              0.05468740314245224,
+              0.051725175231695175,
+              0.004572094883769751,
+              0.08157046139240265,
+              0.030437350273132324,
+              -0.041568491607904434,
+              -0.0034567946568131447,
+              0.02286064252257347,
+              0.08392176777124405,
+              0.006683246698230505,
+              0.010719678364694118,
+              0.04017569497227669,
+              0.05227211117744446,
+              -0.09965720772743225,
+              0.05825386941432953,
+              0.005793849006295204,
+              -0.10425723344087601,
+              -0.10476888716220856,
+              -0.010369377210736275,
+              0.06033004820346832,
+              0.011449686251580715,
+              -0.06115240976214409,
+              0.04827158898115158,
+              0.010528969578444958,
+              0.040629684925079346,
+              0.10850821435451508,
+              0.08965262770652771,
+              -0.026578295975923538,
+              -0.04064210504293442,
+              0.019472356885671616,
+              -0.015067020431160927,
+              -0.013908582739531994,
+              0.10257448256015778,
+              -0.029225917533040047,
+              0.046200230717659,
+              0.08242049068212509,
+              0.002004391048103571,
+              -0.05084102600812912,
+              0.00014128901239018887,
+              -0.06834156811237335,
+              0.023996345698833466,
+              -0.06384843587875366,
+              0.06838133186101913,
+              -0.06492964178323746,
+              0.07398099452257156,
+              -0.06400138884782791,
+              -0.036737922579050064,
+              0.030775820836424828,
+              -0.054944220930337906,
+              0.0034829869400709867,
+              0.03526708111166954,
+              -0.03512699902057648,
+              0.067007876932621,
+              0.020449507981538773,
+              0.014559870585799217,
+              0.07909759879112244,
+              0.034071072936058044,
+              0.03319607675075531,
+              0.008030635304749012,
+              -0.06328096240758896,
+              -0.031155655160546303
+            ],
+            "provenance": {
+              "markdown": {
+                "origin": "user"
+              },
+              "vector": {
+                "origin": "derived",
+                "derivedFrom": "markdown",
+                "model": "Xenova/all-MiniLM-L6-v2"
+              }
+            },
+            "assertionStatus": null,
+            "ledgerRef": null
+          }
+        },
+        "jsonrpc": "2.0",
+        "id": 5
+      }
+    },
+    "search_concepts": {
+      "note": "score = (1 + cosine) / 2 in [0, 1], higher is better; every concept in the namespace with a vector is ranked, so filter by score on the client.",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 6,
+        "method": "tools/call",
+        "params": {
+          "name": "search_concepts",
+          "arguments": {
+            "query": "refactor the parser",
+            "k": 5
+          }
+        }
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"results\": [\n    {\n      \"id\": \"11111111-1111-4111-8111-000000000001\",\n      \"namespace\": \"default\",\n      \"score\": 0.7312387228012085,\n      \"tags\": [\n        \"orchestration\",\n        \"session:session-1\"\n      ],\n      \"representations\": {\n        \"vector\": true,\n        \"markdown\": true,\n        \"thoughtform\": false\n      },\n      \"assertionStatus\": null\n    },\n    {\n      \"id\": \"11111111-1111-4111-8111-000000000002\",\n      \"namespace\": \"default\",\n      \"score\": 0.4710688591003418,\n      \"tags\": [\n        \"notes\"\n      ],\n      \"representations\": {\n        \"vector\": true,\n        \"markdown\": true,\n        \"thoughtform\": false\n      },\n      \"assertionStatus\": null\n    }\n  ]\n}"
+            }
+          ],
+          "structuredContent": {
+            "results": [
+              {
+                "id": "11111111-1111-4111-8111-000000000001",
+                "namespace": "default",
+                "score": 0.7312387228012085,
+                "tags": [
+                  "orchestration",
+                  "session:session-1"
+                ],
+                "representations": {
+                  "vector": true,
+                  "markdown": true,
+                  "thoughtform": false
+                },
+                "assertionStatus": null
+              },
+              {
+                "id": "11111111-1111-4111-8111-000000000002",
+                "namespace": "default",
+                "score": 0.4710688591003418,
+                "tags": [
+                  "notes"
+                ],
+                "representations": {
+                  "vector": true,
+                  "markdown": true,
+                  "thoughtform": false
+                },
+                "assertionStatus": null
+              }
+            ]
+          }
+        },
+        "jsonrpc": "2.0",
+        "id": 6
+      }
+    },
+    "read_concept": {
+      "note": "As AgentVault sends it: { id } returns every representation, including the 384-float embedding.",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "method": "tools/call",
+        "params": {
+          "name": "read_concept",
+          "arguments": {
+            "id": "11111111-1111-4111-8111-000000000001"
+          }
+        }
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"id\": \"11111111-1111-4111-8111-000000000001\",\n  \"namespace\": \"default\",\n  \"version\": 1,\n  \"createdAt\": 1791072000000,\n  \"updatedAt\": 1791072000000,\n  \"tags\": [\n    \"orchestration\",\n    \"session:session-1\"\n  ],\n  \"provenance\": {\n    \"markdown\": {\n      \"origin\": \"user\"\n    },\n    \"vector\": {\n      \"origin\": \"derived\",\n      \"derivedFrom\": \"markdown\",\n      \"model\": \"Xenova/all-MiniLM-L6-v2\"\n    }\n  },\n  \"assertionStatus\": null,\n  \"ledgerRef\": null,\n  \"markdown\": \"# Orchestration Result: session-1\\n\\n## Task\\nRefactor the parser to stream tokens\\n\\n## Files Changed\\n- src/parser.ts\\n- tests/parser.test.ts\\n\\n## Result\\nReplaced the recursive descent loop with a streaming tokenizer.\",\n  \"embedding\": [\n    -0.04613310098648071,\n    -0.012748509645462036,\n    0.015912210568785667,\n    0.006855312269181013,\n    -0.04891939088702202,\n    -0.03857812657952309,\n    0.0354711189866066,\n    0.05510374531149864,\n    -0.032203685492277145,\n    0.07496120780706406,\n    -0.057302363216876984,\n    -0.01918930746614933,\n    -0.07839524745941162,\n    0.07099620252847672,\n    0.0549192912876606,\n    -0.053953345865011215,\n    0.010635214857757092,\n    -0.0013543595559895039,\n    0.001288343803025782,\n    -0.11843369156122208,\n    0.0020332871936261654,\n    0.013527186587452888,\n    -0.04509503394365311,\n    -0.024816950783133507,\n    0.05569719523191452,\n    0.03946099802851677,\n    -0.053857479244470596,\n    -0.09120076149702072,\n    0.06283773481845856,\n    0.039698872715234756,\n    0.042711853981018066,\n    0.006354444660246372,\n    -0.031502630561590195,\n    0.02034897357225418,\n    0.0756249949336052,\n    0.06095840409398079,\n    0.08882945775985718,\n    -0.03711060434579849,\n    0.04037684202194214,\n    0.013435913249850273,\n    0.0794830247759819,\n    0.002478394890204072,\n    -0.04049982875585556,\n    -0.06627095490694046,\n    0.006496054120361805,\n    -0.03096397966146469,\n    -0.029865974560379982,\n    -0.04755916818976402,\n    -0.1239505186676979,\n    0.05255322903394699,\n    -0.026497922837734222,\n    -0.003636839333921671,\n    -0.02257591485977173,\n    0.0338393896818161,\n    -0.02269325964152813,\n    -0.011335095390677452,\n    -0.02255551517009735,\n    0.08260886371135712,\n    0.04081125929951668,\n    -0.005072351079434156,\n    -0.00020137419051025063,\n    -0.1062297523021698,\n    -0.02617698535323143,\n    -0.045008860528469086,\n    0.02250584401190281,\n    0.03197309747338295,\n    -0.014835198409855366,\n    0.022844858467578888,\n    0.0756683349609375,\n    -0.016284361481666565,\n    -0.03299333155155182,\n    0.03892448544502258,\n    -0.01315609086304903,\n    -0.003396941116079688,\n    0.0025704160798341036,\n    -0.008484934456646442,\n    0.028991540893912315,\n    -0.014500033110380173,\n    0.0065390500240027905,\n    -0.11228013038635254,\n    0.08955153077840805,\n    -0.02141728438436985,\n    0.05664140358567238,\n    0.016592836007475853,\n    0.02201012521982193,\n    0.002872083568945527,\n    0.02585664577782154,\n    -0.010347899049520493,\n    0.00644940510392189,\n    -0.0015516055282205343,\n    -0.047674134373664856,\n    -0.07143115997314453,\n    0.020579447969794273,\n    0.030747300013899803,\n    -0.030611634254455566,\n    0.06529691815376282,\n    -0.11216814815998077,\n    -0.010171807371079922,\n    0.0733080506324768,\n    0.06339976191520691,\n    -0.037433985620737076,\n    0.042458489537239075,\n    0.08359304070472717,\n    -0.0679313912987709,\n    -0.06421196460723877,\n    -0.004210920538753271,\n    -0.0007920024218037724,\n    0.031019024550914764,\n    0.07294788956642151,\n    -0.06256753206253052,\n    -0.006547387223690748,\n    0.10720334947109222,\n    0.023650411516427994,\n    -0.007862657308578491,\n    -0.03322086110711098,\n    -0.06932225823402405,\n    -0.014145140536129475,\n    0.0017764295917004347,\n    -0.016449715942144394,\n    0.14206133782863617,\n    0.0038943986874073744,\n    -0.023066483438014984,\n    -0.12456014752388,\n    0.05921727418899536,\n    0.03318743035197258,\n    -0.016790151596069336,\n    0.0408821627497673,\n    4.4689025874600147e-33,\n    -0.03956626355648041,\n    -0.04672122374176979,\n    0.014606192708015442,\n    0.006486567202955484,\n    0.08190029114484787,\n    -0.007369350176304579,\n    0.0333537720143795,\n    -0.020195497199892998,\n    -0.06170688197016716,\n    0.02092151530086994,\n    0.008245249278843403,\n    -0.05941743403673172,\n    -0.008638644590973854,\n    0.001031824853271246,\n    -0.041673582047224045,\n    -0.10202859342098236,\n    -0.024162407964468002,\n    0.026300372555851936,\n    0.008728737942874432,\n    -0.010975420475006104,\n    0.01364661380648613,\n    0.025636564940214157,\n    -0.05801285430788994,\n    -0.059522394090890884,\n    0.035150911659002304,\n    -0.002259307773783803,\n    0.051563385874032974,\n    -0.03630853444337845,\n    0.035997603088617325,\n    0.011549616232514381,\n    0.025835581123828888,\n    -0.02951475791633129,\n    0.003791739931330085,\n    0.08351636677980423,\n    0.02301865629851818,\n    -0.03339223936200142,\n    0.08822270482778549,\n    0.002978759352117777,\n    -0.03213168680667877,\n    -0.07223591208457947,\n    -0.04976723715662956,\n    0.012048655189573765,\n    -0.1110086739063263,\n    0.07282283157110214,\n    -0.09622146189212799,\n    -0.0715673416852951,\n    -0.0780363455414772,\n    0.008665192872285843,\n    0.12417330592870712,\n    -0.04538082703948021,\n    0.005627042148262262,\n    0.12848694622516632,\n    0.011172267608344555,\n    -0.03741872310638428,\n    0.0764637440443039,\n    0.008308553136885166,\n    -0.017337974160909653,\n    0.07396844774484634,\n    0.07793664187192917,\n    0.006020266097038984,\n    0.09149061143398285,\n    -0.008192179724574089,\n    -0.09206485003232956,\n    -0.010632866993546486,\n    0.07470576465129852,\n    0.0004642599087674171,\n    0.03174455836415291,\n    -0.05127379670739174,\n    0.03672051802277565,\n    -0.005879763048142195,\n    -0.09059371054172516,\n    0.02895066887140274,\n    -0.04706611484289169,\n    -0.00866930466145277,\n    0.08932662755250931,\n    -0.01803259737789631,\n    0.027624735608696938,\n    0.04297681152820587,\n    -0.06862486898899078,\n    -0.06693480908870697,\n    -0.035333480685949326,\n    -0.06393139064311981,\n    -0.019425371661782265,\n    0.06689534336328506,\n    -0.008706772699952126,\n    -0.014421708881855011,\n    -0.06978286802768707,\n    -0.12094201892614365,\n    -0.015323011204600334,\n    -0.07914123684167862,\n    0.005758472252637148,\n    0.008670556358993053,\n    -0.007355412468314171,\n    0.045918986201286316,\n    -0.0031027242075651884,\n    -2.7837001107967596e-33,\n    0.05388498678803444,\n    0.03862050175666809,\n    -0.12407632917165756,\n    0.037606701254844666,\n    -0.0036371557507663965,\n    -0.03575053811073303,\n    0.06927372515201569,\n    -0.03186938166618347,\n    -0.054186150431632996,\n    0.0582975335419178,\n    0.01857748068869114,\n    -0.004726753104478121,\n    -0.08373624831438065,\n    0.047685135155916214,\n    -0.050010763108730316,\n    0.047602612525224686,\n    0.0532790943980217,\n    -0.032735083252191544,\n    0.013180469162762165,\n    -0.06350047886371613,\n    -0.013526104390621185,\n    0.09897937625646591,\n    0.04393826425075531,\n    0.023515131324529648,\n    -0.04654275253415108,\n    0.0647190734744072,\n    0.03276563435792923,\n    0.09577996283769608,\n    0.043667811900377274,\n    0.013649133034050465,\n    -0.001993844285607338,\n    0.03822352737188339,\n    -0.020605172961950302,\n    -0.023823540657758713,\n    -0.05341266468167305,\n    0.011095949448645115,\n    0.005366974044591188,\n    0.025084620341658592,\n    -0.033149782568216324,\n    0.021383795887231827,\n    0.029938651248812675,\n    0.01024253387004137,\n    0.026477830484509468,\n    0.04159225896000862,\n    0.03780035674571991,\n    -0.007736627012491226,\n    0.050765350461006165,\n    0.03863302618265152,\n    -0.0980570912361145,\n    -0.017839465290308,\n    0.019992154091596603,\n    -0.025371549651026726,\n    -0.04245670512318611,\n    -0.012576195411384106,\n    -0.018455203622579575,\n    -0.01293803472071886,\n    0.08321546763181686,\n    -0.15783649682998657,\n    -0.10850131511688232,\n    -0.06274770200252533,\n    0.03773748129606247,\n    0.010456643998622894,\n    0.06151839345693588,\n    0.0002772341831587255,\n    0.08051491528749466,\n    -0.002038111910223961,\n    -0.03567546233534813,\n    0.005420310888439417,\n    0.0364471971988678,\n    0.02129804901778698,\n    0.02293490432202816,\n    -0.01349907647818327,\n    -0.023929590359330177,\n    0.041186291724443436,\n    0.05235826224088669,\n    -0.030378783121705055,\n    -0.04626148194074631,\n    -0.02942575328052044,\n    0.04085347056388855,\n    -0.000676793628372252,\n    -0.084424689412117,\n    0.0017156448448076844,\n    -0.0511200912296772,\n    0.024784840643405914,\n    0.06445381790399551,\n    0.005510706454515457,\n    0.03857964649796486,\n    0.0983314961194992,\n    -0.004468277562409639,\n    0.06631074845790863,\n    0.0215930063277483,\n    -0.025490866973996162,\n    0.04054206237196922,\n    0.05060713738203049,\n    0.08054140210151672,\n    -3.479100030290283e-8,\n    -0.11550859361886978,\n    -0.05028581619262695,\n    -0.13718697428703308,\n    0.0989462360739708,\n    -0.005669198930263519,\n    0.022150371223688126,\n    -0.0632956475019455,\n    0.00963536649942398,\n    -0.003806011751294136,\n    -0.06546169519424438,\n    -0.06740476191043854,\n    -0.0420151948928833,\n    0.049821991473436356,\n    0.01264283712953329,\n    0.04793068394064903,\n    0.0017957056406885386,\n    -0.0007821356412023306,\n    0.009779125452041626,\n    -0.05213240906596184,\n    -0.009225869551301003,\n    0.0003630924329627305,\n    0.03231755271553993,\n    0.024732785299420357,\n    0.01740196719765663,\n    -0.0008513580542057753,\n    0.06799672544002533,\n    0.09199225157499313,\n    0.02615121565759182,\n    -0.02646036446094513,\n    -0.014050574973225594,\n    -0.02705594152212143,\n    0.08995194733142853,\n    -0.044238459318876266,\n    -0.06217067316174507,\n    -0.04128839075565338,\n    0.07233714312314987,\n    -0.004639112390577793,\n    0.029417462646961212,\n    -0.003135878359898925,\n    0.043212875723838806,\n    0.022712409496307373,\n    0.04728778451681137,\n    -0.017168162390589714,\n    0.07076007127761841,\n    -0.05725323408842087,\n    -0.053386956453323364,\n    -0.08478264510631561,\n    0.05980638042092323,\n    0.06771960854530334,\n    -0.09565390646457672,\n    0.00874214619398117,\n    0.012521718628704548,\n    -0.1155027374625206,\n    0.048043712973594666,\n    0.018720334395766258,\n    -0.02024630643427372,\n    0.004537761677056551,\n    -0.03752389922738075,\n    -0.005365511868149042,\n    0.04618242010474205,\n    0.07206013798713684,\n    0.009424405172467232,\n    -0.018664196133613586,\n    -0.052856527268886566\n  ]\n}"
+            }
+          ],
+          "structuredContent": {
+            "id": "11111111-1111-4111-8111-000000000001",
+            "namespace": "default",
+            "version": 1,
+            "createdAt": 1791072000000,
+            "updatedAt": 1791072000000,
+            "tags": [
+              "orchestration",
+              "session:session-1"
+            ],
+            "provenance": {
+              "markdown": {
+                "origin": "user"
+              },
+              "vector": {
+                "origin": "derived",
+                "derivedFrom": "markdown",
+                "model": "Xenova/all-MiniLM-L6-v2"
+              }
+            },
+            "assertionStatus": null,
+            "ledgerRef": null,
+            "markdown": "# Orchestration Result: session-1\n\n## Task\nRefactor the parser to stream tokens\n\n## Files Changed\n- src/parser.ts\n- tests/parser.test.ts\n\n## Result\nReplaced the recursive descent loop with a streaming tokenizer.",
+            "embedding": [
+              -0.04613310098648071,
+              -0.012748509645462036,
+              0.015912210568785667,
+              0.006855312269181013,
+              -0.04891939088702202,
+              -0.03857812657952309,
+              0.0354711189866066,
+              0.05510374531149864,
+              -0.032203685492277145,
+              0.07496120780706406,
+              -0.057302363216876984,
+              -0.01918930746614933,
+              -0.07839524745941162,
+              0.07099620252847672,
+              0.0549192912876606,
+              -0.053953345865011215,
+              0.010635214857757092,
+              -0.0013543595559895039,
+              0.001288343803025782,
+              -0.11843369156122208,
+              0.0020332871936261654,
+              0.013527186587452888,
+              -0.04509503394365311,
+              -0.024816950783133507,
+              0.05569719523191452,
+              0.03946099802851677,
+              -0.053857479244470596,
+              -0.09120076149702072,
+              0.06283773481845856,
+              0.039698872715234756,
+              0.042711853981018066,
+              0.006354444660246372,
+              -0.031502630561590195,
+              0.02034897357225418,
+              0.0756249949336052,
+              0.06095840409398079,
+              0.08882945775985718,
+              -0.03711060434579849,
+              0.04037684202194214,
+              0.013435913249850273,
+              0.0794830247759819,
+              0.002478394890204072,
+              -0.04049982875585556,
+              -0.06627095490694046,
+              0.006496054120361805,
+              -0.03096397966146469,
+              -0.029865974560379982,
+              -0.04755916818976402,
+              -0.1239505186676979,
+              0.05255322903394699,
+              -0.026497922837734222,
+              -0.003636839333921671,
+              -0.02257591485977173,
+              0.0338393896818161,
+              -0.02269325964152813,
+              -0.011335095390677452,
+              -0.02255551517009735,
+              0.08260886371135712,
+              0.04081125929951668,
+              -0.005072351079434156,
+              -0.00020137419051025063,
+              -0.1062297523021698,
+              -0.02617698535323143,
+              -0.045008860528469086,
+              0.02250584401190281,
+              0.03197309747338295,
+              -0.014835198409855366,
+              0.022844858467578888,
+              0.0756683349609375,
+              -0.016284361481666565,
+              -0.03299333155155182,
+              0.03892448544502258,
+              -0.01315609086304903,
+              -0.003396941116079688,
+              0.0025704160798341036,
+              -0.008484934456646442,
+              0.028991540893912315,
+              -0.014500033110380173,
+              0.0065390500240027905,
+              -0.11228013038635254,
+              0.08955153077840805,
+              -0.02141728438436985,
+              0.05664140358567238,
+              0.016592836007475853,
+              0.02201012521982193,
+              0.002872083568945527,
+              0.02585664577782154,
+              -0.010347899049520493,
+              0.00644940510392189,
+              -0.0015516055282205343,
+              -0.047674134373664856,
+              -0.07143115997314453,
+              0.020579447969794273,
+              0.030747300013899803,
+              -0.030611634254455566,
+              0.06529691815376282,
+              -0.11216814815998077,
+              -0.010171807371079922,
+              0.0733080506324768,
+              0.06339976191520691,
+              -0.037433985620737076,
+              0.042458489537239075,
+              0.08359304070472717,
+              -0.0679313912987709,
+              -0.06421196460723877,
+              -0.004210920538753271,
+              -0.0007920024218037724,
+              0.031019024550914764,
+              0.07294788956642151,
+              -0.06256753206253052,
+              -0.006547387223690748,
+              0.10720334947109222,
+              0.023650411516427994,
+              -0.007862657308578491,
+              -0.03322086110711098,
+              -0.06932225823402405,
+              -0.014145140536129475,
+              0.0017764295917004347,
+              -0.016449715942144394,
+              0.14206133782863617,
+              0.0038943986874073744,
+              -0.023066483438014984,
+              -0.12456014752388,
+              0.05921727418899536,
+              0.03318743035197258,
+              -0.016790151596069336,
+              0.0408821627497673,
+              4.4689025874600147e-33,
+              -0.03956626355648041,
+              -0.04672122374176979,
+              0.014606192708015442,
+              0.006486567202955484,
+              0.08190029114484787,
+              -0.007369350176304579,
+              0.0333537720143795,
+              -0.020195497199892998,
+              -0.06170688197016716,
+              0.02092151530086994,
+              0.008245249278843403,
+              -0.05941743403673172,
+              -0.008638644590973854,
+              0.001031824853271246,
+              -0.041673582047224045,
+              -0.10202859342098236,
+              -0.024162407964468002,
+              0.026300372555851936,
+              0.008728737942874432,
+              -0.010975420475006104,
+              0.01364661380648613,
+              0.025636564940214157,
+              -0.05801285430788994,
+              -0.059522394090890884,
+              0.035150911659002304,
+              -0.002259307773783803,
+              0.051563385874032974,
+              -0.03630853444337845,
+              0.035997603088617325,
+              0.011549616232514381,
+              0.025835581123828888,
+              -0.02951475791633129,
+              0.003791739931330085,
+              0.08351636677980423,
+              0.02301865629851818,
+              -0.03339223936200142,
+              0.08822270482778549,
+              0.002978759352117777,
+              -0.03213168680667877,
+              -0.07223591208457947,
+              -0.04976723715662956,
+              0.012048655189573765,
+              -0.1110086739063263,
+              0.07282283157110214,
+              -0.09622146189212799,
+              -0.0715673416852951,
+              -0.0780363455414772,
+              0.008665192872285843,
+              0.12417330592870712,
+              -0.04538082703948021,
+              0.005627042148262262,
+              0.12848694622516632,
+              0.011172267608344555,
+              -0.03741872310638428,
+              0.0764637440443039,
+              0.008308553136885166,
+              -0.017337974160909653,
+              0.07396844774484634,
+              0.07793664187192917,
+              0.006020266097038984,
+              0.09149061143398285,
+              -0.008192179724574089,
+              -0.09206485003232956,
+              -0.010632866993546486,
+              0.07470576465129852,
+              0.0004642599087674171,
+              0.03174455836415291,
+              -0.05127379670739174,
+              0.03672051802277565,
+              -0.005879763048142195,
+              -0.09059371054172516,
+              0.02895066887140274,
+              -0.04706611484289169,
+              -0.00866930466145277,
+              0.08932662755250931,
+              -0.01803259737789631,
+              0.027624735608696938,
+              0.04297681152820587,
+              -0.06862486898899078,
+              -0.06693480908870697,
+              -0.035333480685949326,
+              -0.06393139064311981,
+              -0.019425371661782265,
+              0.06689534336328506,
+              -0.008706772699952126,
+              -0.014421708881855011,
+              -0.06978286802768707,
+              -0.12094201892614365,
+              -0.015323011204600334,
+              -0.07914123684167862,
+              0.005758472252637148,
+              0.008670556358993053,
+              -0.007355412468314171,
+              0.045918986201286316,
+              -0.0031027242075651884,
+              -2.7837001107967596e-33,
+              0.05388498678803444,
+              0.03862050175666809,
+              -0.12407632917165756,
+              0.037606701254844666,
+              -0.0036371557507663965,
+              -0.03575053811073303,
+              0.06927372515201569,
+              -0.03186938166618347,
+              -0.054186150431632996,
+              0.0582975335419178,
+              0.01857748068869114,
+              -0.004726753104478121,
+              -0.08373624831438065,
+              0.047685135155916214,
+              -0.050010763108730316,
+              0.047602612525224686,
+              0.0532790943980217,
+              -0.032735083252191544,
+              0.013180469162762165,
+              -0.06350047886371613,
+              -0.013526104390621185,
+              0.09897937625646591,
+              0.04393826425075531,
+              0.023515131324529648,
+              -0.04654275253415108,
+              0.0647190734744072,
+              0.03276563435792923,
+              0.09577996283769608,
+              0.043667811900377274,
+              0.013649133034050465,
+              -0.001993844285607338,
+              0.03822352737188339,
+              -0.020605172961950302,
+              -0.023823540657758713,
+              -0.05341266468167305,
+              0.011095949448645115,
+              0.005366974044591188,
+              0.025084620341658592,
+              -0.033149782568216324,
+              0.021383795887231827,
+              0.029938651248812675,
+              0.01024253387004137,
+              0.026477830484509468,
+              0.04159225896000862,
+              0.03780035674571991,
+              -0.007736627012491226,
+              0.050765350461006165,
+              0.03863302618265152,
+              -0.0980570912361145,
+              -0.017839465290308,
+              0.019992154091596603,
+              -0.025371549651026726,
+              -0.04245670512318611,
+              -0.012576195411384106,
+              -0.018455203622579575,
+              -0.01293803472071886,
+              0.08321546763181686,
+              -0.15783649682998657,
+              -0.10850131511688232,
+              -0.06274770200252533,
+              0.03773748129606247,
+              0.010456643998622894,
+              0.06151839345693588,
+              0.0002772341831587255,
+              0.08051491528749466,
+              -0.002038111910223961,
+              -0.03567546233534813,
+              0.005420310888439417,
+              0.0364471971988678,
+              0.02129804901778698,
+              0.02293490432202816,
+              -0.01349907647818327,
+              -0.023929590359330177,
+              0.041186291724443436,
+              0.05235826224088669,
+              -0.030378783121705055,
+              -0.04626148194074631,
+              -0.02942575328052044,
+              0.04085347056388855,
+              -0.000676793628372252,
+              -0.084424689412117,
+              0.0017156448448076844,
+              -0.0511200912296772,
+              0.024784840643405914,
+              0.06445381790399551,
+              0.005510706454515457,
+              0.03857964649796486,
+              0.0983314961194992,
+              -0.004468277562409639,
+              0.06631074845790863,
+              0.0215930063277483,
+              -0.025490866973996162,
+              0.04054206237196922,
+              0.05060713738203049,
+              0.08054140210151672,
+              -3.479100030290283e-8,
+              -0.11550859361886978,
+              -0.05028581619262695,
+              -0.13718697428703308,
+              0.0989462360739708,
+              -0.005669198930263519,
+              0.022150371223688126,
+              -0.0632956475019455,
+              0.00963536649942398,
+              -0.003806011751294136,
+              -0.06546169519424438,
+              -0.06740476191043854,
+              -0.0420151948928833,
+              0.049821991473436356,
+              0.01264283712953329,
+              0.04793068394064903,
+              0.0017957056406885386,
+              -0.0007821356412023306,
+              0.009779125452041626,
+              -0.05213240906596184,
+              -0.009225869551301003,
+              0.0003630924329627305,
+              0.03231755271553993,
+              0.024732785299420357,
+              0.01740196719765663,
+              -0.0008513580542057753,
+              0.06799672544002533,
+              0.09199225157499313,
+              0.02615121565759182,
+              -0.02646036446094513,
+              -0.014050574973225594,
+              -0.02705594152212143,
+              0.08995194733142853,
+              -0.044238459318876266,
+              -0.06217067316174507,
+              -0.04128839075565338,
+              0.07233714312314987,
+              -0.004639112390577793,
+              0.029417462646961212,
+              -0.003135878359898925,
+              0.043212875723838806,
+              0.022712409496307373,
+              0.04728778451681137,
+              -0.017168162390589714,
+              0.07076007127761841,
+              -0.05725323408842087,
+              -0.053386956453323364,
+              -0.08478264510631561,
+              0.05980638042092323,
+              0.06771960854530334,
+              -0.09565390646457672,
+              0.00874214619398117,
+              0.012521718628704548,
+              -0.1155027374625206,
+              0.048043712973594666,
+              0.018720334395766258,
+              -0.02024630643427372,
+              0.004537761677056551,
+              -0.03752389922738075,
+              -0.005365511868149042,
+              0.04618242010474205,
+              0.07206013798713684,
+              0.009424405172467232,
+              -0.018664196133613586,
+              -0.052856527268886566
+            ]
+          }
+        },
+        "jsonrpc": "2.0",
+        "id": 7
+      }
+    },
+    "read_concept.markdownOnly": {
+      "note": "Recommended for prompt enrichment: only the markdown representation.",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 8,
+        "method": "tools/call",
+        "params": {
+          "name": "read_concept",
+          "arguments": {
+            "id": "11111111-1111-4111-8111-000000000001",
+            "representations": [
+              "markdown"
+            ]
+          }
+        }
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"id\": \"11111111-1111-4111-8111-000000000001\",\n  \"namespace\": \"default\",\n  \"version\": 1,\n  \"createdAt\": 1791072000000,\n  \"updatedAt\": 1791072000000,\n  \"tags\": [\n    \"orchestration\",\n    \"session:session-1\"\n  ],\n  \"provenance\": {\n    \"markdown\": {\n      \"origin\": \"user\"\n    },\n    \"vector\": {\n      \"origin\": \"derived\",\n      \"derivedFrom\": \"markdown\",\n      \"model\": \"Xenova/all-MiniLM-L6-v2\"\n    }\n  },\n  \"assertionStatus\": null,\n  \"ledgerRef\": null,\n  \"markdown\": \"# Orchestration Result: session-1\\n\\n## Task\\nRefactor the parser to stream tokens\\n\\n## Files Changed\\n- src/parser.ts\\n- tests/parser.test.ts\\n\\n## Result\\nReplaced the recursive descent loop with a streaming tokenizer.\"\n}"
+            }
+          ],
+          "structuredContent": {
+            "id": "11111111-1111-4111-8111-000000000001",
+            "namespace": "default",
+            "version": 1,
+            "createdAt": 1791072000000,
+            "updatedAt": 1791072000000,
+            "tags": [
+              "orchestration",
+              "session:session-1"
+            ],
+            "provenance": {
+              "markdown": {
+                "origin": "user"
+              },
+              "vector": {
+                "origin": "derived",
+                "derivedFrom": "markdown",
+                "model": "Xenova/all-MiniLM-L6-v2"
+              }
+            },
+            "assertionStatus": null,
+            "ledgerRef": null,
+            "markdown": "# Orchestration Result: session-1\n\n## Task\nRefactor the parser to stream tokens\n\n## Files Changed\n- src/parser.ts\n- tests/parser.test.ts\n\n## Result\nReplaced the recursive descent loop with a streaming tokenizer."
+          }
+        },
+        "jsonrpc": "2.0",
+        "id": 8
+      }
+    },
+    "list_concepts": {
+      "note": "The webapp concepts route default (limit 50, offset 0).",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 9,
+        "method": "tools/call",
+        "params": {
+          "name": "list_concepts",
+          "arguments": {
+            "limit": 50,
+            "offset": 0
+          }
+        }
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"concepts\": [\n    {\n      \"id\": \"11111111-1111-4111-8111-000000000002\",\n      \"namespace\": \"default\",\n      \"version\": 1,\n      \"createdAt\": 1791072000000,\n      \"updatedAt\": 1791072000000,\n      \"tags\": [\n        \"notes\"\n      ],\n      \"representations\": {\n        \"vector\": true,\n        \"markdown\": true,\n        \"thoughtform\": false\n      },\n      \"assertionStatus\": null\n    },\n    {\n      \"id\": \"11111111-1111-4111-8111-000000000001\",\n      \"namespace\": \"default\",\n      \"version\": 1,\n      \"createdAt\": 1791072000000,\n      \"updatedAt\": 1791072000000,\n      \"tags\": [\n        \"orchestration\",\n        \"session:session-1\"\n      ],\n      \"representations\": {\n        \"vector\": true,\n        \"markdown\": true,\n        \"thoughtform\": false\n      },\n      \"assertionStatus\": null\n    }\n  ],\n  \"total\": 2\n}"
+            }
+          ],
+          "structuredContent": {
+            "concepts": [
+              {
+                "id": "11111111-1111-4111-8111-000000000002",
+                "namespace": "default",
+                "version": 1,
+                "createdAt": 1791072000000,
+                "updatedAt": 1791072000000,
+                "tags": [
+                  "notes"
+                ],
+                "representations": {
+                  "vector": true,
+                  "markdown": true,
+                  "thoughtform": false
+                },
+                "assertionStatus": null
+              },
+              {
+                "id": "11111111-1111-4111-8111-000000000001",
+                "namespace": "default",
+                "version": 1,
+                "createdAt": 1791072000000,
+                "updatedAt": 1791072000000,
+                "tags": [
+                  "orchestration",
+                  "session:session-1"
+                ],
+                "representations": {
+                  "vector": true,
+                  "markdown": true,
+                  "thoughtform": false
+                },
+                "assertionStatus": null
+              }
+            ],
+            "total": 2
+          }
+        },
+        "jsonrpc": "2.0",
+        "id": 9
+      }
+    },
+    "list_concepts.page2": {
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 10,
+        "method": "tools/call",
+        "params": {
+          "name": "list_concepts",
+          "arguments": {
+            "limit": 1,
+            "offset": 1
+          }
+        }
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"concepts\": [\n    {\n      \"id\": \"11111111-1111-4111-8111-000000000001\",\n      \"namespace\": \"default\",\n      \"version\": 1,\n      \"createdAt\": 1791072000000,\n      \"updatedAt\": 1791072000000,\n      \"tags\": [\n        \"orchestration\",\n        \"session:session-1\"\n      ],\n      \"representations\": {\n        \"vector\": true,\n        \"markdown\": true,\n        \"thoughtform\": false\n      },\n      \"assertionStatus\": null\n    }\n  ],\n  \"total\": 2\n}"
+            }
+          ],
+          "structuredContent": {
+            "concepts": [
+              {
+                "id": "11111111-1111-4111-8111-000000000001",
+                "namespace": "default",
+                "version": 1,
+                "createdAt": 1791072000000,
+                "updatedAt": 1791072000000,
+                "tags": [
+                  "orchestration",
+                  "session:session-1"
+                ],
+                "representations": {
+                  "vector": true,
+                  "markdown": true,
+                  "thoughtform": false
+                },
+                "assertionStatus": null
+              }
+            ],
+            "total": 2
+          }
+        },
+        "jsonrpc": "2.0",
+        "id": 10
+      }
+    },
+    "get_stats": {
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 11,
+        "method": "tools/call",
+        "params": {
+          "name": "get_stats",
+          "arguments": {}
+        }
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"conceptCount\": 2,\n  \"vectorCount\": 2,\n  \"representationCounts\": {\n    \"markdown\": 2,\n    \"thoughtform\": 0,\n    \"vector\": 2\n  }\n}"
+            }
+          ],
+          "structuredContent": {
+            "conceptCount": 2,
+            "vectorCount": 2,
+            "representationCounts": {
+              "markdown": 2,
+              "thoughtform": 0,
+              "vector": 2
+            }
+          }
+        },
+        "jsonrpc": "2.0",
+        "id": 11
+      }
+    },
+    "health_check": {
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 12,
+        "method": "tools/call",
+        "params": {
+          "name": "health_check",
+          "arguments": {}
+        }
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"server\": \"ok\",\n  \"embedding\": {\n    \"loaded\": true,\n    \"model\": \"Xenova/all-MiniLM-L6-v2\",\n    \"dimension\": 384\n  },\n  \"llm\": {\n    \"provider\": \"none\"\n  },\n  \"database\": {\n    \"conceptCount\": 2,\n    \"vectorCount\": 2,\n    \"representationCounts\": {\n      \"markdown\": 2,\n      \"thoughtform\": 0,\n      \"vector\": 2\n    }\n  }\n}"
+            }
+          ],
+          "structuredContent": {
+            "server": "ok",
+            "embedding": {
+              "loaded": true,
+              "model": "Xenova/all-MiniLM-L6-v2",
+              "dimension": 384
+            },
+            "llm": {
+              "provider": "none"
+            },
+            "database": {
+              "conceptCount": 2,
+              "vectorCount": 2,
+              "representationCounts": {
+                "markdown": 2,
+                "thoughtform": 0,
+                "vector": 2
+              }
+            }
+          }
+        },
+        "jsonrpc": "2.0",
+        "id": 12
+      }
+    },
+    "get_stats.afterRejectedCalls": {
+      "note": "Still the two concepts saved above: the rejected saves stored nothing.",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 23,
+        "method": "tools/call",
+        "params": {
+          "name": "get_stats",
+          "arguments": {}
+        }
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"conceptCount\": 2,\n  \"vectorCount\": 2,\n  \"representationCounts\": {\n    \"markdown\": 2,\n    \"thoughtform\": 0,\n    \"vector\": 2\n  }\n}"
+            }
+          ],
+          "structuredContent": {
+            "conceptCount": 2,
+            "vectorCount": 2,
+            "representationCounts": {
+              "markdown": 2,
+              "thoughtform": 0,
+              "vector": 2
+            }
+          }
+        },
+        "jsonrpc": "2.0",
+        "id": 23
+      }
+    },
+    "delete_concept": {
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 31,
+        "method": "tools/call",
+        "params": {
+          "name": "delete_concept",
+          "arguments": {
+            "id": "11111111-1111-4111-8111-000000000002"
+          }
+        }
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"deleted\": \"11111111-1111-4111-8111-000000000002\"\n}"
+            }
+          ],
+          "structuredContent": {
+            "deleted": "11111111-1111-4111-8111-000000000002"
+          }
+        },
+        "jsonrpc": "2.0",
+        "id": 31
+      }
+    }
+  },
+  "errors": {
+    "save_concept.v2Args": {
+      "note": "saveConceptFromOrchestration() today: rejected, nothing stored.",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 13,
+        "method": "tools/call",
+        "params": {
+          "name": "save_concept",
+          "arguments": {
+            "name": "orchestration-session-1",
+            "content": "# Orchestration Result: session-1\n\n## Task\nRefactor the parser\n\n## Files Changed\n- src/parser.ts\n\n## Result\ndone",
+            "representation": "orchestration_result",
+            "metadata": {
+              "sessionId": "session-1",
+              "timestamp": "2026-10-04T00:00:00.000Z",
+              "filesChangedCount": 1
+            }
+          }
+        }
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\"error\":\"Input validation error: Invalid arguments for tool save_concept: Unrecognized key(s) in object: 'name', 'content', 'representation', 'metadata'\",\"code\":\"VALIDATION_ERROR\"}"
+            }
+          ],
+          "isError": true
+        },
+        "jsonrpc": "2.0",
+        "id": 13
+      }
+    },
+    "save_concept.noRepresentation": {
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 14,
+        "method": "tools/call",
+        "params": {
+          "name": "save_concept",
+          "arguments": {
+            "tags": [
+              "only-tags"
+            ]
+          }
+        }
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\"error\":\"concept '22222222-2222-4222-8222-000000000001': a new concept needs at least one representation (markdown, thoughtform or embedding)\",\"code\":\"VALIDATION_ERROR\"}"
+            }
+          ],
+          "isError": true
+        },
+        "jsonrpc": "2.0",
+        "id": 14
+      }
+    },
+    "search_concepts.v2Args": {
+      "note": "enrichWithPolyticianContext() today.",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 15,
+        "method": "tools/call",
+        "params": {
+          "name": "search_concepts",
+          "arguments": {
+            "query": "refactor the parser",
+            "limit": 5,
+            "min_score": 0.3
+          }
+        }
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\"error\":\"Input validation error: Invalid arguments for tool search_concepts: Unrecognized key(s) in object: 'limit', 'min_score'\",\"code\":\"VALIDATION_ERROR\"}"
+            }
+          ],
+          "isError": true
+        },
+        "jsonrpc": "2.0",
+        "id": 15
+      }
+    },
+    "search_concepts.limit": {
+      "note": "cli/commands/polytician.ts search and the webapp search route today.",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 16,
+        "method": "tools/call",
+        "params": {
+          "name": "search_concepts",
+          "arguments": {
+            "query": "refactor the parser",
+            "limit": 10
+          }
+        }
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\"error\":\"Input validation error: Invalid arguments for tool search_concepts: Unrecognized key(s) in object: 'limit'\",\"code\":\"VALIDATION_ERROR\"}"
+            }
+          ],
+          "isError": true
+        },
+        "jsonrpc": "2.0",
+        "id": 16
+      }
+    },
+    "search_concepts.kTooLarge": {
+      "note": "k is capped at 100; the webapp passes ?limit= through unchecked.",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 17,
+        "method": "tools/call",
+        "params": {
+          "name": "search_concepts",
+          "arguments": {
+            "query": "refactor the parser",
+            "k": 101
+          }
+        }
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\"error\":\"Input validation error: Invalid arguments for tool search_concepts: Number must be less than or equal to 100 at k\",\"code\":\"VALIDATION_ERROR\"}"
+            }
+          ],
+          "isError": true
+        },
+        "jsonrpc": "2.0",
+        "id": 17
+      }
+    },
+    "list_concepts.limitTooLarge": {
+      "note": "limit is capped at 100; the webapp passes ?limit= through unchecked.",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 18,
+        "method": "tools/call",
+        "params": {
+          "name": "list_concepts",
+          "arguments": {
+            "limit": 101,
+            "offset": 0
+          }
+        }
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\"error\":\"Input validation error: Invalid arguments for tool list_concepts: Number must be less than or equal to 100 at limit\",\"code\":\"VALIDATION_ERROR\"}"
+            }
+          ],
+          "isError": true
+        },
+        "jsonrpc": "2.0",
+        "id": 18
+      }
+    },
+    "list_concepts.limitNull": {
+      "note": "What the webapp sends for ?limit=abc: parseInt gives NaN, which JSON.stringify writes as null.",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 19,
+        "method": "tools/call",
+        "params": {
+          "name": "list_concepts",
+          "arguments": {
+            "limit": null,
+            "offset": 0
+          }
+        }
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\"error\":\"Input validation error: Invalid arguments for tool list_concepts: Expected number, received null at limit\",\"code\":\"VALIDATION_ERROR\"}"
+            }
+          ],
+          "isError": true
+        },
+        "jsonrpc": "2.0",
+        "id": 19
+      }
+    },
+    "read_concept.unknownId": {
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "method": "tools/call",
+        "params": {
+          "name": "read_concept",
+          "arguments": {
+            "id": "00000000-0000-4000-8000-000000000000"
+          }
+        }
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\"error\":\"Concept '00000000-0000-4000-8000-000000000000' not found\",\"code\":\"NOT_FOUND\"}"
+            }
+          ],
+          "isError": true
+        },
+        "jsonrpc": "2.0",
+        "id": 20
+      }
+    },
+    "read_concept.nonUuidId": {
+      "note": "Concept ids are UUIDs; the CLI help example uses concept-123.",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 21,
+        "method": "tools/call",
+        "params": {
+          "name": "read_concept",
+          "arguments": {
+            "id": "concept-123"
+          }
+        }
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\"error\":\"Input validation error: Invalid arguments for tool read_concept: Invalid uuid at id\",\"code\":\"VALIDATION_ERROR\"}"
+            }
+          ],
+          "isError": true
+        },
+        "jsonrpc": "2.0",
+        "id": 21
+      }
+    },
+    "delete_concept.unknownId": {
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 22,
+        "method": "tools/call",
+        "params": {
+          "name": "delete_concept",
+          "arguments": {
+            "id": "00000000-0000-4000-8000-000000000000"
+          }
+        }
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\"error\":\"Concept '00000000-0000-4000-8000-000000000000' not found\",\"code\":\"NOT_FOUND\"}"
+            }
+          ],
+          "isError": true
+        },
+        "jsonrpc": "2.0",
+        "id": 22
+      }
+    },
+    "read_concept.afterDelete": {
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 32,
+        "method": "tools/call",
+        "params": {
+          "name": "read_concept",
+          "arguments": {
+            "id": "11111111-1111-4111-8111-000000000002"
+          }
+        }
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\"error\":\"Concept '11111111-1111-4111-8111-000000000002' not found\",\"code\":\"NOT_FOUND\"}"
+            }
+          ],
+          "isError": true
+        },
+        "jsonrpc": "2.0",
+        "id": 32
+      }
+    }
+  },
+  "removedTools": {
+    "archive_concept": {
+      "note": "cli/commands/polytician.ts archive and the webapp archive route.",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 24,
+        "method": "tools/call",
+        "params": {
+          "name": "archive_concept",
+          "arguments": {
+            "id": "11111111-1111-4111-8111-000000000001"
+          }
+        }
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\"error\":\"Tool archive_concept not found\",\"code\":\"NOT_FOUND\"}"
+            }
+          ],
+          "isError": true
+        },
+        "jsonrpc": "2.0",
+        "id": 24
+      }
+    },
+    "push_to_memory_repo": {
+      "note": "cli/commands/polytician.ts push-all.",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 25,
+        "method": "tools/call",
+        "params": {
+          "name": "push_to_memory_repo",
+          "arguments": {}
+        }
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\"error\":\"Tool push_to_memory_repo not found\",\"code\":\"NOT_FOUND\"}"
+            }
+          ],
+          "isError": true
+        },
+        "jsonrpc": "2.0",
+        "id": 25
+      }
+    },
+    "pull_from_memory_repo": {
+      "note": "cli/commands/polytician.ts pull.",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 26,
+        "method": "tools/call",
+        "params": {
+          "name": "pull_from_memory_repo",
+          "arguments": {}
+        }
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\"error\":\"Tool pull_from_memory_repo not found\",\"code\":\"NOT_FOUND\"}"
+            }
+          ],
+          "isError": true
+        },
+        "jsonrpc": "2.0",
+        "id": 26
+      }
+    }
+  },
+  "vaultToolsWithoutAgentVault": {
+    "vault_archive_concept": {
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 27,
+        "method": "tools/call",
+        "params": {
+          "name": "vault_archive_concept",
+          "arguments": {
+            "conceptId": "11111111-1111-4111-8111-000000000001"
+          }
+        }
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\"error\":\"Tool vault_archive_concept not found\",\"code\":\"NOT_FOUND\"}"
+            }
+          ],
+          "isError": true
+        },
+        "jsonrpc": "2.0",
+        "id": 27
+      }
+    },
+    "vault_memory_push": {
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 28,
+        "method": "tools/call",
+        "params": {
+          "name": "vault_memory_push",
+          "arguments": {
+            "conceptId": "11111111-1111-4111-8111-000000000001"
+          }
+        }
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\"error\":\"Tool vault_memory_push not found\",\"code\":\"NOT_FOUND\"}"
+            }
+          ],
+          "isError": true
+        },
+        "jsonrpc": "2.0",
+        "id": 28
+      }
+    },
+    "vault_memory_pull": {
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 29,
+        "method": "tools/call",
+        "params": {
+          "name": "vault_memory_pull",
+          "arguments": {}
+        }
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\"error\":\"Tool vault_memory_pull not found\",\"code\":\"NOT_FOUND\"}"
+            }
+          ],
+          "isError": true
+        },
+        "jsonrpc": "2.0",
+        "id": 29
+      }
+    },
+    "vault_memory_repo_log": {
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 30,
+        "method": "tools/call",
+        "params": {
+          "name": "vault_memory_repo_log",
+          "arguments": {}
+        }
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\"error\":\"Tool vault_memory_repo_log not found\",\"code\":\"NOT_FOUND\"}"
+            }
+          ],
+          "isError": true
+        },
+        "jsonrpc": "2.0",
+        "id": 30
+      }
+    }
+  },
+  "vaultToolsWithUnreachableAgentVault": {
+    "note": "Polytician started with agentVault.apiBaseUrl at a closed loopback port, a dummy token, archival enabled (tagFilter [\"archive\"], a dummy Arweave wallet, a backup key). Shows the vault_* schemas and the errors an unreachable AgentVault produces. With archival or sync push enabled, the concept-writing tools report openWorldHint: true.",
+    "calls": {
+      "vault_archive_concept.v2Args": {
+        "note": "AgentVault's archive argument name ({ id }) against the 3.0 tool.",
+        "request": {
+          "jsonrpc": "2.0",
+          "id": 5,
+          "method": "tools/call",
+          "params": {
+            "name": "vault_archive_concept",
+            "arguments": {
+              "id": "11111111-1111-4111-8111-000000000004"
+            }
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "{\"error\":\"Input validation error: Invalid arguments for tool vault_archive_concept: Required at conceptId\\nUnrecognized key(s) in object: 'id'\",\"code\":\"VALIDATION_ERROR\"}"
+              }
+            ],
+            "isError": true
+          },
+          "jsonrpc": "2.0",
+          "id": 5
+        }
+      },
+      "vault_archive_concept.notTagged": {
+        "request": {
+          "jsonrpc": "2.0",
+          "id": 6,
+          "method": "tools/call",
+          "params": {
+            "name": "vault_archive_concept",
+            "arguments": {
+              "conceptId": "11111111-1111-4111-8111-000000000003"
+            }
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "{\"error\":\"Not archived: the concept does not carry every archival tag (archive)\",\"code\":\"VALIDATION_ERROR\"}"
+              }
+            ],
+            "isError": true
+          },
+          "jsonrpc": "2.0",
+          "id": 6
+        }
+      },
+      "vault_archive_concept.unreachable": {
+        "request": {
+          "jsonrpc": "2.0",
+          "id": 7,
+          "method": "tools/call",
+          "params": {
+            "name": "vault_archive_concept",
+            "arguments": {
+              "conceptId": "11111111-1111-4111-8111-000000000004"
+            }
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "{\"error\":\"fetch failed\",\"code\":\"UPSTREAM_ERROR\"}"
+              }
+            ],
+            "isError": true
+          },
+          "jsonrpc": "2.0",
+          "id": 7
+        }
+      },
+      "vault_memory_push.v2Args": {
+        "note": "push-all today sends {}; vault_memory_push pushes one concept.",
+        "request": {
+          "jsonrpc": "2.0",
+          "id": 8,
+          "method": "tools/call",
+          "params": {
+            "name": "vault_memory_push",
+            "arguments": {}
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "{\"error\":\"Input validation error: Invalid arguments for tool vault_memory_push: Required at conceptId\",\"code\":\"VALIDATION_ERROR\"}"
+              }
+            ],
+            "isError": true
+          },
+          "jsonrpc": "2.0",
+          "id": 8
+        }
+      },
+      "vault_memory_push.unreachable": {
+        "request": {
+          "jsonrpc": "2.0",
+          "id": 9,
+          "method": "tools/call",
+          "params": {
+            "name": "vault_memory_push",
+            "arguments": {
+              "conceptId": "11111111-1111-4111-8111-000000000003"
+            }
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "{\"error\":\"fetch failed\",\"code\":\"UPSTREAM_ERROR\"}"
+              }
+            ],
+            "isError": true
+          },
+          "jsonrpc": "2.0",
+          "id": 9
+        }
+      },
+      "vault_memory_pull.unreachable": {
+        "request": {
+          "jsonrpc": "2.0",
+          "id": 10,
+          "method": "tools/call",
+          "params": {
+            "name": "vault_memory_pull",
+            "arguments": {}
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "{\"error\":\"fetch failed\",\"code\":\"UPSTREAM_ERROR\"}"
+              }
+            ],
+            "isError": true
+          },
+          "jsonrpc": "2.0",
+          "id": 10
+        }
+      },
+      "vault_memory_repo_log.unreachable": {
+        "request": {
+          "jsonrpc": "2.0",
+          "id": 11,
+          "method": "tools/call",
+          "params": {
+            "name": "vault_memory_repo_log",
+            "arguments": {}
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "{\"error\":\"fetch failed\",\"code\":\"UPSTREAM_ERROR\"}"
+              }
+            ],
+            "isError": true
+          },
+          "jsonrpc": "2.0",
+          "id": 11
+        }
+      }
+    }
+  }
+}
