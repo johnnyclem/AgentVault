@@ -2,11 +2,12 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react'
 
+// A Polytician 3.0 search hit: concepts have no name, and score is in [0, 1]
 interface SearchResult {
   id: string
-  name: string
+  namespace?: string
   score?: number
-  representation?: string
+  tags?: string[]
 }
 
 interface SemanticSearchBarProps {
@@ -53,7 +54,7 @@ export function SemanticSearchBar({
 
       const data = await res.json()
       if (data.success) {
-        setResults(data.data.concepts || [])
+        setResults(data.data.results || [])
         setShowResults(true)
       } else {
         setError(data.error?.message || 'Search failed')
@@ -97,7 +98,6 @@ export function SemanticSearchBar({
   const handleSelect = (result: SearchResult) => {
     onSelect?.(result)
     setShowResults(false)
-    setQuery(result.name)
   }
 
   return (
@@ -151,8 +151,8 @@ export function SemanticSearchBar({
             >
               <div className="flex justify-between items-start">
                 <div>
-                  <div className="font-medium text-gray-900">{result.name}</div>
-                  <div className="text-sm text-gray-500">{result.id}</div>
+                  <div className="font-medium text-gray-900">{result.id}</div>
+                  <div className="text-sm text-gray-500">{(result.tags ?? []).join(', ')}</div>
                 </div>
                 {result.score !== undefined && (
                   <div className="flex flex-col items-end">

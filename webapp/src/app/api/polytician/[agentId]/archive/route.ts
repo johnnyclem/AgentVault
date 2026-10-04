@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAuthToken, unauthorizedResponse } from '@/lib/server/auth'
+import { withPolytician, polyticianErrorResponse, readJsonObject } from '@/lib/server/polytician'
 
 export async function POST(
   request: NextRequest,
@@ -12,17 +13,16 @@ export async function POST(
 
   const { agentId } = await params
 
+  const body = await readJsonObject(request)
+  const conceptId = body?.conceptId
+  if (typeof conceptId !== 'string' || !conceptId) {
+    return NextResponse.json(
+      { success: false, error: { message: 'conceptId is required', code: 'BAD_REQUEST' } },
+      { status: 400 }
+    )
+  }
+
   try {
-    const body = await request.json()
-    const { conceptId } = body
-
-    if (!conceptId) {
-      return NextResponse.json(
-        { success: false, error: { message: 'conceptId is required', code: 'BAD_REQUEST' } },
-        { status: 400 }
-      )
-    }
-
     const polyticianEntry = process.env.POLYTICIAN_ENTRY_POINT
     if (!polyticianEntry) {
       return NextResponse.json(
@@ -34,24 +34,30 @@ export async function POST(
       )
     }
 
-    const { PolyticianMCPClient } = await import('@/orchestration/mcp-client')
-    const client = new PolyticianMCPClient({
-      namespace: 'polytician',
-      entryPoint: polyticianEntry,
+    // vault_archive_concept exists only when Polytician is configured for
+    // AgentVault with archival enabled. Returns { archived, encrypted, txId, url, size }.
+    // It waits up to 150 s (Polytician gives the upload 120 s); with no answer,
+    // the response is 504 OUTCOME_UNKNOWN, since the paid upload may have happened.
+    const outcome = await withPolytician(polyticianEntry, 'polytician', async (client, tools) => {
+      try {
+        return { archived: await tools.callPolytician(client, 'vault_archive_concept', { conceptId }) }
+      } catch (error) {
+        if (tools.isUnknownToolError(error, 'vault_archive_concept')) {
+          return { notConfigured: tools.vaultToolUnavailableMessage('vault_archive_concept') }
+        }
+        throw error
+      }
     })
 
-    await client.connect()
-    const result = await client.callTool('archive_concept', { id: conceptId })
-    await client.disconnect()
+    if ('notConfigured' in outcome) {
+      return NextResponse.json(
+        { success: false, error: { message: outcome.notConfigured, code: 'NOT_CONFIGURED' } },
+        { status: 503 }
+      )
+    }
 
-    const archived = result.content[0]?.data ?? { txId: null }
-
-    return NextResponse.json({ success: true, data: { archived } })
+    return NextResponse.json({ success: true, data: outcome.archived })
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error'
-    return NextResponse.json(
-      { success: false, error: { message, code: 'INTERNAL_ERROR' } },
-      { status: 500 }
-    )
+    return polyticianErrorResponse(error)
   }
 }

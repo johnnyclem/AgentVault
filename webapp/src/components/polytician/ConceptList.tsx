@@ -2,13 +2,13 @@
 
 import { useState, useEffect, useCallback } from 'react'
 
+// A Polytician 3.0 list_concepts entry: no name, timestamps in epoch milliseconds
 interface Concept {
   id: string
-  name: string
-  representation?: string
   tags?: string[]
-  createdAt?: string
-  updatedAt?: string
+  representations?: { vector: boolean; markdown: boolean; thoughtform: boolean }
+  createdAt?: number
+  updatedAt?: number
 }
 
 interface ConceptListProps {
@@ -61,10 +61,9 @@ export function ConceptList({ agentId, onSelect, limit = 50 }: ConceptListProps)
   }, [fetchConcepts])
 
   const repIcons: Record<string, string> = {
-    text: '📝',
-    embedding: '🧮',
-    graph: '🔗',
-    structured: '📊',
+    markdown: '📝',
+    vector: '🧮',
+    thoughtform: '🔗',
   }
 
   if (loading) {
@@ -111,8 +110,8 @@ export function ConceptList({ agentId, onSelect, limit = 50 }: ConceptListProps)
         <table className="w-full text-sm">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-4 py-2 text-left font-medium">Name</th>
-              <th className="px-4 py-2 text-left font-medium">Type</th>
+              <th className="px-4 py-2 text-left font-medium">ID</th>
+              <th className="px-4 py-2 text-left font-medium">Representations</th>
               <th className="px-4 py-2 text-left font-medium">Tags</th>
               <th className="px-4 py-2 text-left font-medium">Updated</th>
             </tr>
@@ -125,15 +124,17 @@ export function ConceptList({ agentId, onSelect, limit = 50 }: ConceptListProps)
                 className={`hover:bg-gray-50 ${onSelect ? 'cursor-pointer' : ''}`}
               >
                 <td className="px-4 py-3 font-medium text-gray-900">
-                  {concept.name}
+                  {concept.id}
                 </td>
                 <td className="px-4 py-3">
-                  <span className="inline-flex items-center gap-1">
-                    {repIcons[concept.representation || 'text'] || '📄'}
-                    <span className="text-gray-600">
-                      {concept.representation || 'text'}
-                    </span>
-                  </span>
+                  {Object.entries(concept.representations ?? {})
+                    .filter(([, present]) => present)
+                    .map(([representation]) => (
+                      <span key={representation} className="inline-flex items-center gap-1 mr-2">
+                        {repIcons[representation] || '📄'}
+                        <span className="text-gray-600">{representation}</span>
+                      </span>
+                    ))}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1">

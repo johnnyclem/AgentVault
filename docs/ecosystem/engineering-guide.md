@@ -135,8 +135,8 @@ actually wired up in this repo today, and how to close the gaps.
          │                       ▼
          │ MCP, stdio   ┌─────────────────┐
          │ (AgentVault  │   Short-hand     │   compacts retrieved history +
-         │  client,     │ (5-level LSM     │   live context into a token-
-         │  predates    │  compaction)     │   budgeted context frame
+         │  client for  │ (5-level LSM     │   live context into a token-
+         │  Polytician  │  compaction)     │   budgeted context frame
          │  3.0)        └────────┬─────────┘
          │                       │ context frame
          │                       ▼
@@ -163,7 +163,7 @@ Read top to bottom: Stenographer is the **memory** (what happened), Short-hand i
 **compression/retrieval middleware** between that memory and the model's limited context window,
 smallchat is the **reflex** (what to do about it), and AgentVault is the **body** (where it actually
 executes, durably and auditably). Polytician, on the left, is a concept store beside the memory layer;
-AgentVault's orchestrator calls it over MCP with a client that predates Polytician 3.0 (see §3).
+AgentVault's orchestrator calls it over MCP (see §3).
 
 Inside the suite, only the Stenographer → Short-hand arrow is wired today, and only for the truth ledger:
 `@shorthand/core` reads Stenographer's truth format v2. Nothing in Short-hand consumes
@@ -192,33 +192,53 @@ class-hierarchy fallback), with no embeddings.
 | `src/orchestration/claude.ts` (`initSmallChat`, ~line 457; `dispatchToolCall`, ~line 477; `SmallChatOptions`, ~line 37) | Wires bridge + policy + compressor into the Claude Code orchestrator, opt-in via `options.smallChat.enabled` (library API only; the `agentvault orchestrate` command does not set it). When enabled, `orchestrate()` appends the compact tool header to the system prompt and reports `SmallChatSessionReport` stats (registered selectors, cache hit rate, compression stats) through `onProgress`. `dispatchToolCall()` runs one call through bridge → policy → compressor for library callers. |
 | `tests/unit/smallchat-{bridge,compression,policy}.test.ts`, `tests/integration/smallchat-orchestration.test.ts` | Test coverage for the above. |
 
-### Polytician: a client that predates Polytician 3.0
+### Polytician: an MCP client for Polytician 3.0
 
 | File | Role |
 |---|---|
-| `src/orchestration/mcp-client.ts` | `PolyticianMCPClient` — spawns a Polytician MCP server from an entry-point command and speaks JSON-RPC over stdio (`initialize`, `tools/list`, `tools/call`); plus an HTTP `/health` probe. |
-| `cli/commands/polytician.ts` | `agentvault polytician -e "<entry>" <status\|search\|push-all\|pull\|archive\|register>`. |
-| `src/orchestration/polytician-enricher.ts` | `enrichWithPolyticianContext` searches concepts (`search_concepts`), reads the top matches (`read_concept`) and prepends them to the task, truncated by character count; `saveConceptFromOrchestration` saves a session's result (`save_concept`). Used by `agentvault orchestrate --polytician-entry`. |
+| `src/orchestration/mcp-client.ts` | `PolyticianMCPClient` — spawns a Polytician MCP server from an entry-point command and speaks JSON-RPC over stdio (`initialize` then `notifications/initialized`, `tools/list`, `tools/call`). `callToolResult` returns a tool's `structuredContent` (or the JSON in `content[0].text`) and throws `MCPToolError`, carrying Polytician's error code, for an `isError` result. Plus an HTTP `/health` probe. |
+| `src/orchestration/polytician-tools.ts` | Polytician 3.0's tool contract as AgentVault calls it: argument types that mirror the strict input schemas, zod schemas that mirror each tool's `outputSchema`, and `callPolytician`. |
+| `cli/commands/polytician.ts` | `agentvault polytician -e "<entry>" <status\|search\|push-all\|pull\|archive\|register>`. `status` reads `get_stats` and `health_check` (the server version comes from the handshake); `search` sends `search_concepts { query, k }` and prints ids, scores, titles and tags; `push-all` calls `vault_memory_push` for every concept, `pull` calls `vault_memory_pull` and `archive` calls `vault_archive_concept`. |
+| `src/orchestration/polytician-enricher.ts` | `enrichWithPolyticianContext` searches concepts (`search_concepts { query, k }`), keeps hits scoring at least `minRelevanceScore` (default 0.65; a score is (1 + cosine similarity) / 2), reads their markdown (`read_concept { id, representations: ["markdown"] }`) and formats it as concept blocks (headings pushed below the block heading, code fences untouched), truncated by character count; `saveConceptFromOrchestration` saves a session's result as `save_concept { markdown, tags: ["orchestration", "session:<id>"] }`, titled with the task, and returns the concept's id. Used by `agentvault orchestrate --polytician-entry`, which puts the concept blocks in the user message, in a `<semantic_memory>` block labelled as reference data (not in the system prompt), on both the API and the local `claude` CLI path, and prints what Polytician did in its session summary. |
 | `src/packaging/parsers/polytician.ts`, `src/packaging/detector.ts` | The packager recognizes a `polytician.json` / `.polytician.json` config as the `polytician` agent type. |
-| `webapp/src/app/api/polytician/[agentId]/*`, `webapp/src/components/polytician/*` | Webapp API routes that proxy to the same client (`POLYTICIAN_ENTRY_POINT`), and concept components that no page renders yet. |
+| `webapp/src/app/api/polytician/[agentId]/*`, `webapp/src/components/polytician/*` | Webapp API routes that proxy to the same client (`POLYTICIAN_ENTRY_POINT`) and return Polytician 3.0's results (search `?limit=` becomes `k`, a save takes `{ markdown, tags }`, archive calls `vault_archive_concept`), and concept components that no page renders yet. |
+| `tests/integration/polytician-contract.test.ts`, `tests/cli/commands/polytician.test.ts`, `tests/integration/polytician-real.test.ts` | The client, enricher, orchestrator prompt and CLI against a fake server (`tests/fixtures/polytician-3.0/fake-server.mjs`) that checks every call against Polytician 3.0's captured input schemas and answers with responses recorded from the real server; the last file runs the same flows against a real server when `POLYTICIAN_ENTRY` is set. |
 
-This client does not match Polytician 3.0's tool contract (Polytician's README, "Calling Polytician from
-AgentVault's orchestrator", lists the corrected calls):
+Against Polytician 3.0 (the recorded contract and a real 3.0.0 server):
 
-- 3.0 rejects `save_concept { name, content, representation, metadata }` and
-  `search_concepts { query, limit, min_score }` with a validation error (the corrected calls use
-  `markdown`, `tags` and `k`). `read_concept { id }` works.
-- The client reads `content[0].data`; 3.0 returns `structuredContent` and `content[0].text`, and
-  `search_concepts` returns `{ results }`, not `{ concepts }`.
-- `push-all`, `pull` and `archive` call `push_to_memory_repo`, `pull_from_memory_repo` and
-  `archive_concept`; 3.0 has no tools by those names (its AgentVault tools are the opt-in `vault_*` set).
-- In a non-dry run, `orchestrate()` builds the system prompt from `options.task`, not the enriched task
-  (`src/orchestration/claude.ts`, ~line 627), so enrichment only shows up in `--dry-run` output.
+- **Works with Polytician as installed:** `orchestrate --polytician-entry` enrichment and result saving,
+  `polytician status`, `search` and `register`, `mcp tools` and `mcp call`, and the webapp routes for
+  search, list, read, save, delete and stats. A Polytician error is reported with its code (for example
+  `search_concepts failed (VALIDATION_ERROR): ...`) instead of reading as an empty result.
+- **Needs configuration on Polytician's side:** `push-all`, `pull` and `archive`, and the webapp archive
+  route, use the `vault_*` tools, which Polytician registers only when its operator sets
+  `POLYTICIAN_AV_API_URL` and `POLYTICIAN_AV_API_TOKEN`. `vault_archive_concept` also needs
+  `agentVault.archival` enabled (with a tag filter and a backup key), and archives only concepts that
+  carry every archival tag. Without that configuration the CLI says which settings are missing and the
+  archive route answers 503 `NOT_CONFIGURED`. With it, the calls go to AgentVault's HTTP API, where
+  `push-all` cannot complete yet (next paragraph). AgentVault waits longer for these calls than Polytician
+  waits for AgentVault (archive 150 s, push 60 s, pull 150 s), and reports an archive or push that gets no
+  answer as `OUTCOME_UNKNOWN`, since the commit or the paid upload may have happened.
+- Concepts live in Polytician's `default` namespace. The `--health-port` probe gets an answer only when the
+  operator set `POLYTICIAN_HEALTH_PORT` or runs Polytician's HTTP transport, and it describes that running
+  instance, not the stdio server the CLI spawns; `status` asks that server's `health_check` tool.
 
 In the other direction, Polytician 3.0's opt-in AgentVault integration calls AgentVault's HTTP API
 (`/api/inference`, `/api/memory-repo/*`, `/api/archival/upload`, `/api/secrets/:name`). Routes with those
-paths exist in `webapp/src/app/api/`; their request and response shapes have not been checked against
-Polytician's client.
+paths exist in `webapp/src/app/api/`. For memory sync they have been checked against Polytician's client:
+
+- **Push does not work yet.** The memory_repo write routes (`POST /api/memory-repo/commits`, which
+  `vault_memory_push` calls, and `POST /api/memory-repo/tombstone`) call the canister with the anonymous
+  principal. `commit`, `createBranch` and `switchBranch` are update calls behind `assertWriteAllowed`, and
+  `canister/memory-repo.mo` refuses the anonymous principal, so the call traps. These routes need to sign
+  with a principal the canister authorizes (its owner or one added with `addAuthorizedPrincipal`).
+- **Pull reads the whole branch.** `GET /api/memory-repo/branches/:branch`, which `vault_memory_pull`
+  reads, uses only the `getBranches` and `log` queries, which need no authorization, and replays every
+  commit on the branch (newer entries win, tombstones remove a key). Polytician pushes one commit per
+  concept, so the newest commit alone would hold only the last concept pushed. Pull works against a branch
+  an authorized principal wrote.
+
+The inference, archival upload and secrets routes have not been checked against Polytician's client.
 
 ### Stenographer and Short-hand: not integrated
 
@@ -250,8 +270,8 @@ most, and there's no history/session compaction elsewhere in the orchestration p
 `CompactionEngine`-driven context frame: feed retrieved concepts in as messages and request a
 token-budgeted frame (`buildContextFrame(budget)`) instead of a character-budgeted string. The frame
 skips an item that does not fit and counts it in `section.omitted`, rather than cutting text mid-concept.
-Smallest surface area of the gaps, highest signal-to-noise improvement. It only pays off once Gap D is
-closed and the real (non-dry-run) prompt uses the enriched task.
+Smallest surface area of the gaps, highest signal-to-noise improvement. With Gap D closed, the enriched
+task reaches the real prompt, so this changes what Claude sees.
 
 ### Gap B — Stenographer ↔ orchestration session logs
 
@@ -281,23 +301,24 @@ tools for adjacent problems, not a fork of one.
 (semantic) resolution in a Node process — for example in the orchestrator, not a canister — where
 `@smallchat/core` 1.0's JSON Schema validation, proofs and replayable decision logs would add value.
 
-### Gap D — Polytician client ↔ Polytician 3.0
+### Gap D — Polytician client ↔ Polytician 3.0 (closed)
 
-**Problem:** see §3. Against Polytician 3.0, search returns an error the client reads as "no concepts",
-saving stores nothing and returns no id, and three `agentvault polytician` subcommands call tools that do
-not exist.
+**Was:** against Polytician 3.0, search returned an error the client read as "no concepts", saving stored
+nothing and returned no id, three `agentvault polytician` subcommands called tools that do not exist, and
+the real system prompt ignored the enriched task.
 
-**Opportunity:** update `mcp-client.ts`, `polytician-enricher.ts`, `cli/commands/polytician.ts` and the
-webapp routes to the calls in Polytician's README (read `structuredContent`, `search_concepts { query, k }`
-with client-side score filtering, `save_concept { markdown, tags }`), and build the real system prompt
-from the enriched task. Polytician's `tests/mcp-contract.test.ts` replays AgentVault's calls and is a
-ready-made reference.
+**Now:** the client, enricher, CLI and webapp routes make Polytician 3.0's calls (§3), and the real prompt
+carries the Polytician context (in the user message, as reference data). `tests/fixtures/polytician-3.0/`
+holds Polytician 3.0's recorded contract and the fake server the contract tests run against. What remains:
+configuring the `vault_*` tools on Polytician's side, signing AgentVault's memory_repo write routes with a
+principal the canister authorizes, and checking the inference, archival and secrets routes against
+Polytician's client (§3).
 
 ## 5. Suggested phased roadmap
 
 None of these phases is scheduled in an AgentVault plan file.
 
-1. **Phase 0 (prerequisite):** close Gap D so Polytician enrichment and concept saving work against
+1. **Phase 0 (done):** Gap D is closed: Polytician enrichment and concept saving work against
    Polytician 3.0.
 2. **Phase 1 (low risk, high signal):** Replace the truncation branch in `polytician-enricher.ts` with
    Short-hand's compaction primitives. Add a unit test asserting which concepts survive under a tight
@@ -320,7 +341,8 @@ None of these phases is scheduled in an AgentVault plan file.
 - **Verify contracts against the release:** the descriptions above were checked against each suite
   repo's default branch before publication to npm. Before writing integration code, confirm exact
   function signatures, MCP tool schemas and the `CompactionEngine` public API against the published
-  package contents. Gap D shows what happens when a client drifts from a server's schema.
+  package contents. Gap D showed what happens when a client drifts from a server's schema; AgentVault's
+  tests now pin Polytician's recorded contract (`tests/fixtures/polytician-3.0/`).
 - **Data-model boundary needs to stay explicit:** it will be tempting to let Stenographer's
   conversational index and MemoryRepo's structured commit history blur together. Keep them separate —
   MemoryRepo is the source of truth for agent identity/state; Stenographer's index is a derived,

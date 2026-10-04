@@ -30,6 +30,125 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
     dependency) exposing the `hypervault_*` pipeline tools and the existing
     `wiki_*` tools.
   - New package export subpath `agentvault/hypervault`.
+- **Polytician 3.0 contract tests.** `tests/fixtures/polytician-3.0/` holds
+  Polytician 3.0.0's MCP contract recorded from the real server, the script
+  that captures it, and a fake stdio server that checks every `tools/call`
+  against the captured input schemas and answers with the recorded
+  responses. The client, enricher, orchestrator prompt and
+  `agentvault polytician` run against it; `tests/integration/polytician-real.test.ts`
+  runs the same flows against a real server when `POLYTICIAN_ENTRY` is set.
+
+### Changed
+- **Polytician 3.0 (`polytician@^3`) is the Polytician AgentVault talks to.**
+  3.0 rejects the 2.x calls AgentVault made, so the client, enricher, CLI and
+  webapp routes now make 3.0's calls, and some results change shape:
+  - `saveConceptFromOrchestration` returns the saved concept's id and throws
+    on a Polytician error (it returned `null`). The concept is markdown tagged
+    `orchestration` and `session:<id>`, titled with the task's first line (the
+    title is what `search` and enrichment show, since 3.0 concepts have no
+    name); 3.0 has no free-form metadata, so the session id, save time and
+    file count are in the markdown.
+  - `enrichWithPolyticianContext` throws on a Polytician error (an
+    `MCPToolError` carrying its code), and keeps hits scoring at least
+    `minRelevanceScore`, now 0.65 by default: 3.0 scores a hit
+    (1 + cosine similarity) / 2, so the old 0.3 let every concept through.
+    `conceptsUsed[].name` is the concept markdown's first heading outside a
+    code fence, else its id. The result has a new `context` field: the
+    concept blocks alone, without the task.
+  - `OrchestrationResult` has `semanticMemory` (the concepts used, the saved
+    concept's id, and an enrichment or save error) when a Polytician server
+    is given, and a dry run's result has `prompt` (`system` and `user`).
+    `agentvault orchestrate` prints both: enrichment and save failures, and the
+    dry-run prompt, used to go only to the spinner, which hid them.
+  - `agentvault polytician search --json` prints 3.0's `results` array (`id`,
+    `namespace`, `score`, `tags`, `representations`, `assertionStatus`;
+    there is no `name`), `[]` when nothing matches, and `-l` is clamped to
+    1-100. `push-all` exits 1 when any push fails.
+  - The webapp `/api/polytician/[agentId]/*` routes return 3.0's results:
+    search `{ results }`, list `{ concepts, total }` (`?limit=` 1-100), the
+    stored concept for read and save (a save takes `{ markdown, tags? }`),
+    `{ deleted }`, the archive receipt `{ archived, encrypted, txId, url, size }`,
+    and stats `{ health: { status, version, embedding, llm }, stats }`.
+    Polytician error codes map to HTTP statuses (404 `NOT_FOUND`, 400
+    `VALIDATION_ERROR`, 502 `UPSTREAM_ERROR`, 504 `OUTCOME_UNKNOWN`, ...).
+    Any other failure (the server would not start, exited or timed out) is
+    logged on the server and answered with a generic 502
+    `POLYTICIAN_UNAVAILABLE` or 504 `POLYTICIAN_TIMEOUT`, since the message
+    can carry Polytician's stderr. A body that is not JSON is a 400. Auth is
+    unchanged.
+  - `push-all`, `pull` and `archive` (and the webapp archive route) need
+    configuration on Polytician's side: Polytician registers its `vault_*`
+    tools only when `POLYTICIAN_AV_API_URL` and `POLYTICIAN_AV_API_TOKEN` are
+    set, and `vault_archive_concept` only with `agentVault.archival` enabled.
+    `push-all` still cannot complete against AgentVault's own HTTP API: the
+    memory_repo commit and tombstone routes call the canister with the
+    anonymous principal, and the canister refuses anonymous writes.
+  - The `vault_*` calls wait longer than Polytician's own AgentVault requests
+    (archive 150 s, push 60 s, pull 150 s; other tools 30 s), so Polytician
+    answers first. An archive or push that still gets no answer is reported
+    as `OUTCOME_UNKNOWN` (`... outcome unknown: ...`), not as a failure: the
+    commit or the paid Arweave upload may have happened.
+
+### Fixed
+- **Polytician enrichment and concept saving were silently empty against
+  Polytician 3.0.** Search sent `limit`/`min_score` and saves sent
+  `name`/`content`/`representation`/`metadata`, which 3.0 rejects; the client
+  read `content[0].data`, which 3.0 never sends, and took tool errors for
+  results. It now sends `search_concepts { query, k }`,
+  `read_concept { id, representations: ["markdown"] }` and
+  `save_concept { markdown, tags }`, and reads `structuredContent`, checked
+  against zod schemas that mirror 3.0's `outputSchema`
+  (`src/orchestration/polytician-tools.ts`).
+- **Polytician context now reaches Claude.** `orchestrate()` built the real
+  prompt from the plain task, so the context reached only the dry-run
+  progress callback. Both the API and the local `claude` CLI path now get it,
+  in the user message inside a `<semantic_memory>` block labelled as
+  reference data, not instructions. It is kept out of the system prompt:
+  concepts hold earlier sessions' output and pulled content. Headings inside
+  a concept are pushed three levels down (Setext ones too) so they cannot
+  read as the prompt's own sections; code fences are left alone, and a
+  preview cut inside a fence closes it.
+- **`PolyticianMCPClient`** sends `notifications/initialized` after
+  `initialize`, requests protocol `2025-06-18` and refuses an answer it does
+  not support, and keeps the server's name and version (`getServerInfo()`).
+  It clears its request timers (`agentvault polytician status` waited about
+  30 s before exiting), fails pending requests as soon as the server exits,
+  with its exit code and stderr, instead of after a 30 s timeout, rejects an
+  entry point that cannot be started instead of throwing an unhandled error,
+  answers a server `ping` instead of taking it for a response, and closes the
+  server's stdin on disconnect. New `callToolResult()` / `parseToolResult()`
+  return a tool's result and throw `MCPToolError`, with Polytician's error
+  `code`, for an `isError` result.
+- **`PolyticianMCPClient` corrupted non-ASCII text in large results.** It
+  decoded each stdout read on its own, so a character split across two
+  64 KiB pipe reads became U+FFFD (CJK, emoji, em dashes and curly quotes in
+  concepts over about 64 KB). stdout and stderr are now decoded as streams.
+  A second `connect()` during the handshake started a second server that was
+  never stopped; it now waits for the first. Calls take a timeout
+  (`callTool(name, args, { timeoutMs })`) and a timeout rejects with
+  `MCPTimeoutError`.
+- **`GET /api/memory-repo/branches/:branch` returned only the newest commit's
+  entries**, so Polytician's `vault_memory_pull` imported one concept after a
+  `push-all` of many (one commit per concept), and nothing after a tombstone.
+  The route now replays every commit on the branch (newer entries win,
+  tombstones remove a key; `src/canister/memory-repo-branch-state.ts`). It
+  also no longer calls `switchBranch`, an update call that the canister
+  refuses from the route's anonymous principal and that moved the canister's
+  current branch on a read; it uses the `getBranches` and `log` queries.
+- **`agentvault polytician`:** `status` printed empty sections and now shows
+  the server, version, embedding model, LLM provider, concept and vector
+  counts and whether the `vault_*` tools are available; `search` prints ids,
+  scores, titles and tags; `push-all`, `pull` and `archive` call
+  `vault_memory_push` (for each concept), `vault_memory_pull` and
+  `vault_archive_concept` instead of tools 3.0 does not have, and say which
+  Polytician settings are missing when those tools are. Errors print
+  Polytician's code, e.g. `vault_archive_concept failed (UPSTREAM_ERROR): fetch failed`.
+- **`agentvault mcp call`** reports a tool's `isError` result as a failure
+  (exit 1) instead of "executed".
+- **`agentvault polytician search`** no longer fails when a hit is deleted
+  before its title is read; that hit is listed without a title.
+- **`agentvault orchestrate --no-semantic-enrichment` and `--no-save-concept`
+  had no effect:** the command read option names Commander never sets.
 
 ### Security
 - **C-1 (CRITICAL):** `vetkeys.decryptJSON` now validates the AES-256-GCM /

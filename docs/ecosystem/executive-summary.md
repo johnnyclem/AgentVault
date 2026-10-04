@@ -59,12 +59,15 @@ AgentVault depends on no suite package (`package.json` lists none). What it has 
   decisions). It is opt-in through the orchestrator's library API (`smallChat.enabled`); the
   `agentvault orchestrate` command does not turn it on. It shares no code with `@smallchat/core` and
   uses none of its 1.0 features (JSON Schema validation, proofs, decision logs, conformance vectors).
-- **Polytician — a client that predates 3.0.** `agentvault polytician` and
-  `agentvault orchestrate --polytician-entry` call a Polytician MCP server over stdio
-  (`src/orchestration/mcp-client.ts`, `polytician-enricher.ts`). Polytician 3.0 rejects the arguments
-  this client sends to `save_concept` and `search_concepts`, returns results in a shape the client does
-  not read, and does not have the `push_to_memory_repo`, `pull_from_memory_repo` and `archive_concept`
-  tools the CLI calls. Polytician's README lists the corrected calls.
+- **Polytician — an MCP client for Polytician 3.0.** `agentvault polytician` and
+  `agentvault orchestrate --polytician-entry` call a Polytician 3.0 MCP server over stdio
+  (`src/orchestration/mcp-client.ts`, `polytician-enricher.ts`). The orchestrator adds the concepts most
+  relevant to the task to Claude's prompt and saves each session's result as a concept; `status` and
+  `search` work against Polytician as installed. `push-all`, `pull` and `archive` use Polytician's opt-in
+  `vault_*` tools, which Polytician offers only once its operator points it at AgentVault
+  (`POLYTICIAN_AV_API_URL` and `POLYTICIAN_AV_API_TOKEN`, plus archival settings for `archive`). Even then,
+  `push-all` cannot complete against AgentVault's own API yet: its memory_repo write routes call the
+  canister anonymously, and the canister refuses anonymous writes.
 - **Stenographer and Short-hand — not integrated.** Neither is referenced anywhere in AgentVault's
   source, tests, `package.json` or plan files.
 
@@ -78,7 +81,7 @@ and Short-hand do:
   naive-truncation problem Short-hand's compaction engine was built to avoid.
 
 So the ecosystem is real as a *design philosophy* and, inside the suite, as working contracts. From
-AgentVault's side it is **one pattern borrowed (smallchat), one client that needs updating
+AgentVault's side it is **one pattern borrowed (smallchat), one client for the current release
 (Polytician), and two bridges missing** (Stenographer, Short-hand).
 
 ## Why this matters
@@ -101,8 +104,9 @@ AgentVault's side it is **one pattern borrowed (smallchat), one client that need
 1. **Evaluate, don't blindly adopt:** pull in Stenographer/Short-hand behind the same kind of thin
    client/adapter AgentVault already has for Polytician's MCP server, so a breaking upstream change
    can't take down agent execution.
-2. Update the Polytician client for 3.0 (the corrected calls are in Polytician's README) before relying
-   on Polytician enrichment.
+2. Keep the Polytician client's recorded contract (`tests/fixtures/polytician-3.0/`) current: re-capture
+   it when Polytician changes its tools, so a contract change fails AgentVault's tests instead of
+   silently emptying enrichment.
 3. Pilot Short-hand as a drop-in replacement for the truncation logic in
    `polytician-enricher.ts` — smallest surface area, clearest win.
 4. Pilot Stenographer as a read-side companion to MemoryRepo for conversational Q&A ("what did we
