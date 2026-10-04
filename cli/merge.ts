@@ -13,6 +13,13 @@
  *   4. Create a new commit on the canister with the merged thoughtforms.
  *
  * Acceptance: merged data pushed; canister has combined data, no duplicates.
+ *
+ * Step 4 writes with commitToBranch, which names the target branch: the
+ * canister's current branch is shared by every writer, and the merge neither
+ * depends on it nor moves it. The canister refuses writes from the anonymous
+ * principal, so the call is signed with --identity <pem>, else
+ * AGENTVAULT_ICP_IDENTITY_PEM_FILE, else dfx's selected identity, and with
+ * none of these the command exits 1 before calling the canister.
  */
 
 import * as fs from 'node:fs';
@@ -21,9 +28,16 @@ import chalk from 'chalk';
 import ora from 'ora';
 import {
   createMemoryRepoActor,
-  createAnonymousAgent,
+  createMemoryRepoAgent,
+  explainMemoryRepoWriteError,
+  memoryRepoErrorText,
   validateCanisterId,
 } from '../src/canister/memory-repo-actor.js';
+import {
+  describeIdentitySource,
+  requireCliSigningIdentity,
+  type SigningIdentity,
+} from '../src/canister/identity.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -199,25 +213,14 @@ export function mergeThoughtforms(
 // ─── Execution ──────────────────────────────────────────────────────────────
 
 /**
- * Create an initialized ICP agent, fetching root key for local replicas.
- */
-async function createInitializedAgent(host?: string): Promise<ReturnType<typeof createAnonymousAgent>> {
-  const agent = createAnonymousAgent(host);
-  const resolvedHost = host ?? process.env.ICP_LOCAL_URL ?? 'http://localhost:4943';
-  if (!resolvedHost.includes('ic0.app') && !resolvedHost.includes('icp0.io')) {
-    await agent.fetchRootKey();
-  }
-  return agent;
-}
-
-/**
- * Execute the merge operation.
+ * Execute the merge operation, signing the canister writes with `signer`.
  */
 export async function executeMerge(options: {
   input: string;
   branch: string;
   canister: string;
   host?: string;
+  signer: SigningIdentity;
 }): Promise<MergeSummary> {
   // 1. Deserialise local bundle
   const bundle = readBundle(options.input);
@@ -227,14 +230,12 @@ export async function executeMerge(options: {
 
   // 2. Validate canister and create actor
   validateCanisterId(options.canister);
-  const agent = await createInitializedAgent(options.host);
+  const agent = await createMemoryRepoAgent(options.host, options.signer.identity);
   const actor = createMemoryRepoActor(options.canister, agent);
 
   // 3. Fetch current on-chain state from the target branch
-  //    First switch to the target branch, then get the latest commit.
-  const switchResult = await actor.switchBranch(options.branch);
-  if ('err' in switchResult) {
-    throw new Error(`Cannot switch to branch '${options.branch}': ${switchResult.err}`);
+  if (!(await actor.getBranches()).some(([name]) => name === options.branch)) {
+    throw new Error(`Branch '${options.branch}' does not exist`);
   }
 
   const commits = await actor.log([options.branch]);
@@ -258,7 +259,7 @@ export async function executeMerge(options: {
   const message = `merge: ${added} added, ${updated} updated, ${unchanged} unchanged (${merged.length} total)`;
   const tags = ['merge', 'cli'];
 
-  const commitResult = await actor.commit(message, diffPayload, tags);
+  const commitResult = await actor.commitToBranch(options.branch, message, diffPayload, tags);
 
   if ('err' in commitResult) {
     throw new Error(`Commit failed: ${commitResult.err}`);
@@ -284,13 +285,29 @@ export function mergeCommand(): Command {
     .requiredOption('--branch <name>', 'Target branch on the canister (e.g. main)')
     .requiredOption('--canister <id>', 'MemoryRepo canister ID')
     .option('--host <url>', 'ICP replica host URL (overrides ICP_LOCAL_URL env)')
-    .action(async (options: { input: string; branch: string; canister: string; host?: string }) => {
+    .option(
+      '--identity <pem>',
+      "PEM key to sign the canister writes with (overrides AGENTVAULT_ICP_IDENTITY_PEM_FILE and dfx's selected identity)",
+    )
+    .action(async (options: { input: string; branch: string; canister: string; host?: string; identity?: string }) => {
       console.log(chalk.bold('\n  AgentVault Merge\n'));
+
+      let signer: SigningIdentity;
+      try {
+        signer = requireCliSigningIdentity({ identityPath: options.identity });
+      } catch (error) {
+        console.error(chalk.red(error instanceof Error ? error.message : String(error)));
+        process.exit(1);
+      }
+      console.log(chalk.gray(`  Signing as ${signer.principal} (${describeIdentitySource(signer.source)})`));
+      if (signer.warning) {
+        console.error(chalk.yellow(`  Warning: ${signer.warning}`));
+      }
 
       const spinner = ora('Merging local bundle with on-chain state...').start();
 
       try {
-        const summary = await executeMerge(options);
+        const summary = await executeMerge({ ...options, signer });
 
         spinner.succeed(chalk.green('Merge complete'));
         console.log();
@@ -304,7 +321,8 @@ export function mergeCommand(): Command {
         console.log();
       } catch (error) {
         spinner.fail(chalk.red('Merge failed'));
-        console.error(chalk.red(error instanceof Error ? error.message : String(error)));
+        const refusal = explainMemoryRepoWriteError(error, signer.principal);
+        console.error(chalk.red(refusal ? refusal.message : memoryRepoErrorText(error)));
         process.exit(1);
       }
     });

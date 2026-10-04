@@ -237,6 +237,9 @@ dist/
 
 # AgentVault local state
 .agentvault/
+
+# Private keys (e.g. an identity exported for memory_repo signing)
+*.pem
 `;
     fs.writeFileSync(gitignorePath, gitignoreContent, 'utf-8');
   }

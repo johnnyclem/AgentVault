@@ -29,7 +29,16 @@ import {
   verifySnapshotFile,
   projectAgentId,
 } from '../../src/hypervault/pipeline.js';
-import { createMemoryRepoActor } from '../../src/canister/memory-repo-actor.js';
+import {
+  createMemoryRepoActor,
+  createMemoryRepoAgent,
+  explainMemoryRepoWriteError,
+} from '../../src/canister/memory-repo-actor.js';
+import {
+  describeIdentitySource,
+  requireCliSigningIdentity,
+  type SigningIdentity,
+} from '../../src/canister/identity.js';
 
 const hypervaultCmd = new Command('hypervault');
 
@@ -307,6 +316,10 @@ hypervaultCmd
   .option('--encrypt', 'Encrypt the bundle (AES-256-GCM, passphrase-wrapped)')
   .option('--network <net>', 'ICP network: local | ic')
   .option('--canister-id <id>', 'memory_repo canister id (skip the warm tier if omitted)')
+  .option(
+    '--identity <pem>',
+    "PEM key to sign the canister writes with (overrides AGENTVAULT_ICP_IDENTITY_PEM_FILE and dfx's selected identity)",
+  )
   .option('--arweave', 'Upload the cold copy to Arweave')
   .option('--arweave-jwk <file>', 'Path to the Arweave wallet JWK')
   .option('--since <iso>', 'Incremental archive from this cursor')
@@ -317,13 +330,26 @@ hypervaultCmd
     encrypt?: boolean;
     network?: string;
     canisterId?: string;
+    identity?: string;
     arweave?: boolean;
     arweaveJwk?: string;
     since?: string;
     yes?: boolean;
   }) => {
     console.log(chalk.bold('\n🗄  HyperVault sovereign archive\n'));
+    let signer: SigningIdentity | undefined;
     try {
+      // The warm tier writes to memory_repo (initRepo, branches, commits,
+      // thoughtforms), which refuses anonymous callers: settle the signing
+      // identity before anything else happens.
+      if (options.canisterId) {
+        signer = requireCliSigningIdentity({ identityPath: options.identity });
+        console.log(chalk.gray(`Signing as ${signer.principal} (${describeIdentitySource(signer.source)})`));
+        if (signer.warning) {
+          console.error(chalk.yellow(`Warning: ${signer.warning}`));
+        }
+      }
+
       if (!options.encrypt && !options.yes) {
         const { proceed } = await inquirer.prompt<{ proceed: boolean }>([
           { type: 'confirm', name: 'proceed', message: chalk.red('Archiving WITHOUT --encrypt stores memories in plaintext. Continue?'), default: false },
@@ -339,10 +365,9 @@ hypervaultCmd
 
       // Warm tier: canister actor
       let actor;
-      if (options.canisterId) {
-        const { createAnonymousAgent } = await import('../../src/canister/memory-repo-actor.js');
+      if (options.canisterId && signer) {
         const host = options.network === 'ic' ? 'https://ic0.app' : undefined;
-        actor = createMemoryRepoActor(options.canisterId, createAnonymousAgent(host));
+        actor = createMemoryRepoActor(options.canisterId, await createMemoryRepoAgent(host, signer.identity));
       }
 
       // Cold tier: Arweave JWK
@@ -383,7 +408,8 @@ hypervaultCmd
         for (const err of result.errors) console.log(chalk.yellow(`    - ${err}`));
       }
     } catch (error) {
-      console.error(chalk.red(errMsg(error)));
+      const refusal = signer ? explainMemoryRepoWriteError(error, signer.principal) : null;
+      console.error(chalk.red(refusal ? refusal.message : errMsg(error)));
       process.exit(1);
     }
   });

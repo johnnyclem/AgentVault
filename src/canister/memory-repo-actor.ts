@@ -118,6 +118,8 @@ export interface _SERVICE {
 
   // Commit Operations
   commit: (message: string, diff: string, tags: string[]) => Promise<OperationResult>;
+  /** Commit onto `branch` in one message, without moving (or depending on) the current branch. */
+  commitToBranch: (branch: string, message: string, diff: string, tags: string[]) => Promise<OperationResult>;
   getCommit: (commitId: string) => Promise<[Commit] | []>;
 
   // Log & State Queries
@@ -128,6 +130,8 @@ export interface _SERVICE {
   // Branch Operations
   getBranches: () => Promise<[string, string][]>;
   createBranch: (name: string) => Promise<OperationResult>;
+  /** A branch at `base`'s HEAD (createBranch forks from the current branch). */
+  createBranchFrom: (name: string, base: string) => Promise<OperationResult>;
   switchBranch: (name: string) => Promise<OperationResult>;
 
   // Rebase (PRD 3)
@@ -192,6 +196,110 @@ export function createAuthenticatedAgent(host?: string, identity?: Identity): Ht
   });
 
   return agent;
+}
+
+/**
+ * Whether a replica host is a local development replica: a loopback name or
+ * address. Only such hosts are asked for their root key; any other host is
+ * verified against the IC root key the agent ships with.
+ */
+export function isLocalReplicaHost(host: string): boolean {
+  let hostname: string;
+  try {
+    hostname = new URL(host).hostname;
+  } catch {
+    return false;
+  }
+  return (
+    hostname === 'localhost' ||
+    hostname.endsWith('.localhost') ||
+    hostname === '127.0.0.1' ||
+    hostname === '[::1]'
+  );
+}
+
+/**
+ * An agent for memory_repo calls, signed by `identity` when one is given and
+ * anonymous otherwise. The canister answers anonymous queries but refuses
+ * anonymous writes, so every update call needs an identity the canister
+ * authorizes. Fetches the root key for local replicas only.
+ *
+ * @param host - Host URL (default: from ICP_LOCAL_URL env or http://localhost:4943)
+ */
+export async function createMemoryRepoAgent(host?: string, identity?: Identity): Promise<HttpAgent> {
+  const resolvedHost = host ?? process.env.ICP_LOCAL_URL ?? 'http://localhost:4943';
+  const agent = identity
+    ? createAuthenticatedAgent(resolvedHost, identity)
+    : createAnonymousAgent(resolvedHost);
+  if (isLocalReplicaHost(resolvedHost)) {
+    await agent.fetchRootKey();
+  }
+  return agent;
+}
+
+/** Codes for the write refusals explainMemoryRepoWriteError recognizes. */
+export type MemoryRepoWriteErrorCode =
+  | 'SIGNER_NOT_AUTHORIZED'
+  | 'SIGNER_NOT_OWNER'
+  | 'REPO_FROZEN'
+  | 'REPO_KILLED'
+  | 'MEMORY_REPO_OUTDATED';
+
+/**
+ * The part of a failed canister call worth showing: the replica's reject
+ * text, without the request id, certificate and HTTP details agent-js puts
+ * in the error message. Any other error keeps its first line.
+ */
+export function memoryRepoErrorText(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error);
+  const reject = /Reject text:\s*(.+)/.exec(text);
+  return (reject?.[1] ?? text.split('\n')[0] ?? '').trim() || 'Unknown error';
+}
+
+/**
+ * Explain a memory_repo write that the canister trapped on, naming the
+ * principal that signed it and what would let it through. The guards in
+ * canister/memory-repo.mo trap with fixed messages, which reach the agent
+ * as the reject text. A method the canister does not have means it was
+ * built from an older canister/memory-repo.mo. Null for any other error.
+ */
+export function explainMemoryRepoWriteError(
+  error: unknown,
+  principal: string,
+): { code: MemoryRepoWriteErrorCode; message: string } | null {
+  const text = error instanceof Error ? error.message : String(error);
+  const missing = /has no (?:update|query) method '([^']+)'/.exec(text);
+  if (missing) {
+    return {
+      code: 'MEMORY_REPO_OUTDATED',
+      message:
+        `memory_repo has no ${missing[1]} method: the canister was built from an older canister/memory-repo.mo. ` +
+        'Upgrade it from this release (`dfx deploy memory_repo`); an upgrade keeps its commits, owner and authorized principals.',
+    };
+  }
+  if (text.includes('caller principal is not authorized')) {
+    return {
+      code: 'SIGNER_NOT_AUTHORIZED',
+      message:
+        `memory_repo refused the write: ${principal} is neither the repo owner nor an authorized principal. ` +
+        `The owner can allow it with \`agentvault memory authorize ${principal}\`.`,
+    };
+  }
+  if (text.includes('only the canister owner may call this function')) {
+    return {
+      code: 'SIGNER_NOT_OWNER',
+      message:
+        `memory_repo refused: only the repo owner may do this, and ${principal} is not the owner ` +
+        '(`agentvault memory status` shows the owner).',
+    };
+  }
+  if (text.includes('canister is frozen')) {
+    return { code: 'REPO_FROZEN', message: 'memory_repo is frozen: writes are refused until the owner calls manualUnlock.' };
+  }
+  if (text.includes('canister killed')) {
+    return { code: 'REPO_KILLED', message: 'memory_repo has been killed: writes are refused until the owner calls reviveCanister.' };
+  }
+  return null;
 }
 
 /**

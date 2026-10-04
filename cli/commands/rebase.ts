@@ -18,7 +18,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import {
   createMemoryRepoActor,
-  createAnonymousAgent,
+  createMemoryRepoAgent,
   validateCanisterId,
 } from '../../src/canister/memory-repo-actor.js';
 import type { Commit } from '../../src/canister/memory-repo-actor.js';
@@ -167,12 +167,8 @@ export async function executeRebase(options: RebaseCommandOptions): Promise<Bund
 
   const spinner = ora('Connecting to MemoryRepo canister...').start();
 
-  // 1. Create agent & actor
-  const agent = createAnonymousAgent(host);
-  const resolvedHost = host ?? process.env.ICP_LOCAL_URL ?? 'http://localhost:4943';
-  if (!resolvedHost.includes('ic0.app') && !resolvedHost.includes('icp0.io')) {
-    await agent.fetchRootKey();
-  }
+  // 1. Create agent & actor (anonymous: this command only queries the canister)
+  const agent = await createMemoryRepoAgent(host);
   const actor = createMemoryRepoActor(canister, agent);
 
   // 2. Fetch on-chain commits for the target branch

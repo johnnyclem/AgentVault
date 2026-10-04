@@ -56,6 +56,12 @@ describe('Init Command — Soul.md Detection', () => {
     expect(fs.existsSync(path.join(tmpDir, '.gitignore'))).toBe(true);
   });
 
+  it('ignores PEM files, so an exported signing key is not committed', async () => {
+    await executeInit(defaultAnswers, defaultOptions, tmpDir);
+
+    expect(fs.readFileSync(path.join(tmpDir, '.gitignore'), 'utf-8').split('\n')).toContain('*.pem');
+  });
+
   it('should create standard project structure without soul.md', async () => {
     await executeInit(defaultAnswers, defaultOptions, tmpDir);
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { validateAuthToken, unauthorizedResponse } from '@/lib/server/auth'
+import { validateAuthToken } from '@/lib/server/auth'
+import { polyticianClientError } from '@/lib/server/polytician-client'
 import { ArweaveClient } from '@/archival/arweave-client'
 
 interface UploadRequest {
@@ -30,24 +31,18 @@ interface UploadResponse {
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const authResult = validateAuthToken(request)
   if (!authResult.authorized) {
-    return unauthorizedResponse(authResult.error ?? 'Unauthorized')
+    return polyticianClientError(401, 'UNAUTHORIZED', authResult.error ?? 'Unauthorized')
   }
 
   try {
     const body: UploadRequest = await request.json()
     
     if (!body.data) {
-      return NextResponse.json(
-        { success: false, error: { message: 'Missing required field: data', code: 'BAD_REQUEST' } },
-        { status: 400 }
-      )
+      return polyticianClientError(400, 'BAD_REQUEST', 'Missing required field: data')
     }
 
     if (!body.jwk) {
-      return NextResponse.json(
-        { success: false, error: { message: 'Missing required field: jwk (Arweave wallet)', code: 'BAD_REQUEST' } },
-        { status: 400 }
-      )
+      return polyticianClientError(400, 'BAD_REQUEST', 'Missing required field: jwk (Arweave wallet)')
     }
 
     const protocol = (process.env.ARWEAVE_PROTOCOL || 'https') as 'https' | 'http'
@@ -72,10 +67,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const result = await client.uploadData(dataBuffer, body.jwk, { tags })
 
     if (!result.success || !result.transactionId) {
-      return NextResponse.json(
-        { success: false, error: { message: result.error ?? 'Upload failed', code: 'UPLOAD_FAILED' } },
-        { status: 502 }
-      )
+      return polyticianClientError(502, 'UPLOAD_FAILED', result.error ?? 'Upload failed')
     }
 
     const response: UploadResponse = {
@@ -89,9 +81,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ success: true, data: response })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
-    return NextResponse.json(
-      { success: false, error: { message, code: 'INTERNAL_ERROR' } },
-      { status: 500 }
-    )
+    return polyticianClientError(500, 'INTERNAL_ERROR', message)
   }
 }

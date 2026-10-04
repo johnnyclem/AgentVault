@@ -55,6 +55,8 @@ coverage/
 # agent backups / keys
 backups/
 .vercel
+# Private keys (e.g. an identity exported for memory_repo signing)
+*.pem
 
 # Per-project agent scaffolding created by `agentvault init`
 .agentvault/

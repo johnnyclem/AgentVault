@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAuthToken, unauthorizedResponse } from '@/lib/server/auth'
+import { isPolyticianClientPath, polyticianClientError } from '@/lib/server/polytician-client'
 
 /**
  * Authentication gate for the API surface.
@@ -32,7 +33,11 @@ export function middleware(request: NextRequest): NextResponse {
 
   const authResult = validateAuthToken(request)
   if (!authResult.authorized) {
-    return unauthorizedResponse(authResult.error ?? 'Unauthorized')
+    const message = authResult.error ?? 'Unauthorized'
+    // Polytician reads errors in its own shape; the webapp's UI reads { message, code }
+    return isPolyticianClientPath(pathname)
+      ? polyticianClientError(401, 'UNAUTHORIZED', message)
+      : unauthorizedResponse(message)
   }
 
   return NextResponse.next()

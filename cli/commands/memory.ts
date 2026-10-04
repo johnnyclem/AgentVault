@@ -12,6 +12,14 @@
  *   memory rebase --from-soul <file>     Rebase with new soul (PRD 3)
  *   memory merge --from-branch <name>    Merge branch (PRD 4)
  *   memory cherry-pick <commit-id>       Cherry-pick commit (PRD 4)
+ *   memory whoami                        Principal writes are signed as
+ *   memory authorize <principal>         Owner: let a principal write
+ *   memory deauthorize <principal>       Owner: revoke a principal
+ *
+ * The canister refuses anonymous writes, so every write is signed: with
+ * --identity <pem>, else AGENTVAULT_ICP_IDENTITY_PEM_FILE, else dfx's
+ * selected identity (see src/canister/identity.ts). A write with none of
+ * these exits 1 before calling the canister. Reads stay anonymous.
  *
  * Examples:
  *   agentvault memory init soul.md
@@ -19,6 +27,7 @@
  *   agentvault memory log --branch main
  *   agentvault memory rebase --from-soul new-soul.md
  *   agentvault memory merge --from-branch chat-history
+ *   agentvault memory authorize $(agentvault memory whoami --identity ~/.config/agentvault/webapp.pem)
  */
 
 import * as fs from 'node:fs';
@@ -26,12 +35,27 @@ import * as path from 'node:path';
 import { Command, Option } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
+import { Principal } from '@dfinity/principal';
 import {
   createMemoryRepoActor,
-  createAnonymousAgent,
+  createMemoryRepoAgent,
+  explainMemoryRepoWriteError,
+  memoryRepoErrorText,
   validateCanisterId,
 } from '../../src/canister/memory-repo-actor.js';
 import type { Commit, MergeResult, MergeStrategy } from '../../src/canister/memory-repo-actor.js';
+import {
+  describeIdentitySource,
+  requireCliSigningIdentity,
+  type SigningIdentity,
+} from '../../src/canister/identity.js';
+
+/** Options of the `memory` command, which every subcommand reads. */
+interface MemoryOptions {
+  canisterId?: string;
+  host?: string;
+  identity?: string;
+}
 
 /**
  * Resolve the MemoryRepo canister ID from CLI flag, env var, or canister_ids.json.
@@ -99,17 +123,31 @@ function findProjectRoot(): string | null {
 }
 
 /**
- * Create a properly initialized agent for the given host.
- * Fetches root key for local replicas.
+ * The identity a write is signed with, announced on stdout. The canister
+ * refuses anonymous writes, so with no identity configured (or an unusable
+ * one) this prints why and exits 1 before anything is sent.
  */
-async function createInitializedAgent(host?: string): Promise<ReturnType<typeof createAnonymousAgent>> {
-  const agent = createAnonymousAgent(host);
-  const resolvedHost = host ?? process.env.ICP_LOCAL_URL ?? 'http://localhost:4943';
-  // Fetch root key for local/dev replicas (not mainnet)
-  if (!resolvedHost.includes('ic0.app') && !resolvedHost.includes('icp0.io')) {
-    await agent.fetchRootKey();
+function signerOrExit(parentOpts: MemoryOptions): SigningIdentity {
+  try {
+    const signer = requireCliSigningIdentity({ identityPath: parentOpts.identity });
+    console.log(chalk.gray(`Signing as ${signer.principal} (${describeIdentitySource(signer.source)})`));
+    if (signer.warning) {
+      console.error(chalk.yellow(`Warning: ${signer.warning}`));
+    }
+    return signer;
+  } catch (error) {
+    console.error(chalk.red(error instanceof Error ? error.message : String(error)));
+    process.exit(1);
   }
-  return agent;
+}
+
+/**
+ * Print a failed write: the canister's refusal of the signer, explained, or
+ * the replica's reject text.
+ */
+function printWriteError(error: unknown, signer: SigningIdentity): void {
+  const refusal = explainMemoryRepoWriteError(error, signer.principal);
+  console.error(chalk.red(refusal ? refusal.message : memoryRepoErrorText(error)));
 }
 
 /**
@@ -155,7 +193,11 @@ const memoryCmd = new Command('memory');
 memoryCmd
   .description('Git-style memory repository commands for agent identity and versioned memory')
   .option('--canister-id <id>', 'MemoryRepo canister ID (overrides env/config)')
-  .option('--host <url>', 'ICP replica host URL (overrides ICP_LOCAL_URL env)');
+  .option('--host <url>', 'ICP replica host URL (overrides ICP_LOCAL_URL env)')
+  .option(
+    '--identity <pem>',
+    "PEM key to sign writes with (overrides AGENTVAULT_ICP_IDENTITY_PEM_FILE and dfx's selected identity)",
+  );
 
 // ─── memory init ────────────────────────────────────────────────────────────
 
@@ -164,7 +206,8 @@ memoryCmd
   .description('Initialize memory repository from a soul.md file')
   .argument('[soul-file]', 'Path to soul.md file', 'soul.md')
   .action(async (soulFile: string, _opts: unknown, cmd: Command) => {
-    const parentOpts = cmd.parent?.opts() ?? {};
+    const parentOpts: MemoryOptions = cmd.parent?.opts() ?? {};
+    const signer = signerOrExit(parentOpts);
     const spinner = ora('Initializing memory repository...').start();
 
     try {
@@ -182,7 +225,7 @@ memoryCmd
       }
 
       const canisterId = resolveCanisterId(parentOpts);
-      const agent = await createInitializedAgent(parentOpts.host);
+      const agent = await createMemoryRepoAgent(parentOpts.host, signer.identity);
       const actor = createMemoryRepoActor(canisterId, agent);
 
       const result = await actor.initRepo(soulContent);
@@ -190,13 +233,14 @@ memoryCmd
       if ('ok' in result) {
         spinner.succeed(chalk.green(`Repository initialized from ${soulFile}`));
         console.log(chalk.gray(`  Genesis commit: ${result.ok}`));
+        console.log(chalk.gray(`  Owner: ${signer.principal}`));
       } else {
         spinner.fail(chalk.red(result.err));
         process.exit(1);
       }
     } catch (error) {
       spinner.fail(chalk.red('Failed to initialize repository'));
-      console.error(chalk.red(error instanceof Error ? error.message : String(error)));
+      printWriteError(error, signer);
       process.exit(1);
     }
   });
@@ -210,7 +254,8 @@ memoryCmd
   .requiredOption('-d, --diff <diff>', 'Diff content for the commit')
   .option('-t, --tags <tags>', 'Comma-separated tags', '')
   .action(async (message: string, options: { diff: string; tags: string }, cmd: Command) => {
-    const parentOpts = cmd.parent?.opts() ?? {};
+    const parentOpts: MemoryOptions = cmd.parent?.opts() ?? {};
+    const signer = signerOrExit(parentOpts);
     const spinner = ora('Creating commit...').start();
 
     try {
@@ -225,21 +270,25 @@ memoryCmd
       }
 
       const canisterId = resolveCanisterId(parentOpts);
-      const agent = await createInitializedAgent(parentOpts.host);
+      const agent = await createMemoryRepoAgent(parentOpts.host, signer.identity);
       const actor = createMemoryRepoActor(canisterId, agent);
 
       const tags = options.tags ? options.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
       const result = await actor.commit(message, options.diff, tags);
 
       if ('ok' in result) {
-        spinner.succeed(chalk.green(`Commit created: ${result.ok}`));
+        // The current branch is shared by every writer, so name the one the
+        // canister recorded rather than the one this command expected. The
+        // commit is made either way; a failed read only leaves the branch out.
+        const recorded = await actor.getCommit(result.ok).then(([c]) => c, () => undefined);
+        spinner.succeed(chalk.green(`Committed ${result.ok}${recorded ? ` on branch ${recorded.branch}` : ''}`));
       } else {
         spinner.fail(chalk.red(result.err));
         process.exit(1);
       }
     } catch (error) {
       spinner.fail(chalk.red('Failed to create commit'));
-      console.error(chalk.red(error instanceof Error ? error.message : String(error)));
+      printWriteError(error, signer);
       process.exit(1);
     }
   });
@@ -252,12 +301,12 @@ memoryCmd
   .option('--branch <name>', 'Branch to show log for (default: current)')
   .option('--json', 'Output raw JSON')
   .action(async (options: { branch?: string; json?: boolean }, cmd: Command) => {
-    const parentOpts = cmd.parent?.opts() ?? {};
+    const parentOpts: MemoryOptions = cmd.parent?.opts() ?? {};
     const spinner = ora('Loading commit log...').start();
 
     try {
       const canisterId = resolveCanisterId(parentOpts);
-      const agent = await createInitializedAgent(parentOpts.host);
+      const agent = await createMemoryRepoAgent(parentOpts.host);
       const actor = createMemoryRepoActor(canisterId, agent);
 
       const branchArg: [string] | [] = options.branch ? [options.branch] : [];
@@ -283,7 +332,7 @@ memoryCmd
       console.log(chalk.gray(`  ${commits.length} commit(s) total`));
     } catch (error) {
       spinner.fail(chalk.red('Failed to load log'));
-      console.error(chalk.red(error instanceof Error ? error.message : String(error)));
+      console.error(chalk.red(memoryRepoErrorText(error)));
       process.exit(1);
     }
   });
@@ -294,12 +343,12 @@ memoryCmd
   .command('status')
   .description('Show repository status')
   .action(async (_opts: unknown, cmd: Command) => {
-    const parentOpts = cmd.parent?.opts() ?? {};
+    const parentOpts: MemoryOptions = cmd.parent?.opts() ?? {};
     const spinner = ora('Loading repository status...').start();
 
     try {
       const canisterId = resolveCanisterId(parentOpts);
-      const agent = await createInitializedAgent(parentOpts.host);
+      const agent = await createMemoryRepoAgent(parentOpts.host);
       const actor = createMemoryRepoActor(canisterId, agent);
 
       const status = await actor.getRepoStatus();
@@ -315,7 +364,7 @@ memoryCmd
       console.log();
     } catch (error) {
       spinner.fail(chalk.red('Failed to load status'));
-      console.error(chalk.red(error instanceof Error ? error.message : String(error)));
+      console.error(chalk.red(memoryRepoErrorText(error)));
       process.exit(1);
     }
   });
@@ -327,14 +376,15 @@ memoryCmd
   .description('List branches or create a new branch')
   .argument('[name]', 'Branch name to create (omit to list)')
   .action(async (name: string | undefined, _opts: unknown, cmd: Command) => {
-    const parentOpts = cmd.parent?.opts() ?? {};
+    const parentOpts: MemoryOptions = cmd.parent?.opts() ?? {};
 
     if (name) {
+      const signer = signerOrExit(parentOpts);
       const spinner = ora(`Creating branch '${name}'...`).start();
       try {
         validateBranchName(name);
         const canisterId = resolveCanisterId(parentOpts);
-        const agent = await createInitializedAgent(parentOpts.host);
+        const agent = await createMemoryRepoAgent(parentOpts.host, signer.identity);
         const actor = createMemoryRepoActor(canisterId, agent);
         const result = await actor.createBranch(name);
         if ('ok' in result) {
@@ -344,14 +394,15 @@ memoryCmd
           process.exit(1);
         }
       } catch (error) {
-        spinner.fail(chalk.red(error instanceof Error ? error.message : String(error)));
+        spinner.fail(chalk.red('Failed to create branch'));
+        printWriteError(error, signer);
         process.exit(1);
       }
     } else {
       const spinner = ora('Loading branches...').start();
       try {
         const canisterId = resolveCanisterId(parentOpts);
-        const agent = await createInitializedAgent(parentOpts.host);
+        const agent = await createMemoryRepoAgent(parentOpts.host);
         const actor = createMemoryRepoActor(canisterId, agent);
         const branchList = await actor.getBranches();
         const status = await actor.getRepoStatus();
@@ -369,7 +420,7 @@ memoryCmd
         }
         console.log();
       } catch (error) {
-        spinner.fail(chalk.red(error instanceof Error ? error.message : String(error)));
+        spinner.fail(chalk.red(memoryRepoErrorText(error)));
         process.exit(1);
       }
     }
@@ -382,12 +433,13 @@ memoryCmd
   .description('Switch to a different branch')
   .argument('<branch>', 'Branch name to switch to')
   .action(async (branch: string, _opts: unknown, cmd: Command) => {
-    const parentOpts = cmd.parent?.opts() ?? {};
+    const parentOpts: MemoryOptions = cmd.parent?.opts() ?? {};
+    const signer = signerOrExit(parentOpts);
     const spinner = ora(`Switching to branch '${branch}'...`).start();
 
     try {
       const canisterId = resolveCanisterId(parentOpts);
-      const agent = await createInitializedAgent(parentOpts.host);
+      const agent = await createMemoryRepoAgent(parentOpts.host, signer.identity);
       const actor = createMemoryRepoActor(canisterId, agent);
 
       const result = await actor.switchBranch(branch);
@@ -400,7 +452,7 @@ memoryCmd
       }
     } catch (error) {
       spinner.fail(chalk.red('Failed to switch branch'));
-      console.error(chalk.red(error instanceof Error ? error.message : String(error)));
+      printWriteError(error, signer);
       process.exit(1);
     }
   });
@@ -413,12 +465,12 @@ memoryCmd
   .argument('<commit-id>', 'Commit ID to display')
   .option('--json', 'Output raw JSON')
   .action(async (commitId: string, options: { json?: boolean }, cmd: Command) => {
-    const parentOpts = cmd.parent?.opts() ?? {};
+    const parentOpts: MemoryOptions = cmd.parent?.opts() ?? {};
     const spinner = ora(`Loading commit ${commitId}...`).start();
 
     try {
       const canisterId = resolveCanisterId(parentOpts);
-      const agent = await createInitializedAgent(parentOpts.host);
+      const agent = await createMemoryRepoAgent(parentOpts.host);
       const actor = createMemoryRepoActor(canisterId, agent);
 
       const result = await actor.getCommit(commitId);
@@ -446,7 +498,7 @@ memoryCmd
       console.log();
     } catch (error) {
       spinner.fail(chalk.red('Failed to load commit'));
-      console.error(chalk.red(error instanceof Error ? error.message : String(error)));
+      console.error(chalk.red(memoryRepoErrorText(error)));
       process.exit(1);
     }
   });
@@ -459,7 +511,8 @@ memoryCmd
   .requiredOption('--from-soul <file>', 'Path to new soul.md file')
   .option('--branch <name>', 'Source branch to rebase (default: current)')
   .action(async (options: { fromSoul: string; branch?: string }, cmd: Command) => {
-    const parentOpts = cmd.parent?.opts() ?? {};
+    const parentOpts: MemoryOptions = cmd.parent?.opts() ?? {};
+    const signer = signerOrExit(parentOpts);
     const spinner = ora('Rebasing...').start();
 
     try {
@@ -477,7 +530,7 @@ memoryCmd
       }
 
       const canisterId = resolveCanisterId(parentOpts);
-      const agent = await createInitializedAgent(parentOpts.host);
+      const agent = await createMemoryRepoAgent(parentOpts.host, signer.identity);
       const actor = createMemoryRepoActor(canisterId, agent);
 
       const branchArg: [string] | [] = options.branch ? [options.branch] : [];
@@ -493,7 +546,7 @@ memoryCmd
       }
     } catch (error) {
       spinner.fail(chalk.red('Rebase failed'));
-      console.error(chalk.red(error instanceof Error ? error.message : String(error)));
+      printWriteError(error, signer);
       process.exit(1);
     }
   });
@@ -506,12 +559,13 @@ memoryCmd
   .requiredOption('--from-branch <name>', 'Branch to merge from')
   .addOption(new Option('--strategy <strategy>', 'Merge strategy').choices(['auto', 'manual']).default('auto'))
   .action(async (options: { fromBranch: string; strategy: string }, cmd: Command) => {
-    const parentOpts = cmd.parent?.opts() ?? {};
+    const parentOpts: MemoryOptions = cmd.parent?.opts() ?? {};
+    const signer = signerOrExit(parentOpts);
     const spinner = ora(`Merging from '${options.fromBranch}'...`).start();
 
     try {
       const canisterId = resolveCanisterId(parentOpts);
-      const agent = await createInitializedAgent(parentOpts.host);
+      const agent = await createMemoryRepoAgent(parentOpts.host, signer.identity);
       const actor = createMemoryRepoActor(canisterId, agent);
 
       const strategy: MergeStrategy = options.strategy === 'manual'
@@ -534,7 +588,7 @@ memoryCmd
       }
     } catch (error) {
       spinner.fail(chalk.red('Merge failed'));
-      console.error(chalk.red(error instanceof Error ? error.message : String(error)));
+      printWriteError(error, signer);
       process.exit(1);
     }
   });
@@ -546,12 +600,13 @@ memoryCmd
   .description('Cherry-pick a specific commit onto the current branch')
   .argument('<commit-id>', 'Commit ID to cherry-pick')
   .action(async (commitId: string, _opts: unknown, cmd: Command) => {
-    const parentOpts = cmd.parent?.opts() ?? {};
+    const parentOpts: MemoryOptions = cmd.parent?.opts() ?? {};
+    const signer = signerOrExit(parentOpts);
     const spinner = ora(`Cherry-picking ${commitId}...`).start();
 
     try {
       const canisterId = resolveCanisterId(parentOpts);
-      const agent = await createInitializedAgent(parentOpts.host);
+      const agent = await createMemoryRepoAgent(parentOpts.host, signer.identity);
       const actor = createMemoryRepoActor(canisterId, agent);
 
       const result = await actor.cherryPick(commitId);
@@ -564,9 +619,90 @@ memoryCmd
       }
     } catch (error) {
       spinner.fail(chalk.red('Cherry-pick failed'));
+      printWriteError(error, signer);
+      process.exit(1);
+    }
+  });
+
+// ─── memory whoami ──────────────────────────────────────────────────────────
+
+memoryCmd
+  .command('whoami')
+  .description('Print the principal memory_repo writes are signed as')
+  .action((_opts: unknown, cmd: Command) => {
+    const parentOpts: MemoryOptions = cmd.parent?.opts() ?? {};
+    try {
+      const signer = requireCliSigningIdentity({ identityPath: parentOpts.identity });
+      // The principal alone on stdout, so `$(agentvault memory whoami)` can be passed on.
+      console.log(signer.principal);
+      console.error(chalk.gray(`${signer.keyType} key from ${describeIdentitySource(signer.source)}`));
+      if (signer.warning) {
+        console.error(chalk.yellow(`Warning: ${signer.warning}`));
+      }
+    } catch (error) {
       console.error(chalk.red(error instanceof Error ? error.message : String(error)));
       process.exit(1);
     }
   });
+
+// ─── memory authorize / deauthorize ─────────────────────────────────────────
+
+/**
+ * Have the repo owner add or remove a principal that may write. The canister
+ * accepts these from the owner only.
+ */
+async function changeAuthorization(
+  action: 'authorize' | 'deauthorize',
+  principalText: string,
+  cmd: Command,
+): Promise<void> {
+  const parentOpts: MemoryOptions = cmd.parent?.opts() ?? {};
+
+  let principal: Principal;
+  try {
+    principal = Principal.fromText(principalText);
+  } catch {
+    console.error(chalk.red(`'${principalText}' is not a valid principal`));
+    process.exit(1);
+  }
+
+  const signer = signerOrExit(parentOpts);
+  const spinner = ora(
+    action === 'authorize' ? `Authorizing ${principalText}...` : `Removing ${principalText}...`,
+  ).start();
+
+  try {
+    const canisterId = resolveCanisterId(parentOpts);
+    const agent = await createMemoryRepoAgent(parentOpts.host, signer.identity);
+    const actor = createMemoryRepoActor(canisterId, agent);
+
+    const result = action === 'authorize'
+      ? await actor.addAuthorizedPrincipal(principal)
+      : await actor.removeAuthorizedPrincipal(principal);
+
+    if ('ok' in result) {
+      spinner.succeed(chalk.green(result.ok));
+    } else {
+      spinner.fail(chalk.red(result.err));
+      process.exit(1);
+    }
+  } catch (error) {
+    spinner.fail(chalk.red(action === 'authorize' ? 'Authorize failed' : 'Deauthorize failed'));
+    printWriteError(error, signer);
+    process.exit(1);
+  }
+}
+
+memoryCmd
+  .command('authorize')
+  .description('Let a principal write to the repository (repo owner only)')
+  .argument('<principal>', 'Principal to authorize, e.g. from `agentvault memory whoami`')
+  .action((principal: string, _opts: unknown, cmd: Command) => changeAuthorization('authorize', principal, cmd));
+
+memoryCmd
+  .command('deauthorize')
+  .description('Revoke a principal\'s write access (repo owner only)')
+  .argument('<principal>', 'Principal to remove')
+  .action((principal: string, _opts: unknown, cmd: Command) => changeAuthorization('deauthorize', principal, cmd));
 
 export { memoryCmd };

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { validateAuthToken, unauthorizedResponse } from '@/lib/server/auth'
+import { validateAuthToken } from '@/lib/server/auth'
+import { polyticianClientError } from '@/lib/server/polytician-client'
 import { InferenceFallbackChain, type FallbackInferenceRequest, type InferenceProvider } from '@/inference/fallback-chain'
 
 interface AVInferRequest {
@@ -19,17 +20,14 @@ interface AVInferResponse {
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const authResult = validateAuthToken(request)
   if (!authResult.authorized) {
-    return unauthorizedResponse(authResult.error ?? 'Unauthorized')
+    return polyticianClientError(401, 'UNAUTHORIZED', authResult.error ?? 'Unauthorized')
   }
 
   try {
     const body: AVInferRequest = await request.json()
     
     if (!body.prompt) {
-      return NextResponse.json(
-        { success: false, error: { message: 'Missing required field: prompt', code: 'BAD_REQUEST' } },
-        { status: 400 }
-      )
+      return polyticianClientError(400, 'BAD_REQUEST', 'Missing required field: prompt')
     }
 
     const disableProviders: InferenceProvider[] = []
@@ -62,17 +60,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const result = await chain.infer(inferRequest)
 
     if (!result.success || !result.text || !result.provider) {
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: { 
-            message: result.error ?? 'All inference providers failed',
-            code: 'INFERENCE_FAILED',
-            details: result.attemptsLog
-          } 
-        },
-        { status: 502 }
-      )
+      return polyticianClientError(502, 'INFERENCE_FAILED', result.error ?? 'All inference providers failed', result.attemptsLog)
     }
 
     const response: AVInferResponse = {
@@ -84,9 +72,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ success: true, data: response })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
-    return NextResponse.json(
-      { success: false, error: { message, code: 'INTERNAL_ERROR' } },
-      { status: 500 }
-    )
+    return polyticianClientError(500, 'INTERNAL_ERROR', message)
   }
 }
