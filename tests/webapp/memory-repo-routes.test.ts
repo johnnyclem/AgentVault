@@ -34,6 +34,31 @@ const canister = vi.hoisted(() => ({
 
 const WEBAPP = vi.hoisted(() => '../../webapp/src');
 
+// Next.js is not installed at the repository root (CI installs only the root
+// dependencies), so next/server is a stand-in with what these routes and the
+// middleware use: NextResponse as a Response subclass with json() and next(),
+// and NextRequest with nextUrl.
+vi.mock('next/server', () => {
+  class NextResponse extends Response {
+    static json(body: unknown, init?: ResponseInit): NextResponse {
+      const headers = new Headers(init?.headers);
+      headers.set('content-type', 'application/json');
+      return new NextResponse(JSON.stringify(body), { ...init, headers });
+    }
+    static next(): NextResponse {
+      return new NextResponse(null, { headers: { 'x-middleware-next': '1' } });
+    }
+  }
+  class NextRequest extends Request {
+    readonly nextUrl: URL;
+    constructor(input: Request | string, init?: RequestInit) {
+      super(input, init);
+      this.nextUrl = new URL(this.url);
+    }
+  }
+  return { NextResponse, NextRequest };
+});
+
 vi.mock('@/lib/server/auth', async () => await import(/* @vite-ignore */ `${WEBAPP}/lib/server/auth`));
 vi.mock('@/lib/server/polytician-client', async () => await import(/* @vite-ignore */ `${WEBAPP}/lib/server/polytician-client`));
 vi.mock('@/canister/identity', async () => await import('../../src/canister/identity.js'));
@@ -75,7 +100,9 @@ const { GET: getBranch } = await route('memory-repo/branches/[branch]');
 const { POST: postUpload } = await route('archival/upload');
 const { middleware } = (await import(/* @vite-ignore */ `${WEBAPP}/middleware`)) as { middleware: (request: Request) => Response };
 // The middleware reads request.nextUrl, which only a NextRequest has
-const { NextRequest } = (await import(/* @vite-ignore */ `${WEBAPP}/../node_modules/next/server.js`)) as {
+// Imported through a variable, like the webapp modules, so the root typecheck does not resolve it
+const NEXT_SERVER = 'next/server';
+const { NextRequest } = (await import(/* @vite-ignore */ NEXT_SERVER)) as {
   NextRequest: new (request: Request) => Request;
 };
 

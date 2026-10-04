@@ -140,8 +140,14 @@ export function identityFromPem(pem: string): { identity: SignIdentity; keyType:
   try {
     keyObject = createPrivateKey({ key: key.block, format: 'pem' });
   } catch {
-    // The underlying error says nothing useful and is not passed on.
-    throw invalid(`the "${key.label}" block could not be parsed as a private key`);
+    // OpenSSL before 3.2 (Node 18 and 20) rejects the PKCS#8 v2 Ed25519 keys
+    // older dfx releases wrote; rewrite that exact layout as PKCS#8 v1.
+    const legacy = key.label === 'PRIVATE KEY' ? legacyDfxEd25519(key.block) : null;
+    if (!legacy) {
+      // The underlying error says nothing useful and is not passed on.
+      throw invalid(`the "${key.label}" block could not be parsed as a private key`);
+    }
+    keyObject = legacy;
   }
 
   // Checked before the key is exported: node:crypto cannot export some
@@ -266,6 +272,41 @@ export function describeIdentitySource(source: IdentitySource): string {
       return IDENTITY_PEM_ENV;
     case 'dfx':
       return `dfx identity '${source.name}'`;
+  }
+}
+
+// PKCS#8 v2 (RFC 5958) Ed25519 as older dfx releases wrote it: version 1, the
+// Ed25519 algorithm, the 32-byte seed, then the public key in an explicit [1].
+const DFX_V2_ED25519_PREFIX = Buffer.from('3053020101300506032b657004220420', 'hex');
+const DFX_V2_ED25519_PUBLIC = Buffer.from('a123032100', 'hex');
+const PKCS8_V1_ED25519_PREFIX = Buffer.from('302e020100300506032b657004220420', 'hex');
+
+/**
+ * The key in a dfx PKCS#8 v2 Ed25519 block, or null when the block has any
+ * other layout or its embedded public key does not belong to its seed.
+ */
+function legacyDfxEd25519(block: string): KeyObject | null {
+  const base64 = block.replace(/-----(BEGIN|END) PRIVATE KEY-----/g, '').replace(/\s+/g, '');
+  const der = Buffer.from(base64, 'base64');
+  const seedAt = DFX_V2_ED25519_PREFIX.length;
+  const publicAt = seedAt + 32 + DFX_V2_ED25519_PUBLIC.length;
+  if (
+    der.length !== publicAt + 32 ||
+    !der.subarray(0, seedAt).equals(DFX_V2_ED25519_PREFIX) ||
+    !der.subarray(seedAt + 32, publicAt).equals(DFX_V2_ED25519_PUBLIC)
+  ) {
+    return null;
+  }
+  try {
+    const keyObject = createPrivateKey({
+      key: Buffer.concat([PKCS8_V1_ED25519_PREFIX, der.subarray(seedAt, seedAt + 32)]),
+      format: 'der',
+      type: 'pkcs8',
+    });
+    const x = keyObject.export({ format: 'jwk' }).x;
+    return x && Buffer.from(x, 'base64url').equals(der.subarray(publicAt)) ? keyObject : null;
+  } catch {
+    return null;
   }
 }
 

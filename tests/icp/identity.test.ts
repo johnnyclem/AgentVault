@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { generateKeyPairSync, type KeyObject } from 'node:crypto';
+import { createPrivateKey, generateKeyPairSync, type KeyObject } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -65,6 +65,25 @@ describe('identityFromPem', () => {
     const { identity, keyType } = identityFromPem(key.pem);
     expect(keyType).toBe('ed25519');
     expect(identity.getPrincipal().toText()).toBe(key.principal);
+  });
+
+  it('refuses a dfx PKCS#8 v2 Ed25519 key whose embedded public key is not its own', () => {
+    const key = ed25519Key({ legacyDfx: true });
+    const other = ed25519Key({ legacyDfx: true });
+    const der = Buffer.from(key.pem.replace(/-----(BEGIN|END) PRIVATE KEY-----|\s/g, ''), 'base64');
+    const otherDer = Buffer.from(other.pem.replace(/-----(BEGIN|END) PRIVATE KEY-----|\s/g, ''), 'base64');
+    const mixed = Buffer.concat([der.subarray(0, der.length - 32), otherDer.subarray(otherDer.length - 32)]);
+    const pem = `-----BEGIN PRIVATE KEY-----\n${mixed.toString('base64')}\n-----END PRIVATE KEY-----\n`;
+    let parsedByOpenSsl = true;
+    try {
+      createPrivateKey(pem);
+    } catch {
+      parsedByOpenSsl = false;
+    }
+    // OpenSSL 3.2+ (Node 22) accepts the block itself; older releases fall back to the seed-and-check path
+    if (!parsedByOpenSsl) {
+      expectIdentityError(() => identityFromPem(pem), 'SIGNING_IDENTITY_INVALID', /could not be parsed/i, pem);
+    }
   });
 
   it('loads a secp256k1 SEC1 key ("BEGIN EC PRIVATE KEY")', () => {
