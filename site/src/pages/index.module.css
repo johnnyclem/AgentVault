@@ -240,11 +240,12 @@
 
 .instantControlGrid {
   display: grid;
-  grid-template-columns: 1fr 1.2fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
   gap: 1rem;
 }
 
 .instantPanel {
+  min-width: 0;
   border: 1px solid var(--av-border);
   border-radius: var(--av-radius-md);
   background: var(--av-bg);
@@ -582,6 +583,7 @@
 }
 
 .ecosystemCardCurrent {
+  grid-column: 1 / -1;
   border-color: var(--ifm-color-primary);
   box-shadow: 0 0 0 1px var(--ifm-color-primary);
 }
@@ -610,6 +612,21 @@
   line-height: 1.6;
 }
 
+.ecosystemCardRelease {
+  margin: 0.3rem 0 0;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.76rem;
+  color: var(--av-text-muted);
+}
+
+.ecosystemCardStatus {
+  margin-top: 0.7rem;
+}
+
+.ecosystemCardLink {
+  margin-top: 0.8rem;
+}
+
 .ecosystemCardBadge {
   display: inline-block;
   margin-top: 0.8rem;
@@ -635,7 +652,7 @@
   }
 
   .instantControlGrid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .backupStudioGrid {

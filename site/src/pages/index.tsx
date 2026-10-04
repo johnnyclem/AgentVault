@@ -209,7 +209,20 @@ const backupPhases = [
   },
 ];
 
-const ecosystemComponents = [
+type EcosystemComponent = {
+  id: string;
+  name: string;
+  role: string;
+  description: string;
+  /** Package and version of the suite release, for suite components. */
+  release?: string;
+  /** What AgentVault itself does with this component today. */
+  inAgentVault?: string;
+  href?: string;
+  isCurrent: boolean;
+};
+
+const ecosystemComponents: EcosystemComponent[] = [
   {
     id: 'agentvault',
     name: 'AgentVault',
@@ -220,26 +233,49 @@ const ecosystemComponents = [
   },
   {
     id: 'smallchat',
-    name: 'SmallChat',
+    name: 'smallchat',
     role: 'Tool dispatch',
+    release: '@smallchat/core 1.0.0 · SmallChat Swift package 1.0.0',
     description:
-      'Deterministic, in-process tool selection instead of stuffing 50+ JSON schemas into a prompt. AgentVault ships a purpose-built implementation of this pattern, wired into policy checks, rate limiting, and MFA gating.',
+      "Semantic tool dispatch. It resolves an intent to at most one tool, checks the arguments against that tool's JSON Schema, and records a replayable proof. The same artifact, embedder and runtime state give the same choice.",
+    inAgentVault:
+      "Not a dependency. AgentVault's orchestration library has its own opt-in dispatcher modeled on smallchat's selector design: exact selector lookup with class fallback and no embeddings, followed by policy checks, rate limits and MFA gating.",
+    href: 'https://www.smallchat.dev',
+    isCurrent: false,
+  },
+  {
+    id: 'polytician',
+    name: 'Polytician',
+    role: 'Semantic memory',
+    release: 'polytician 3.0.0',
+    description:
+      'A local-first MCP server for semantic memory. Each concept can be stored as, and converted between, a 384-dimension vector, markdown and structured ThoughtForm JSON.',
+    inAgentVault:
+      "AgentVault's polytician CLI commands and the --polytician-entry option of orchestrate call a Polytician MCP server over stdio to search, read and save concepts. The client was written against Polytician 2.x; 3.0 tightened the tool contract, so it needs an update before it works with 3.0.",
+    href: 'https://polytician.smallchat.dev',
     isCurrent: false,
   },
   {
     id: 'stenographer',
     name: 'Stenographer',
     role: 'Conversation memory',
+    release: '@stenographer/core 1.0.0',
     description:
-      'An MCP server that passively tails agent logs and builds a searchable GraphRAG index of entities, relations, and decisions — with tombstoned supersession so nothing is silently lost.',
+      'An MCP server that indexes agent conversation logs for GraphRAG search and keeps a hash-chained truth ledger. One agent alone settles nothing. A person signs, or two or more agent sessions agree within 15 minutes, each citing its own checkable evidence. Agents never override or rule, and a contested claim goes to a person.',
+    inAgentVault: 'Not integrated yet. The engineering guide sketches how it could plug in.',
+    href: 'https://stenographer.smallchat.dev',
     isCurrent: false,
   },
   {
     id: 'shorthand',
-    name: 'Short-Hand',
+    name: 'Short-hand',
     role: 'Context compaction',
+    release: '@shorthand/core 1.0.0',
     description:
-      'Progressive, LSM-tree-style compaction of conversation history into a token-budgeted context frame, replacing naive truncation with importance-ranked retention.',
+      'Progressive, LSM-tree-style compaction of conversation history into a token-budgeted context frame. Corrections are tracked as tombstones, so overridden facts do not quietly come back.',
+    inAgentVault:
+      "Not integrated yet. The engineering guide proposes it in place of the Polytician enricher's character-count truncation.",
+    href: 'https://short-hand.smallchat.dev',
     isCurrent: false,
   },
 ];
@@ -299,13 +335,14 @@ function EcosystemSection() {
         <div className={styles.blockHeader}>
           <p className={styles.blockLabel}>The agent stack</p>
           <Heading as="h2" className={styles.blockTitle}>
-            AgentVault is the runtime. It's built to work with the rest of the stack.
+            AgentVault is the runtime. The smallchat suite covers the rest of the stack.
           </Heading>
           <p className={styles.blockLead}>
-            Long-running agents need more than a place to execute — they need a memory that survives, a way to
-            keep that memory inside a token budget, and a cheap, deterministic way to pick the next action.
-            AgentVault handles durable execution and already vendors the tool-dispatch pattern from SmallChat;
-            Stenographer and Short-Hand plug in as the memory and compaction layers.
+            Long-running agents need more than a place to execute. They need a way to pick the next tool, a
+            memory that survives, and a way to keep that memory inside a token budget. The smallchat suite
+            covers those layers and just shipped 1.0. AgentVault ships on its own schedule: today it has its own
+            dispatcher modeled on smallchat and a Polytician MCP client, and Stenographer and Short-hand are not
+            integrated yet.
           </p>
         </div>
 
@@ -319,8 +356,19 @@ function EcosystemSection() {
                   {component.name}
                 </Heading>
                 <span className={styles.ecosystemCardRole}>{component.role}</span>
+                {component.release ? <p className={styles.ecosystemCardRelease}>{component.release}</p> : null}
               </div>
               <p className={styles.ecosystemCardBody}>{component.description}</p>
+              {component.inAgentVault ? (
+                <p className={clsx(styles.ecosystemCardBody, styles.ecosystemCardStatus)}>
+                  <strong>In AgentVault:</strong> {component.inAgentVault}
+                </p>
+              ) : null}
+              {component.href ? (
+                <a className={clsx(styles.inlineLink, styles.ecosystemCardLink)} href={component.href}>
+                  {component.href.replace('https://', '')}
+                </a>
+              ) : null}
               {component.isCurrent ? <span className={styles.ecosystemCardBadge}>You are here</span> : null}
             </article>
           ))}
