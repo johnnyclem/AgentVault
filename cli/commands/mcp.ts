@@ -6,6 +6,7 @@ import {
   probeMCPServerHealth,
   discoverMCPTools,
   type MCPServerConfig,
+  type MCPToolCallResult,
 } from '../../src/orchestration/mcp-client.js';
 
 const mcpCmd = new Command('mcp');
@@ -233,10 +234,20 @@ mcpCmd
       }
 
       const client = new PolyticianMCPClient({ namespace, entryPoint });
-      await client.connect();
+      let result: MCPToolCallResult;
+      try {
+        await client.connect();
+        result = await client.callTool(toolName, args);
+      } finally {
+        await client.disconnect();
+      }
 
-      const result = await client.callTool(toolName, args);
-      await client.disconnect();
+      // A tool error is a successful JSON-RPC response with isError: true
+      if (result.isError) {
+        const text = result.content.map(c => c.text ?? '').join('\n');
+        spinner.fail(chalk.red(`Tool "${toolName}" returned an error: ${text}`));
+        process.exit(1);
+      }
 
       spinner.succeed(chalk.green(`Tool "${toolName}" executed`));
 

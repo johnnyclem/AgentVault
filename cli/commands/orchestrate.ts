@@ -38,8 +38,10 @@ export interface OrchestrateCommandOptions {
   apiKey?: string;
   polyticianEntry?: string;
   polyticianNamespace?: string;
-  noEnrichment?: boolean;
-  noSaveConcept?: boolean;
+  /** false with --no-semantic-enrichment (Commander names a --no-* option after what it negates) */
+  semanticEnrichment?: boolean;
+  /** false with --no-save-concept */
+  saveConcept?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -69,7 +71,7 @@ export function orchestrateCmd(): Command {
     .option('--api-key <key>', 'Anthropic API key (overrides ANTHROPIC_API_KEY env var)')
     // Polytician semantic memory integration
     .option('--polytician-entry <command>', 'Polytician MCP server entry point (e.g., "node server.js")')
-    .option('--polytician-namespace <name>', 'Polytician namespace for concept storage', 'polytician')
+    .option('--polytician-namespace <name>', "Name AgentVault registers the Polytician server under (concepts go to Polytician's default namespace)", 'polytician')
     .option('--no-semantic-enrichment', 'Disable semantic context enrichment')
     .option('--no-save-concept', 'Disable saving orchestration result as concept')
     .action(async (options: OrchestrateCommandOptions) => {
@@ -167,8 +169,8 @@ export function orchestrateCmd(): Command {
           timeoutMs,
           onProgress,
           polyticianServer,
-          enableSemanticEnrichment: !options.noEnrichment,
-          saveResultAsConcept: !options.noSaveConcept,
+          enableSemanticEnrichment: options.semanticEnrichment !== false,
+          saveResultAsConcept: options.saveConcept !== false,
         });
 
         // ----------------------------------------------------------------
@@ -209,6 +211,29 @@ export function orchestrateCmd(): Command {
             : chalk.red('failed');
         console.log(chalk.cyan('  Tests:         '), testLabel);
 
+        // Progress messages only pass through the spinner, so Polytician's
+        // outcome (including a failure the session went on without) is shown here
+        const memory = result.semanticMemory;
+        if (memory) {
+          // An error can end with the server's stderr; keep its lines under the label
+          const indented = (message: string): string => message.trim().replace(/\n/g, '\n    ');
+          const enrichment = memory.enrichmentError
+            ? chalk.yellow(`enrichment failed, continued without it: ${indented(memory.enrichmentError)}`)
+            : options.semanticEnrichment === false
+              ? chalk.gray('enrichment off')
+              : `${memory.conceptsUsed.length} concept(s) added to the prompt`;
+          console.log(chalk.cyan('  Polytician:    '), enrichment);
+          for (const concept of memory.conceptsUsed) {
+            const score = concept.relevanceScore !== undefined ? `, score ${concept.relevanceScore.toFixed(3)}` : '';
+            console.log(chalk.gray(`    • ${concept.name} (${concept.id}${score})`));
+          }
+          if (memory.savedConceptId) {
+            console.log(chalk.cyan('  Saved concept: '), memory.savedConceptId);
+          } else if (memory.saveError) {
+            console.log(chalk.cyan('  Saved concept: '), chalk.yellow(`not saved: ${indented(memory.saveError)}`));
+          }
+        }
+
         if (result.auditLogId) {
           console.log(chalk.cyan('  Audit log:     '), result.auditLogId);
         }
@@ -225,6 +250,17 @@ export function orchestrateCmd(): Command {
         const durationSecs = (result.durationMs / 1000).toFixed(1);
         console.log(chalk.cyan('  Duration:      '), `${durationSecs}s`);
         console.log();
+
+        if (result.prompt) {
+          console.log(chalk.bold('Prompt Claude Code would get (dry run)'));
+          console.log(chalk.gray('─'.repeat(48)));
+          console.log(chalk.cyan('System prompt:'));
+          console.log(result.prompt.system);
+          console.log();
+          console.log(chalk.cyan('User message:'));
+          console.log(result.prompt.user);
+          console.log();
+        }
 
         if (!result.success) {
           if (result.error) {
