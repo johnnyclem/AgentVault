@@ -86,6 +86,7 @@ import { mergeCommand } from './merge.js';
 
 // HyperVault — cloud mind ⇄ sovereign chain + archive bridge
 import { hypervaultCmd } from './commands/hypervault.js';
+import { totalRecallCmd } from './commands/total-recall.js';
 
 export function createProgram(): Command {
   const program = new Command();
@@ -175,6 +176,8 @@ export function createProgram(): Command {
 
   // HyperVault — cloud mind ⇄ sovereign chain + archive bridge
   program.addCommand(hypervaultCmd);
+  // Total Recall — write-once/read-many memory archive
+  program.addCommand(totalRecallCmd);
 
   return program;
 }

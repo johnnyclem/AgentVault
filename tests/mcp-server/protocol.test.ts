@@ -38,13 +38,14 @@ describe('native MCP server protocol conformance', () => {
     expect(result.serverInfo.name).toBe('agentvault');
   });
 
-  it('lists both pipeline and wiki tools', async () => {
+  it('lists pipeline, wiki and total-recall tools', async () => {
     const responses = await driveServer([{ jsonrpc: '2.0', id: 2, method: 'tools/list' }]);
     const result = responses[0]!.result as { tools: { name: string }[] };
     const names = result.tools.map((t) => t.name);
     expect(names).toContain('hypervault_archive');
     expect(names).toContain('hypervault_bootstrap');
     expect(names).toContain('wiki_read');
+    expect(names).toContain('total_recall_record');
     expect(result.tools.length).toBe(getAllToolDefinitions().length);
   });
 

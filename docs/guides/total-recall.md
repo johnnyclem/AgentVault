@@ -1,0 +1,192 @@
+# Total Recall — a write-once/read-many archive of agent memories
+
+Total Recall is the migration path between assistants. Someone has used
+ChatGPT for three years; the data export gives them conversations but not
+the memories ChatGPT quietly built about them, and nothing gives them the
+memories as they change. They connect both ChatGPT and Claude to the
+AgentVault MCP server, set a guardrail that every memory event is written to
+a total-recall volume, and keep using ChatGPT for a few weeks. Every memory
+ChatGPT creates, recalls or updates lands in the volume; Claude ingests the
+stream through the same MCP server or a notification hook, and the person
+migrates at the pace they build trust.
+
+The volume is append-only: nothing in it is ever rewritten. It is also
+stenographer-native, so the full transcript (when enabled) and the memory
+ledger both get entities, decisions, supersession and GraphRAG search for
+free.
+
+## The volume
+
+A volume is a directory, by default `.agentvault/total-recall/`:
+
+| File | What it is | Mutability |
+|---|---|---|
+| `volume.json` | identity (`volumeId`, `createdAt`) and the guardrail policy | ordinary config |
+| `memories.jsonl` | one line per memory event: `created`, `recalled`, `updated`, `deleted` | append-only, hash-chained |
+| `transcript.jsonl` | optional: one line per conversation turn, stenographer `jsonl` shape | append-only, hash-chained |
+| `anchors.jsonl` | head hashes recorded at points in time (locally or on-chain) | append-only |
+
+Every archive line carries `seq`, `prevHash` and `hash` (SHA-256 of the
+canonical JSON of the line without `hash`). A memory event looks like:
+
+```json
+{"format":"agentvault-total-recall/memory-v1","seq":12,"id":"mem_…","ts":"2026-10-21T10:00:00.000Z",
+ "op":"updated","source":{"provider":"chatgpt","agent":"gpt-5","session":"conv-9"},
+ "memory":{"key":"coffee","title":"Coffee","content":"Likes pour-over, no sugar","tags":["pref"]},
+ "contentHash":"…","prevHash":"…","hash":"…"}
+```
+
+A changed memory is a new `updated` event; a forgotten one is a `deleted`
+event; both keep every earlier version readable (`agentvault total-recall
+history`). Readers fold the events into the current state of each memory
+(`list`, `search`, `total_recall_list`). Writers append under a directory
+lock and fsync before releasing it, so two MCP server processes (one per
+connected assistant) extend one chain. The one write that isn't an append:
+bytes after the last newline that don't parse as a record were an
+interrupted write, never a record, and the next append truncates them after
+saying so on stderr.
+
+`agentvault total-recall verify` re-walks both chains and checks them
+against the last anchor, which catches an edited, removed or reordered
+line, and a truncation past the anchor. Like any hash chain in one
+directory, it shows *that* the archive changed, not who changed it;
+anchoring the heads elsewhere (`anchor --canister-id`, a signed MemoryRepo
+commit) is what makes truncation of the newest lines detectable.
+
+## Quick start
+
+```bash
+# 1. Create the volume (transcript off by default)
+agentvault total-recall init
+agentvault total-recall policy --transcript append      # optional: full transcript
+
+# 2. Serve it to every assistant through one MCP server
+agentvault mcp serve --total-recall ./.agentvault/total-recall
+```
+
+Register that command as an MCP server in ChatGPT (connector) and in Claude
+(`.mcp.json`, Claude Desktop config). On connect, each client receives the
+volume's guardrail as the server's `instructions`:
+
+> GUARDRAIL: whenever you create, recall, update or delete a memory about the
+> user (your own memory feature included), call total_recall_record in the
+> same turn with op set to one of: created, recalled, updated, deleted. …
+
+```bash
+# 3. Bring in what the export does give you
+agentvault total-recall import chatgpt ~/Downloads/chatgpt-export/conversations.json
+agentvault total-recall import memories ./pasted-memories.md --provider chatgpt
+
+# 4. Watch it fill, verify it, search it
+agentvault total-recall status
+agentvault total-recall log --since 0
+agentvault total-recall search "coffee"
+agentvault total-recall verify
+
+# 5. Index it with stenographer
+agentvault total-recall stenographer --run
+```
+
+## MCP tools
+
+Served by `agentvault mcp serve` next to the `hypervault_*` and `wiki_*` tools.
+
+| Tool | Does | Guardrail role |
+|---|---|---|
+| `total_recall_record` | append a memory event (`op`, `key`, `content`, `provider`, optional `title`, `tags`, `agent`, `session`) | what every assistant calls on create/recall/update/delete |
+| `total_recall_transcribe` | append a conversation turn (`role`, `content`, `session`, `provider`) | only when `policy.transcript` is `append` |
+| `total_recall_pull` | events after `since_seq`, oldest first, with `next_seq` and `more` | the ingestion path for the assistant being migrated to |
+| `total_recall_list` | current memories, folded | read |
+| `total_recall_search` | lexical search over current memories | read |
+| `total_recall_history` | every version and recall of one memory | read |
+| `total_recall_status` | counts, chain heads, policy, last anchor | read |
+| `total_recall_verify` | re-walk both chains against the last anchor | read |
+| `total_recall_policy` | the guardrail text and the policy behind it | an agent re-reads its instructions |
+
+Writes the policy refuses (a provider not on the allow-list, an op not
+recorded, a transcript turn while transcript mode is off) come back as tool
+errors that restate the policy, so a client cannot quietly write the wrong
+thing. Readers are annotated `readOnlyHint`.
+
+## Guardrail policy
+
+`volume.json` holds the policy; `agentvault total-recall policy` shows and
+edits it.
+
+| Field | Default | Meaning |
+|---|---|---|
+| `recordMemories` | `true` | record memory events at all |
+| `transcript` | `off` | `append`: every turn goes to `transcript.jsonl` |
+| `providers` | `[]` (any) | providers allowed to write |
+| `recordOps` | all four | which ops are kept (`--record-recalls off` drops the noisy one) |
+| `webhooks` | `[]` | POST each memory event here as it lands; loopback unless `allowRemote` |
+| `hookCommand` | none | argv run per event with the event JSON on stdin |
+
+AgentVault cannot reach into another product and force a write. The
+guardrail is enforced at the two points it controls: the `instructions`
+every connecting client receives, and the tools' refusals. A client that
+ignores its instructions can still fail to record; `total_recall_status`
+and `log` show what did land.
+
+## Ingesting on the Claude side
+
+Three ways, by how much the ingester wants to be driven:
+
+1. **Pull over MCP.** Claude calls `total_recall_pull` with the last
+   `next_seq` it saw (start at `0`) and gets ChatGPT's new and updated
+   memories in order. This is the path that needs nothing but the server.
+2. **Notification hook.** `agentvault total-recall watch --hook ./ingest.sh`
+   follows `memories.jsonl` and runs the command for each new event with the
+   event JSON on stdin, persisting a cursor so a restart resumes. Several
+   watchers can follow one volume under different `--cursor` names. The same
+   sinks can live in the policy (`policy --hook …`, `policy --webhook …`), in
+   which case the MCP server fires them as it writes and `watch` replays them
+   for events written elsewhere.
+3. **Webhook.** `policy --webhook http://127.0.0.1:8787/total-recall` POSTs
+   `{"type":"total_recall.memory","volumeId":…,"event":…}` per event. Remote
+   hosts need `--allow-remote`, the same boundary stenographer draws.
+
+## Stenographer
+
+`transcript.jsonl` lines are stenographer `jsonl` messages (`id`, `role`,
+`content`, `timestamp`, `sessionId`, `model`, `toolCalls`) with the chain
+fields as extra keys stenographer ignores, so
+`stenographer start <volume>/transcript.jsonl` needs no adapter.
+`memories.jsonl` has stenographer's `total-recall` adapter (auto-detected
+by the `format` tag), which reads each `created`/`updated` event as the
+assistant stating the memory, in a session per provider. `agentvault
+total-recall stenographer` prints the command and a combined `.mcp.json`
+(`total-recall` + `stenographer` servers); `--run` launches it.
+Stenographer never writes to a volume.
+
+## Anchoring
+
+`agentvault total-recall anchor` records the current heads in
+`anchors.jsonl`. With `--canister-id`, it first verifies the volume, then
+commits the heads as a signed MemoryRepo commit (tags `total-recall`,
+`anchor`) using the same identity rules as `agentvault memory` (an identity
+PEM, `AGENTVAULT_ICP_IDENTITY_PEM_FILE`, or dfx's selected identity), and
+records the commit id as the anchor's `ref`. `verify` then reports a
+volume whose chains no longer extend the anchored heads.
+
+## Library
+
+```ts
+import { TotalRecallVolume, watchVolume, notifyEvent } from 'agentvault/total-recall';
+
+const volume = TotalRecallVolume.openOrInit('.agentvault/total-recall', { policy: { transcript: 'append' } });
+volume.appendMemoryEvent({ op: 'created', source: { provider: 'claude' }, memory: { key: 'coffee', content: 'Likes pour-over' } });
+volume.appendTranscript({ role: 'user', content: 'hello', sessionId: 'conv-1', provider: 'claude' });
+volume.foldMemories();          // current memories
+volume.readMemoryEvents({ sinceSeq: 0 });
+volume.verify();                // both chains + anchor
+watchVolume(volume, (event) => console.log(event.seq, event.op, event.memory.key));
+```
+
+## Limits (v1)
+
+- Reads load a whole file; a volume of hundreds of thousands of events
+  wants an index (stenographer's, or a follow-up).
+- The lock is a directory lock file; it serializes writers on one machine,
+  not across machines sharing a network filesystem.
+- Search is lexical. Semantic search over the archive is stenographer's job.

@@ -13,12 +13,22 @@
  *     hypervault_snapshot, hypervault_archive, hypervault_verify,
  *     hypervault_restore, hypervault_status, hypervault_recall_local
  *   Wiki (already defined, finally served): the 10 wiki_* tools
+ *   Total Recall: the 9 total_recall_* tools (src/total-recall/), plus the
+ *     volume's guardrail as `instructions` in the initialize reply
  */
 
 import * as readline from 'node:readline';
 import type { MCPToolCallResult, MCPToolDefinition } from '../orchestration/mcp-client.js';
 import { getWikiToolDefinitions, handleWikiToolCall, type WikiMCPConfig } from '../wiki/mcp-tools.js';
 import { clientFromProject } from './pipeline.js';
+import {
+  DEFAULT_VOLUME_DIR,
+  TOTAL_RECALL_TOOL_PREFIX,
+  getTotalRecallToolDefinitions,
+  handleTotalRecallToolCall,
+  totalRecallInstructions,
+} from '../total-recall/index.js';
+import * as path from 'node:path';
 import {
   archiveHyperVault,
   bootstrapHyperVault,
@@ -157,6 +167,13 @@ export interface McpServeOptions {
   apiUrl?: string;
   /** Wiki config; when omitted, wiki tools are still listed but return an error */
   wikiConfig?: WikiMCPConfig;
+  /** Total-recall volume directory (default <projectRoot>/.agentvault/total-recall) */
+  totalRecallDir?: string;
+}
+
+/** The total-recall volume directory an options object points at. */
+export function resolveTotalRecallDir(options: McpServeOptions): string {
+  return options.totalRecallDir ?? path.join(options.projectRoot ?? process.cwd(), DEFAULT_VOLUME_DIR);
 }
 
 function ok(text: string): MCPToolCallResult {
@@ -276,9 +293,9 @@ export async function handleHyperVaultToolCall(
   }
 }
 
-/** All tools this server exposes (pipeline + wiki). */
+/** All tools this server exposes (pipeline + wiki + total recall). */
 export function getAllToolDefinitions(): MCPToolDefinition[] {
-  return [...getHyperVaultToolDefinitions(), ...getWikiToolDefinitions()];
+  return [...getHyperVaultToolDefinitions(), ...getWikiToolDefinitions(), ...getTotalRecallToolDefinitions()];
 }
 
 /** Dispatch any tool call (pipeline or wiki). */
@@ -287,6 +304,9 @@ export async function dispatchToolCall(
   args: Record<string, unknown>,
   options: McpServeOptions = {},
 ): Promise<MCPToolCallResult> {
+  if (toolName.startsWith(TOTAL_RECALL_TOOL_PREFIX)) {
+    return handleTotalRecallToolCall(toolName, args, { volumeDir: resolveTotalRecallDir(options) });
+  }
   if (toolName.startsWith('wiki_')) {
     if (!options.wikiConfig) {
       return fail('Wiki tools require a configured wiki (run this server from a project with a wiki).');
@@ -342,13 +362,21 @@ export async function serveMcp(options: McpServeOptions & { input?: NodeJS.Reada
     }
 
     switch (req.method) {
-      case 'initialize':
+      case 'initialize': {
+        let instructions: string | undefined;
+        try {
+          instructions = totalRecallInstructions(resolveTotalRecallDir(options));
+        } catch {
+          instructions = undefined; // an unreadable volume must not stop the server from answering
+        }
         respond(req.id, {
           protocolVersion: PROTOCOL_VERSION,
           capabilities: { tools: {} },
           serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
+          ...(instructions ? { instructions } : {}),
         });
         break;
+      }
       case 'notifications/initialized':
       case 'initialized':
         // notification, no reply
