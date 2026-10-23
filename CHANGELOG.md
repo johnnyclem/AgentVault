@@ -4,6 +4,42 @@ All notable changes to AgentVault will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased] - Total Recall
+
+### Added
+- **Total Recall (`src/total-recall/`, `agentvault total-recall`, `agentvault/total-recall`).**
+  A write-once/read-many archive of agent memories across assistants, built
+  for migrating from one assistant to another without losing what the old
+  one remembered:
+  - A volume is a directory of append-only, hash-chained JSONL files:
+    `memories.jsonl` (one line per `created`/`recalled`/`updated`/`deleted`
+    event, every version kept), optional `transcript.jsonl` (one line per
+    conversation turn, in stenographer's native `jsonl` shape), and
+    `anchors.jsonl` (recorded heads), plus `volume.json` for identity and
+    the guardrail policy. Writers append under a directory lock and fsync,
+    so several MCP server processes extend one chain; a torn tail from an
+    interrupted write is truncated on the next append, never a record.
+  - Nine `total_recall_*` MCP tools served by `agentvault mcp serve`
+    (`--total-recall <dir>`): `record`, `transcribe`, `pull` (cursor-based
+    ingestion), `list`, `search`, `history`, `status`, `verify`, `policy`.
+    The server's `initialize` reply carries the volume's guardrail as
+    `instructions`, so every connected assistant is told to record every
+    memory event; the tools refuse writes the policy excludes with a message
+    that restates it.
+  - Fan-out: policy webhooks (loopback unless `allowRemote`) and a hook
+    command fed each event on stdin; `agentvault total-recall watch` replays
+    the same sinks for events written by another process, with a persisted
+    cursor.
+  - Imports: a ChatGPT `conversations.json` export into the transcript (one
+    session per conversation, idempotent by message id) and a pasted memory
+    list into `created` events.
+  - `agentvault total-recall anchor` records the heads locally or, with
+    `--canister-id`, as a signed MemoryRepo commit; `verify` re-walks both
+    chains and checks them against the last anchor.
+  - `agentvault total-recall stenographer` prints (or `--run` launches) the
+    stenographer command over the transcript and a combined `.mcp.json`.
+  - Guide: `docs/guides/total-recall.md`.
+
 ## [Unreleased] - HyperVault integration
 
 ### Added

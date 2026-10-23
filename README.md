@@ -26,6 +26,7 @@ transaction.
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [HyperVault](#hypervault)
+- [Total Recall](#total-recall)
 - [Example Agents](#example-agents)
 - [CLI Commands](#cli-commands)
 - [Environment Variables](#environment-variables)
@@ -51,6 +52,7 @@ transaction.
 - **AI Inference** — Bittensor network integration
 - **Fault Tolerance** — mirrored canisters, cron-driven liveness checks, and auto-restore
 - **HyperVault Bridge** — reconstruct a cloud-hosted agent from chain alone
+- **Total Recall** — write-once/read-many archive of agent memories across assistants, with an optional append-only transcript, served over MCP
 
 ## Installation
 
@@ -150,6 +152,28 @@ npx agentvault@latest hypervault restore ar://<tx-id> --to local
 
 Both one-liners are also MCP tools via the native `agentvault mcp serve` server.
 See [`docs/guides/hypervault.md`](docs/guides/hypervault.md) for the full guide.
+
+## Total Recall
+
+Total Recall is the migration path between assistants. Connect ChatGPT and
+Claude to one `agentvault mcp serve`, and the volume's guardrail tells each
+of them to record every memory it creates, recalls, updates or deletes into
+an append-only, hash-chained archive. Keep using the old assistant; the new
+one ingests the stream (`total_recall_pull`, a notification hook, or a
+webhook) while you build trust. Turn on transcript mode and every turn is
+archived too, in stenographer's native JSONL, so
+[stenographer](https://github.com/johnnyclem/stenographer) indexes it with no
+adapter.
+
+```bash
+agentvault total-recall init --transcript append
+agentvault mcp serve --total-recall ./.agentvault/total-recall   # register in ChatGPT and Claude
+agentvault total-recall import chatgpt conversations.json        # what the export does give you
+agentvault total-recall log --since 0 && agentvault total-recall verify
+agentvault total-recall stenographer --run                       # GraphRAG over the transcript
+```
+
+See [`docs/guides/total-recall.md`](docs/guides/total-recall.md).
 
 ## Example Agents
 

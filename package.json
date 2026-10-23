@@ -20,6 +20,10 @@
     "./hypervault": {
       "types": "./dist/src/hypervault/index.d.ts",
       "import": "./dist/src/hypervault/index.js"
+    },
+    "./total-recall": {
+      "types": "./dist/src/total-recall/index.d.ts",
+      "import": "./dist/src/total-recall/index.js"
     }
   },
   "bin": {
