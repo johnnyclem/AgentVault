@@ -14,16 +14,10 @@ export function ComplianceBadge({ compliance, size = 'md', className }: Complian
   const { score, grade, meetsStandard, standardThreshold } = compliance
 
   const colorClass = meetsStandard
-    ? 'text-emerald-400 border-emerald-400/40 bg-emerald-400/10'
+    ? 'text-success border-success/30 bg-success/10'
     : score >= 60
-    ? 'text-yellow-400 border-yellow-400/40 bg-yellow-400/10'
-    : 'text-red-400 border-red-400/40 bg-red-400/10'
-
-  const glowClass = meetsStandard
-    ? 'shadow-[0_0_18px_rgba(52,211,153,0.35)]'
-    : score >= 60
-    ? 'shadow-[0_0_18px_rgba(250,204,21,0.30)]'
-    : 'shadow-[0_0_18px_rgba(239,68,68,0.30)]'
+    ? 'text-warning border-warning/30 bg-warning/10'
+    : 'text-destructive border-destructive/30 bg-destructive/10'
 
   const Icon = meetsStandard ? ShieldCheck : score >= 60 ? ShieldAlert : ShieldX
 
@@ -38,21 +32,20 @@ export function ComplianceBadge({ compliance, size = 'md', className }: Complian
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full border font-semibold tracking-wide',
+        'inline-flex items-center rounded-full border font-semibold',
         colorClass,
-        glowClass,
         sizeClass,
         className
       )}
     >
       <Icon className={iconSize} />
       <span>{score}%</span>
-      <span className="opacity-70">·</span>
+      <span aria-hidden="true">·</span>
       <span>Grade {grade}</span>
       {meetsStandard ? (
-        <span className="opacity-70 font-normal">meets CTO {standardThreshold}% rule</span>
+        <span className="font-normal">meets CTO {standardThreshold}% rule</span>
       ) : (
-        <span className="opacity-70 font-normal">below {standardThreshold}% threshold</span>
+        <span className="font-normal">below {standardThreshold}% threshold</span>
       )}
     </span>
   )

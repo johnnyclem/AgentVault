@@ -23,10 +23,10 @@ const columns: Column<Task>[] = [
     label: 'Status',
     render: (value, row) => (
       <div className="flex items-center gap-2">
-        {row.status === 'running' && <Clock className="w-4 h-4 text-blue-500" />}
-        {row.status === 'completed' && <CheckCircle2 className="w-4 h-4 text-green-500" />}
-        {row.status === 'failed' && <XCircle className="w-4 h-4 text-red-500" />}
-        {row.status === 'pending' && <Clock className="w-4 h-4 text-yellow-500" />}
+        {row.status === 'running' && <Clock className="w-4 h-4 text-primary" />}
+        {row.status === 'completed' && <CheckCircle2 className="w-4 h-4 text-success" />}
+        {row.status === 'failed' && <XCircle className="w-4 h-4 text-destructive" />}
+        {row.status === 'pending' && <Clock className="w-4 h-4 text-warning" />}
         <StatusBadge status={row.status} />
       </div>
     ),
@@ -36,13 +36,13 @@ const columns: Column<Task>[] = [
     label: 'Progress',
     render: (value, row) => (
       <div className="w-full">
-        <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+        <div className="h-1.5 bg-muted rounded-full overflow-hidden">
           <div
-            className="h-full bg-blue-500 transition-all"
+            className="h-full bg-primary transition-all"
             style={{ width: `${row.progress}%` }}
           />
         </div>
-        <span className="text-xs text-gray-600">{row.progress}%</span>
+        <span className="text-xs text-muted-foreground">{row.progress}%</span>
       </div>
     ),
   },
@@ -50,7 +50,7 @@ const columns: Column<Task>[] = [
     key: 'message',
     label: 'Message',
     render: (value) => (
-      <span className="text-sm text-gray-600">{String(value)}</span>
+      <span className="text-sm text-muted-foreground">{String(value)}</span>
     ),
   },
   {
@@ -71,21 +71,21 @@ export default function TasksPage() {
     : tasks.filter((task) => task.status === statusFilter)
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="page">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Task Queue</h1>
-        <p className="text-muted-foreground">
+        <h1 className="page-title">Task Queue</h1>
+        <p className="page-subtitle">
           Monitor background tasks and operations
         </p>
       </div>
 
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2">
-          <Filter className="w-5 h-5 text-gray-500" />
+          <Filter className="w-4 h-4 text-muted-foreground" />
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
           >
             <option value="all">All Status</option>
             <option value="pending">Pending</option>
@@ -102,14 +102,16 @@ export default function TasksPage() {
         </div>
       ) : error ? (
         <div className="flex items-center justify-center min-h-[400px]">
-          <p className="text-red-500">{error.message}</p>
+          <p className="text-sm text-destructive">{error.message}</p>
         </div>
       ) : (
-        <DataTable
-          columns={columns}
-          data={filteredTasks}
-          emptyMessage="No tasks found"
-        />
+        <div className="surface">
+          <DataTable
+            columns={columns}
+            data={filteredTasks}
+            emptyMessage="No tasks found"
+          />
+        </div>
       )}
     </div>
   )

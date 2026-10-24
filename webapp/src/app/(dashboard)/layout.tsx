@@ -1,4 +1,5 @@
 import { Header } from '@/components/layout/Header'
+import { MobileNav } from '@/components/layout/MobileNav'
 import { Sidebar } from '@/components/layout/Sidebar'
 
 export default function DashboardLayout({
@@ -7,11 +8,12 @@ export default function DashboardLayout({
   children: React.ReactNode
 }>) {
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-dvh overflow-hidden bg-background">
       <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header />
-        <main className="flex-1 overflow-auto bg-[radial-gradient(circle_at_top,_rgba(80,205,255,0.09),_transparent_48%),linear-gradient(180deg,_rgba(8,4,22,0.8),_rgba(6,3,16,0.9))]">
+        <MobileNav />
+        <main className="flex-1 overflow-auto">
           {children}
         </main>
       </div>

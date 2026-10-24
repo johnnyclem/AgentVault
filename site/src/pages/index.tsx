@@ -12,7 +12,6 @@ type WalletId = 'ethereum' | 'icp' | 'arweave';
 type InstallChannel = 'npx' | 'global';
 type ProjectTemplate = 'default' | 'minimal';
 type DeployNetwork = 'local' | 'ic';
-type SnapshotProfileId = 'clawdbot' | 'coding-cli' | 'goose' | 'ide-agent' | 'custom';
 
 type WalletConnection = {
   address: string;
@@ -28,15 +27,6 @@ type WalletOption = {
   installLabel: string;
   isAvailable: () => boolean;
   connect: () => Promise<WalletConnection>;
-};
-
-type SnapshotProfile = {
-  id: SnapshotProfileId;
-  name: string;
-  description: string;
-  defaultPath: string;
-  snapshotTarget: string;
-  restoreTarget: string;
 };
 
 declare global {
@@ -139,73 +129,80 @@ const walletOptions: WalletOption[] = [
   },
 ];
 
-const snapshotProfiles: SnapshotProfile[] = [
+type StackLayer = {
+  id: string;
+  title: string;
+  description: string;
+  names: string[];
+};
+
+/**
+ * The "Bring any model, any agent" cards. Every name is something the code
+ * supports today: the inference fallback chain (src/inference, wired into the
+ * dashboard's /api/inference), the dashboard's archive profiles, the tool
+ * groups the stdio MCP server serves (`agentvault mcp serve`; they are tools,
+ * not clients) and the wallet chains (src/wallet/types.ts). Check the code
+ * before adding a name here.
+ *
+ * The dashboard's archive workflow (webapp/src/lib/server/archive-workflow.ts)
+ * deploys the packaged agent code and uploads a JSON receipt (canister, file
+ * paths, backup manifest) to Arweave. It does not copy the agent's config,
+ * skill or memory files anywhere, so the Agents card must not say it does.
+ */
+const stackLayers: StackLayer[] = [
   {
-    id: 'clawdbot',
-    name: 'Clawdbot / OpenClaw',
-    description: 'Capture memory graphs, prompts, and agent runtime configuration.',
-    defaultPath: '~/.openclaw',
-    snapshotTarget: 'openclaw',
-    restoreTarget: 'openclaw',
+    id: 'models',
+    title: 'Models',
+    description:
+      "The dashboard's inference API tries a Bittensor subnet, then Venice AI, then a model you run locally with Ollama. Each answer names the one that replied.",
+    names: ['Bittensor', 'Venice AI', 'Ollama (local)'],
   },
   {
-    id: 'coding-cli',
-    name: 'Claude Code / Codex / Gemini CLI',
-    description: 'Preserve conversation state, tool context, and coding workspace metadata.',
-    defaultPath: '~/.claude',
-    snapshotTarget: 'coding-cli',
-    restoreTarget: 'coding-cli',
+    id: 'agents',
+    title: 'Agents',
+    description:
+      "Pick your agent's type in the dashboard, deploy it to its own canister and record an archive receipt on Arweave.",
+    names: ['Claude Code', 'OpenClaw', 'Goose', 'OpenCode', 'Your own'],
   },
   {
-    id: 'goose',
-    name: 'Goose',
-    description: 'Back up Goose sessions, plugin data, and long-term behaviors.',
-    defaultPath: '~/.goose',
-    snapshotTarget: 'goose',
-    restoreTarget: 'goose',
+    id: 'mcp-tools',
+    title: 'MCP tools',
+    description:
+      'The built-in MCP server runs over stdio, so any MCP client that can launch a local server gets the same tools.',
+    names: ['HyperVault', 'Wiki', 'Total Recall'],
   },
   {
-    id: 'ide-agent',
-    name: 'Cursor / Windsurf',
-    description: 'Archive IDE assistant context, preferences, and workspace state.',
-    defaultPath: '~/.cursor',
-    snapshotTarget: 'ide-agent',
-    restoreTarget: 'ide-agent',
-  },
-  {
-    id: 'custom',
-    name: 'Custom path',
-    description: 'Point AgentVault at any local folder and snapshot it deterministically.',
-    defaultPath: '~/path/to/agent-folder',
-    snapshotTarget: 'custom',
-    restoreTarget: 'custom',
+    id: 'chains',
+    title: 'Chains',
+    description: 'Give each agent wallets of its own, all managed from one CLI.',
+    names: ['ICP', 'ckETH', 'Solana', 'Polkadot', 'Arweave'],
   },
 ];
 
+/**
+ * What `agentvault backup export --encrypted` and `agentvault backup restore`
+ * actually do (src/backup/backup.ts), in order.
+ */
 const backupPhases = [
   {
     id: '01',
-    label: 'Create a snapshot',
-    description: 'Package local agent state into an encrypted, content-addressed archive.',
-    output: 'snapshot.zip + manifest.json',
+    label: 'Export',
+    description:
+      "Stage the agent's state, wallet files, logs, dependencies and WASM, then encrypt the zip with AES-256-GCM.",
+    output: '<agent>.zip.enc + <agent>.manifest.json',
   },
   {
     id: '02',
-    label: 'Sign the request',
-    description: 'Sign the backup with your wallet keys before anything touches the chain.',
-    output: 'wallet signature + hash proof',
+    label: 'Anchor (optional)',
+    description: "Upload the manifest and the zip's SHA-256 hash to Arweave. The encrypted zip stays on your machine.",
+    output: 'Arweave manifest transaction',
   },
   {
     id: '03',
-    label: 'Commit to storage',
-    description: 'Write backup records to ICP, with an optional Arweave archival copy.',
-    output: 'canister ID + archival transaction',
-  },
-  {
-    id: '04',
-    label: 'Verify recovery',
-    description: 'Generate a deterministic restore command and an audit receipt.',
-    output: 'restore command + replay proof',
+    label: 'Restore',
+    description:
+      'Decrypt the zip, refuse unsafe paths and symlinks, restore the state, and install the WASM on a fresh canister.',
+    output: 'new canister ID',
   },
 ];
 
@@ -280,6 +277,22 @@ const ecosystemComponents: EcosystemComponent[] = [
   },
 ];
 
+/**
+ * Quote one word for a POSIX shell so a copied command runs as shown. The
+ * studio builds commands from free-text inputs: unquoted, a name with a space
+ * splits into extra arguments (Commander ignores the excess, so the export
+ * silently targets the wrong agent and path) and `<`, `>` or `;` turn into
+ * shell syntax. Plain words stay bare so the usual case reads cleanly; `~`
+ * stays bare so a home-relative path still expands.
+ */
+function shellQuote(value: string): string {
+  if (/^[A-Za-z0-9_@%+:,./~-]+$/.test(value)) {
+    return value;
+  }
+
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
 function shortAddress(address: string): string {
   if (address.length <= 14) {
     return address;
@@ -290,7 +303,7 @@ function shortAddress(address: string): string {
 
 function HomepageHeader() {
   const {siteConfig} = useDocusaurusContext();
-  const trustRow = ['MIT licensed', '508 tests', 'ICP mainnet', 'Multi-chain wallets'];
+  const trustRow = ['MIT licensed', 'Tested in CI', 'ICP mainnet', 'Multi-chain wallets'];
 
   return (
     <header className={styles.heroBanner}>
@@ -302,6 +315,9 @@ function HomepageHeader() {
         <p className={styles.heroDescription}>
           AgentVault packages your AI agent, deploys it to a durable Internet Computer canister, and keeps it
           running with its own identity, wallet, secrets, and memory — no server to babysit, no session to lose.
+        </p>
+        <p className={styles.heroAgnostic}>
+          Not tied to one chatbot or one model. Bring Claude Code, OpenClaw, Goose, OpenCode or an agent of your own.
         </p>
 
         <div className={styles.heroButtons}>
@@ -325,6 +341,52 @@ function HomepageHeader() {
         </div>
       </div>
     </header>
+  );
+}
+
+function AgnosticSection() {
+  return (
+    <section className={styles.agnosticSection}>
+      <div className="container">
+        <div className={styles.blockHeader}>
+          <p className={styles.blockLabel}>Works with your stack</p>
+          <Heading as="h2" className={styles.blockTitle}>
+            Bring any model, any agent
+          </Heading>
+          <p className={styles.blockLead}>
+            AgentVault is where your agent lives, not the model it talks to. Each layer gives you more than one
+            choice.
+          </p>
+        </div>
+
+        <div className={styles.agnosticGrid}>
+          {stackLayers.map((layer) => (
+            <article key={layer.id} className={styles.agnosticCard}>
+              <Heading as="h3" className={styles.agnosticCardTitle}>
+                {layer.title}
+              </Heading>
+              <p className={styles.agnosticCardBody}>{layer.description}</p>
+              <div className={styles.storagePillRow}>
+                {layer.names.map((name) => (
+                  <span key={name} className={styles.storagePill}>
+                    {name}
+                  </span>
+                ))}
+              </div>
+            </article>
+          ))}
+        </div>
+
+        <div className={styles.deployLinks}>
+          <Link className={styles.inlineLink} to="/docs/guides/total-recall">
+            Total Recall guide
+          </Link>
+          <Link className={styles.inlineLink} to="/docs/user/wallets">
+            Wallets guide
+          </Link>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -388,28 +450,31 @@ function EcosystemSection() {
 }
 
 function BackupStudioSection() {
-  const [selectedProfileId, setSelectedProfileId] = useState<SnapshotProfileId>('clawdbot');
-  const [copiedField, setCopiedField] = useState<'snapshot' | 'restore' | null>(null);
+  const [agentName, setAgentName] = useState('my-agent');
+  const [restoreNetwork, setRestoreNetwork] = useState<DeployNetwork>('local');
+  const [anchorOnArweave, setAnchorOnArweave] = useState(false);
+  const [arweaveJwkPath, setArweaveJwkPath] = useState('./arweave-key.json');
+  const [copiedField, setCopiedField] = useState<'export' | 'restore' | null>(null);
 
-  const selectedProfile = useMemo(
-    () => snapshotProfiles.find((profile) => profile.id === selectedProfileId) ?? snapshotProfiles[0],
-    [selectedProfileId],
-  );
+  const safeAgentName = agentName.trim() || 'my-agent';
+  const quotedAgentName = shellQuote(safeAgentName);
+  const zipPath = shellQuote(`./${safeAgentName}.zip.enc`);
+  const wasmPath = shellQuote(`./dist/${safeAgentName}.wasm`);
+  const jwkPath = shellQuote(arweaveJwkPath.trim() || './arweave-key.json');
 
-  const snapshotCommand = useMemo(() => {
-    if (selectedProfile.id === 'custom') {
-      return `agentvault snapshot --path ${selectedProfile.defaultPath}`;
-    }
-
-    return `agentvault snapshot --agent ${selectedProfile.snapshotTarget}`;
-  }, [selectedProfile]);
+  // Restore deploys the WASM packed into the backup, so the export has to
+  // include it; `agentvault package` writes it to dist/<name>.wasm.
+  const exportCommand = useMemo(() => {
+    const arweaveFlag = anchorOnArweave ? ` --arweave-jwk ${jwkPath}` : '';
+    return `agentvault backup export ${quotedAgentName} --encrypted --wasm ${wasmPath} --output ${zipPath}${arweaveFlag}`;
+  }, [anchorOnArweave, jwkPath, quotedAgentName, wasmPath, zipPath]);
 
   const restoreCommand = useMemo(
-    () => `npx agentvault@latest restore --wallet <your-wallet> --agent ${selectedProfile.restoreTarget}`,
-    [selectedProfile],
+    () => `agentvault backup restore --zip ${zipPath} --agent ${quotedAgentName} --network ${restoreNetwork}`,
+    [quotedAgentName, restoreNetwork, zipPath],
   );
 
-  const handleCopy = async (field: 'snapshot' | 'restore', value: string) => {
+  const handleCopy = async (field: 'export' | 'restore', value: string) => {
     if (typeof navigator === 'undefined' || !navigator.clipboard) {
       return;
     }
@@ -429,11 +494,11 @@ function BackupStudioSection() {
         <div className={styles.backupStudioHeader}>
           <p className={styles.instantControlLabel}>Backup studio</p>
           <Heading as="h2" className={styles.instantControlTitle}>
-            Snapshot, sign, and restore in one flow
+            Back up and restore in two commands
           </Heading>
           <p className={styles.instantControlLead}>
-            Pick the agent stack you run locally, get the exact snapshot command, and keep restore instructions
-            tied to on-chain records.
+            Name your agent, choose where it comes back, and copy the exact commands. The backup is encrypted on
+            your machine, and a restore installs it on a fresh canister.
           </p>
         </div>
 
@@ -442,22 +507,60 @@ function BackupStudioSection() {
             <div className={styles.panelHeader}>
               <p className={styles.panelKicker}>Step 1</p>
               <Heading as="h3" className={styles.panelTitle}>
-                Choose your agent
+                Describe your backup
               </Heading>
             </div>
-            <div className={styles.profileList}>
-              {snapshotProfiles.map((profile) => (
-                <button
-                  key={profile.id}
-                  type="button"
-                  className={clsx(styles.profileButton, selectedProfile.id === profile.id && styles.profileButtonActive)}
-                  onClick={() => setSelectedProfileId(profile.id)}>
-                  <span className={styles.walletName}>{profile.name}</span>
-                  <span className={styles.walletMeta}>{profile.description}</span>
-                  <span className={styles.profilePath}>{profile.defaultPath}</span>
-                </button>
-              ))}
+
+            <div className={styles.configGrid}>
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Agent name</span>
+                <input
+                  className={styles.fieldInput}
+                  value={agentName}
+                  onChange={(event) => setAgentName(event.target.value)}
+                />
+              </label>
+
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Restore to</span>
+                <select
+                  className={styles.fieldInput}
+                  value={restoreNetwork}
+                  onChange={(event) => setRestoreNetwork(event.target.value as DeployNetwork)}>
+                  <option value="local">local</option>
+                  <option value="ic">ic</option>
+                </select>
+              </label>
+
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Arweave manifest</span>
+                <select
+                  className={styles.fieldInput}
+                  value={anchorOnArweave ? 'upload' : 'skip'}
+                  onChange={(event) => setAnchorOnArweave(event.target.value === 'upload')}>
+                  <option value="skip">skip</option>
+                  <option value="upload">upload</option>
+                </select>
+              </label>
+
+              {anchorOnArweave ? (
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>Arweave key file</span>
+                  <input
+                    className={styles.fieldInput}
+                    value={arweaveJwkPath}
+                    onChange={(event) => setArweaveJwkPath(event.target.value)}
+                  />
+                </label>
+              ) : null}
             </div>
+
+            <p className={styles.panelNote}>
+              Run the commands from the agent's project folder after <code>agentvault package</code>. After{' '}
+              <code>agentvault vault init</code> (HashiCorp Vault or Bitwarden), store the passphrase once with{' '}
+              <code>agentvault vault put {quotedAgentName} backup-passphrase</code>; both commands read it from there,
+              so it never lands in your shell history.
+            </p>
           </article>
 
           <article className={styles.instantPanel}>
@@ -469,15 +572,15 @@ function BackupStudioSection() {
             </div>
 
             <div className={styles.commandBlock}>
-              <p className={styles.commandLabel}>Snapshot command</p>
+              <p className={styles.commandLabel}>Export command</p>
               <pre className={styles.commandShell}>
-                <code>{snapshotCommand}</code>
+                <code>{exportCommand}</code>
               </pre>
               <button
                 type="button"
                 className={clsx('button button--secondary button--lg', styles.commandButton)}
-                onClick={() => void handleCopy('snapshot', snapshotCommand)}>
-                {copiedField === 'snapshot' ? 'Copied' : 'Copy snapshot command'}
+                onClick={() => void handleCopy('export', exportCommand)}>
+                {copiedField === 'export' ? 'Copied' : 'Copy export command'}
               </button>
             </div>
 
@@ -495,10 +598,10 @@ function BackupStudioSection() {
             </div>
 
             <div className={styles.storagePillRow}>
-              <span className={styles.storagePill}>Wallet-signed</span>
-              <span className={styles.storagePill}>ICP canister</span>
-              <span className={styles.storagePill}>Arweave archive</span>
-              <span className={styles.storagePill}>Replay-verified</span>
+              <span className={styles.storagePill}>AES-256-GCM</span>
+              <span className={styles.storagePill}>Passphrase from Vault</span>
+              <span className={styles.storagePill}>Optional Arweave manifest</span>
+              <span className={styles.storagePill}>Fresh canister on restore</span>
             </div>
           </article>
         </div>
@@ -853,7 +956,7 @@ function Pathways() {
               Backups and recovery
             </Heading>
             <p className={styles.pathBody}>
-              Configure retention, validate restore drills, and automate backup checks in your deploy pipeline.
+              Export an encrypted backup, restore it to a fresh canister, and manage backup files from the CLI.
             </p>
             <Link className={styles.pathAction} to="/docs/user/backups">
               Open the backup guide →
@@ -884,9 +987,10 @@ export default function Home(): React.ReactElement {
   return (
     <Layout
       title={siteConfig.title}
-      description="AgentVault deploys AI agents to Internet Computer canisters with a durable identity, multi-chain wallet, and versioned memory — so they keep running when your laptop doesn't.">
+      description="AgentVault deploys AI agents to Internet Computer canisters with a durable identity, multi-chain wallet, and versioned memory — so they keep running when your laptop doesn't. Not tied to one chatbot or one model.">
       <HomepageHeader />
       <main className={styles.main}>
+        <AgnosticSection />
         <GetStartedSection />
         <InstantControlSection />
         <BackupStudioSection />

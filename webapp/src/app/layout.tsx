@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 import { ThemeProvider } from '../providers/ThemeProvider'
 import { ICProvider } from '../providers/ICProvider'
+import { themeInitScript } from '../lib/theme'
 
 export const metadata: Metadata = {
   title: 'AgentVault - AI Agent Platform',
@@ -14,7 +15,12 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
+    // The head script sets the theme class before React hydrates, so the
+    // class attribute on <html> legitimately differs from the server render.
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body className="antialiased">
         <ThemeProvider>
           <ICProvider>

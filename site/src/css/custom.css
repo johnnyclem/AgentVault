@@ -9,9 +9,11 @@
   --av-text: #1a1d29;
   --av-text-muted: #565a70;
   --av-text-faint: #83879c;
-  --av-accent: #4f46e5;
-  --av-accent-dark: #4338ca;
-  --av-accent-light: #eef0ff;
+  /* The same calm blue as the webapp's primary (hsl(221 83% 53%)). */
+  --av-accent: #2563eb;
+  --av-accent-dark: #1d4ed8;
+  --av-accent-light: #eff6ff;
+  --av-accent-contrast: #ffffff;
   --av-shadow-sm: 0 1px 2px rgba(20, 21, 41, 0.06);
   --av-shadow-md: 0 4px 16px rgba(20, 21, 41, 0.08);
   --av-shadow-lg: 0 12px 32px rgba(20, 21, 41, 0.1);
@@ -19,13 +21,13 @@
   --av-radius-md: 12px;
   --av-radius-lg: 16px;
 
-  --ifm-color-primary: #4f46e5;
-  --ifm-color-primary-dark: #4338ca;
-  --ifm-color-primary-darker: #3730a3;
-  --ifm-color-primary-darkest: #2e2a87;
-  --ifm-color-primary-light: #6366f1;
-  --ifm-color-primary-lighter: #7c7ff0;
-  --ifm-color-primary-lightest: #a5a8f5;
+  --ifm-color-primary: #2563eb;
+  --ifm-color-primary-dark: #1d4ed8;
+  --ifm-color-primary-darker: #1e40af;
+  --ifm-color-primary-darkest: #1e3a8a;
+  --ifm-color-primary-light: #3b82f6;
+  --ifm-color-primary-lighter: #60a5fa;
+  --ifm-color-primary-lightest: #93c5fd;
   --ifm-background-color: var(--av-bg);
   --ifm-background-surface-color: #ffffff;
   --ifm-navbar-background-color: rgba(255, 255, 255, 0.92);
@@ -55,7 +57,7 @@
   --ifm-h3-font-size: clamp(1.1rem, 2vw, 1.3rem);
   --ifm-code-font-size: 0.88rem;
   --ifm-line-height-base: 1.65;
-  --docusaurus-highlighted-code-line-bg: rgba(79, 70, 229, 0.12);
+  --docusaurus-highlighted-code-line-bg: rgba(37, 99, 235, 0.12);
 }
 
 html[data-theme='dark'] {
@@ -67,17 +69,23 @@ html[data-theme='dark'] {
   --av-text: #eef0f7;
   --av-text-muted: #a4a8bd;
   --av-text-faint: #767b93;
-  --av-accent: #818cf8;
-  --av-accent-dark: #6366f1;
-  --av-accent-light: rgba(129, 140, 248, 0.14);
+  /*
+   * One step lighter than the light theme's blue, so links and labels stay
+   * above 4.5:1 on the dark surfaces. White text on it would not, which is
+   * why the accent's text colour switches to the page background here.
+   */
+  --av-accent: #60a5fa;
+  --av-accent-dark: #3b82f6;
+  --av-accent-light: rgba(96, 165, 250, 0.14);
+  --av-accent-contrast: var(--av-bg);
 
-  --ifm-color-primary: #818cf8;
-  --ifm-color-primary-dark: #6366f1;
-  --ifm-color-primary-darker: #585cf0;
-  --ifm-color-primary-darkest: #4338ca;
-  --ifm-color-primary-light: #93a0f9;
-  --ifm-color-primary-lighter: #a5b0fb;
-  --ifm-color-primary-lightest: #c7cefc;
+  --ifm-color-primary: #60a5fa;
+  --ifm-color-primary-dark: #3b82f6;
+  --ifm-color-primary-darker: #2563eb;
+  --ifm-color-primary-darkest: #1d4ed8;
+  --ifm-color-primary-light: #93c5fd;
+  --ifm-color-primary-lighter: #bfdbfe;
+  --ifm-color-primary-lightest: #dbeafe;
   --ifm-background-color: var(--av-bg);
   --ifm-background-surface-color: var(--av-bg-subtle);
   --ifm-navbar-background-color: rgba(15, 17, 23, 0.92);
@@ -156,17 +164,22 @@ a {
     color 120ms ease;
 }
 
-.button--secondary {
+/*
+ * Infima sets the label colour with `.button.button--secondary`, which
+ * outranks a bare `.button--secondary`, so match its selector or the label
+ * falls back to Infima's near-black on the blue.
+ */
+.button.button--secondary {
   border: 1px solid var(--ifm-color-primary);
-  color: #ffffff;
+  color: var(--av-accent-contrast);
   background: var(--ifm-color-primary);
   box-shadow: var(--av-shadow-sm);
 }
 
-.button--secondary:hover {
+.button.button--secondary:hover {
   background: var(--ifm-color-primary-dark);
   border-color: var(--ifm-color-primary-dark);
-  color: #ffffff;
+  color: var(--av-accent-contrast);
   box-shadow: var(--av-shadow-md);
 }
 

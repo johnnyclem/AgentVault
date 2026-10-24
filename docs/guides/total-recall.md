@@ -3,12 +3,14 @@
 Total Recall is the migration path between assistants. Someone has used
 ChatGPT for three years; the data export gives them conversations but not
 the memories ChatGPT quietly built about them, and nothing gives them the
-memories as they change. They connect both ChatGPT and Claude to the
-AgentVault MCP server, set a guardrail that every memory event is written to
-a total-recall volume, and keep using ChatGPT for a few weeks. Every memory
-ChatGPT creates, recalls or updates lands in the volume; Claude ingests the
-stream through the same MCP server or a notification hook, and the person
-migrates at the pace they build trust.
+memories as they change. They import the export and the memories they can
+copy out, connect the assistants they use to the AgentVault MCP server, and
+set a guardrail that every memory event is written to a total-recall volume.
+The server runs over stdio, so any MCP client that can launch a local server
+can connect. Every memory a connected assistant creates, recalls or updates
+lands in the volume; the assistant they are moving to ingests the stream
+through the same MCP server or a notification hook, and the person migrates
+at the pace they build trust.
 
 The volume is append-only: nothing in it is ever rewritten. It is also
 stenographer-native, so the full transcript (when enabled) and the memory
@@ -60,13 +62,16 @@ commit) is what makes truncation of the newest lines detectable.
 agentvault total-recall init
 agentvault total-recall policy --transcript append      # optional: full transcript
 
-# 2. Serve it to every assistant through one MCP server
+# 2. Serve it over stdio to every MCP client that can launch a local server
 agentvault mcp serve --total-recall ./.agentvault/total-recall
 ```
 
-Register that command as an MCP server in ChatGPT (connector) and in Claude
-(`.mcp.json`, Claude Desktop config). On connect, each client receives the
-volume's guardrail as the server's `instructions`:
+Register that command as a local (stdio) MCP server in each client that can
+launch one, such as Claude Code (`.mcp.json`) or Claude Desktop (its config
+file). The server has no remote transport, so an assistant that only accepts
+remote connectors cannot reach it; bring that assistant's history in with
+`import` (step 3). On connect, each client receives the volume's guardrail as
+the server's `instructions`:
 
 > GUARDRAIL: whenever you create, recall, update or delete a memory about the
 > user (your own memory feature included), call total_recall_record in the
@@ -93,7 +98,7 @@ Served by `agentvault mcp serve` next to the `hypervault_*` and `wiki_*` tools.
 
 | Tool | Does | Guardrail role |
 |---|---|---|
-| `total_recall_record` | append a memory event (`op`, `key`, `content`, `provider`, optional `title`, `tags`, `agent`, `session`) | what every assistant calls on create/recall/update/delete |
+| `total_recall_record` | append a memory event (`op`, `key`, `content`, `provider`, optional `title`, `tags`, `agent`, `session`) | what every connected assistant calls on create/recall/update/delete |
 | `total_recall_transcribe` | append a conversation turn (`role`, `content`, `session`, `provider`) | only when `policy.transcript` is `append` |
 | `total_recall_pull` | events after `since_seq`, oldest first, with `next_seq` and `more` | the ingestion path for the assistant being migrated to |
 | `total_recall_list` | current memories, folded | read |
@@ -133,7 +138,7 @@ and `log` show what did land.
 Three ways, by how much the ingester wants to be driven:
 
 1. **Pull over MCP.** Claude calls `total_recall_pull` with the last
-   `next_seq` it saw (start at `0`) and gets ChatGPT's new and updated
+   `next_seq` it saw (start at `0`) and gets the volume's new and updated
    memories in order. This is the path that needs nothing but the server.
 2. **Notification hook.** `agentvault total-recall watch --hook ./ingest.sh`
    follows `memories.jsonl` and runs the command for each new event with the

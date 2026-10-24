@@ -2,11 +2,12 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Plus, Wallet, ArrowUp, ArrowDown, ExternalLink } from 'lucide-react'
+import { Wallet, ArrowUp, ArrowDown } from 'lucide-react'
 import { useWallets } from '@/hooks/useWallets'
 import { useTransactions } from '@/hooks/useTransactions'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { formatCycles, formatTimestamp, truncatePrincipal } from '@/lib/utils'
+import { describeWallet } from './wallet-card'
 
 export default function WalletsPage() {
   const { wallets, isLoading, error } = useWallets()
@@ -22,140 +23,139 @@ export default function WalletsPage() {
     setReceiveModal({ open: true, walletId })
   }
 
+  // The modals render after .page, not inside it: its space-y margin would
+  // otherwise push the fixed backdrop 24px down and leave the header undimmed.
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <>
+      <div className="page">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Wallets</h1>
-          <p className="text-muted-foreground">
-            Manage your ICP wallets and cycles
+          <h1 className="page-title">Wallets</h1>
+          <p className="page-subtitle">
+            Wallets your agents hold on ICP, ckETH, Solana, Polkadot and Arweave
           </p>
         </div>
-        <Link
-          href="/wallets/new"
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
-        >
-          <Plus className="w-4 h-4" />
-          Connect Wallet
-        </Link>
-      </div>
 
-      {isLoading ? (
-        <div className="flex items-center justify-center min-h-[400px]">
-          <LoadingSpinner size="lg" />
-        </div>
-      ) : error ? (
-        <div className="flex items-center justify-center min-h-[400px]">
-          <p className="text-red-500">{error.message}</p>
-        </div>
-      ) : wallets.length === 0 ? (
-        <div className="flex flex-col items-center justify-center min-h-[400px] text-gray-500">
-          <Wallet className="w-16 h-16 mb-4" />
-          <p className="text-lg font-medium">No wallets connected</p>
-          <p className="text-sm">Connect a wallet to get started</p>
-          <Link
-            href="/wallets/new"
-            className="mt-4 flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
-          >
-            <Plus className="w-4 h-4" />
-            Connect Wallet
-          </Link>
-        </div>
-      ) : (
-        <>
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {wallets.map((wallet) => (
-              <div key={wallet.id} className="border rounded-lg p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <Wallet className="w-5 h-5 text-blue-500" />
-                    <span className="font-semibold capitalize">{wallet.type} Wallet</span>
-                  </div>
-                  <span className={`text-xs px-2 py-1 rounded ${
-                    wallet.status === 'connected' 
-                      ? 'bg-green-100 text-green-700' 
-                      : 'bg-gray-100 text-gray-600'
-                  }`}>
-                    {wallet.status || 'Connected'}
-                  </span>
-                </div>
-                <div className="space-y-2">
-                  <p className="text-2xl font-bold">{formatCycles(wallet.balance)}</p>
-                  <p className="text-sm text-gray-600 font-mono">
-                    {truncatePrincipal(wallet.principal)}
-                  </p>
-                  {wallet.address && (
-                    <p className="text-xs text-gray-500 font-mono">
-                      {wallet.address.slice(0, 10)}...{wallet.address.slice(-8)}
-                    </p>
-                  )}
-                  <p className="text-xs text-gray-500">
-                    Created {formatTimestamp(wallet.createdAt)}
-                  </p>
-                </div>
-                <div className="mt-4 pt-4 border-t flex gap-2">
-                  <button 
-                    onClick={() => handleSend(wallet.id)}
-                    className="flex items-center gap-1 px-3 py-1.5 text-sm bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition"
-                  >
-                    <ArrowUp className="w-4 h-4" />
-                    Send
-                  </button>
-                  <button 
-                    onClick={() => handleReceive(wallet.id)}
-                    className="flex items-center gap-1 px-3 py-1.5 text-sm bg-green-50 text-green-600 rounded hover:bg-green-100 transition"
-                  >
-                    <ArrowDown className="w-4 h-4" />
-                    Receive
-                  </button>
-                </div>
-              </div>
-            ))}
+        {isLoading ? (
+          <div className="flex items-center justify-center min-h-[400px]">
+            <LoadingSpinner size="lg" />
           </div>
-
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold">Recent Transactions</h2>
-            {transactions.length === 0 ? (
-              <div className="border rounded-lg p-8 text-center text-gray-500">
-                <p>No transactions yet</p>
-              </div>
-            ) : (
-              <div className="border rounded-lg divide-y">
-                {transactions.slice(0, 10).map((tx) => (
-                  <div key={tx.id} className="p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-full ${tx.type === 'receive' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                        {tx.type === 'receive' ? <ArrowDown className="w-4 h-4" /> : <ArrowUp className="w-4 h-4" />}
+        ) : error ? (
+          <div className="flex items-center justify-center min-h-[400px]">
+            <p className="text-sm text-destructive">{error.message}</p>
+          </div>
+        ) : wallets.length === 0 ? (
+          <div className="surface flex flex-col items-center justify-center p-10 text-center">
+            <Wallet className="w-10 h-10 mb-3 text-muted-foreground" />
+            <p className="font-medium">No wallets yet</p>
+            <p className="text-sm text-muted-foreground">
+              Wallets are created from an agent: open it, choose Archive My Agent, then the Wallets step.
+            </p>
+            <Link
+              href="/agents"
+              className="mt-4 inline-flex rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              Go to Agents
+            </Link>
+          </div>
+        ) : (
+          <>
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {wallets.map((wallet) => {
+                const view = describeWallet(wallet)
+                return (
+                  <div key={wallet.id} className="surface p-6">
+                    <div className="mb-4 flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <Wallet className="h-5 w-5 shrink-0 text-muted-foreground" />
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold">{view.agent ?? 'Wallet'}</p>
+                          <p className="text-sm text-muted-foreground">{view.chain}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-medium capitalize">{tx.type} {formatCycles(tx.amount)}</p>
-                        <p className="text-sm text-gray-500">
-                          {tx.type === 'receive' ? `From ${truncatePrincipal(tx.from || '')}` : `To ${truncatePrincipal(tx.to || '')}`}
+                      {/* The list endpoint reports no connection state; claim none it did not send. */}
+                      {wallet.status ? (
+                        <span className={`shrink-0 rounded px-2 py-1 text-xs capitalize ${
+                          wallet.status === 'connected'
+                            ? 'bg-success/15 text-success'
+                            : 'bg-muted text-muted-foreground'
+                        }`}>
+                          {wallet.status}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="space-y-2">
+                      {view.balance !== null ? (
+                        <p className="text-2xl font-bold">{formatCycles(view.balance)}</p>
+                      ) : null}
+                      {view.address ? (
+                        <p className="truncate font-mono text-sm text-muted-foreground" title={view.address}>
+                          {truncatePrincipal(view.address)}
                         </p>
-                      </div>
+                      ) : null}
+                      <p className="text-xs text-muted-foreground">
+                        Created {formatTimestamp(wallet.createdAt)}
+                      </p>
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm text-gray-500">{formatTimestamp(tx.timestamp)}</p>
-                      <Link href={`/transactions/${tx.id}`} className="text-xs text-blue-500 flex items-center gap-1 hover:underline">
-                        View <ExternalLink className="w-3 h-3" />
-                      </Link>
+                    <div className="mt-4 pt-4 border-t flex gap-2">
+                      <button 
+                        onClick={() => handleSend(wallet.id)}
+                        className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium bg-primary/10 text-primary rounded-lg hover:bg-primary/15 transition-colors"
+                      >
+                        <ArrowUp className="w-4 h-4" />
+                        Send
+                      </button>
+                      <button 
+                        onClick={() => handleReceive(wallet.id)}
+                        className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium bg-success/10 text-success rounded-lg hover:bg-success/15 transition-colors"
+                      >
+                        <ArrowDown className="w-4 h-4" />
+                        Receive
+                      </button>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </>
-      )}
+                )
+              })}
+            </div>
+
+            <div className="space-y-4">
+              <h2 className="text-lg font-semibold">Recent Transactions</h2>
+              {transactions.length === 0 ? (
+                <div className="surface p-8 text-center text-sm text-muted-foreground">
+                  <p>No transactions yet</p>
+                </div>
+              ) : (
+                <div className="surface divide-y">
+                  {transactions.slice(0, 10).map((tx) => (
+                    <div key={tx.id} className="p-4 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-full ${tx.type === 'receive' ? 'bg-success/15 text-success' : 'bg-destructive/10 text-destructive'}`}>
+                          {tx.type === 'receive' ? <ArrowDown className="w-4 h-4" /> : <ArrowUp className="w-4 h-4" />}
+                        </div>
+                        <div>
+                          <p className="font-medium capitalize">{tx.type} {formatCycles(tx.amount)}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {tx.type === 'receive' ? `From ${truncatePrincipal(tx.from || '')}` : `To ${truncatePrincipal(tx.to || '')}`}
+                          </p>
+                        </div>
+                      </div>
+                      <p className="text-sm text-muted-foreground">{formatTimestamp(tx.timestamp)}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
 
       {sendModal?.open && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+          <div className="rounded-xl border bg-popover text-popover-foreground p-6 max-w-md w-full mx-4 shadow-xl">
             <h3 className="text-lg font-semibold mb-4">Send Cycles</h3>
-            <p className="text-sm text-gray-600 mb-4">Feature coming soon. Use the CLI to send cycles.</p>
+            <p className="text-sm text-muted-foreground mb-4">Feature coming soon. Use the CLI to send cycles.</p>
             <button 
               onClick={() => setSendModal(null)}
-              className="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition"
+              className="w-full px-4 py-2 text-sm font-medium border rounded-lg hover:bg-muted transition-colors"
             >
               Close
             </button>
@@ -165,18 +165,18 @@ export default function WalletsPage() {
 
       {receiveModal?.open && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+          <div className="rounded-xl border bg-popover text-popover-foreground p-6 max-w-md w-full mx-4 shadow-xl">
             <h3 className="text-lg font-semibold mb-4">Receive Cycles</h3>
-            <p className="text-sm text-gray-600 mb-4">Your wallet principal can receive cycles from any ICP wallet.</p>
+            <p className="text-sm text-muted-foreground mb-4">Your wallet principal can receive cycles from any ICP wallet.</p>
             <button 
               onClick={() => setReceiveModal(null)}
-              className="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition"
+              className="w-full px-4 py-2 text-sm font-medium border rounded-lg hover:bg-muted transition-colors"
             >
               Close
             </button>
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }

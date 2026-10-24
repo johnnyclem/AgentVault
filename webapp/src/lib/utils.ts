@@ -64,50 +64,52 @@ export function truncatePrincipal(principal: string, length: number = 8): string
   return `${principal.slice(0, length)}...${principal.slice(-length)}`
 }
 
-export function getStatusColor(status: string): string {
-  const statusMap: Record<string, string> = {
-    running: 'text-green-500',
-    active: 'text-green-500',
-    connected: 'text-green-500',
-    completed: 'text-green-500',
-    approved: 'text-green-500',
-    uploading: 'text-blue-500',
-    deploying: 'text-blue-500',
-    pending: 'text-yellow-500',
-    starting: 'text-yellow-500',
-    stopped: 'text-gray-500',
-    inactive: 'text-gray-500',
-    disconnected: 'text-gray-500',
-    stopping: 'text-orange-500',
-    error: 'text-red-500',
-    failed: 'text-red-500',
-    rejected: 'text-red-500',
-    degraded: 'text-orange-500',
-    expired: 'text-gray-500',
-  }
-  return statusMap[status.toLowerCase()] || 'text-gray-500'
+/**
+ * Status colours map onto the semantic tokens in globals.css, which are
+ * redefined for dark mode, so one class reads well in both themes.
+ */
+const STATUS_TONE: Record<string, 'success' | 'info' | 'warning' | 'neutral' | 'danger'> = {
+  running: 'success',
+  active: 'success',
+  connected: 'success',
+  completed: 'success',
+  approved: 'success',
+  uploading: 'info',
+  deploying: 'info',
+  pending: 'warning',
+  starting: 'warning',
+  stopping: 'warning',
+  degraded: 'warning',
+  stopped: 'neutral',
+  inactive: 'neutral',
+  disconnected: 'neutral',
+  expired: 'neutral',
+  error: 'danger',
+  failed: 'danger',
+  rejected: 'danger',
 }
 
+const TONE_TEXT = {
+  success: 'text-success',
+  info: 'text-primary',
+  warning: 'text-warning',
+  neutral: 'text-muted-foreground',
+  danger: 'text-destructive',
+} as const
+
+const TONE_BADGE = {
+  success: 'bg-success/15 text-success',
+  info: 'bg-primary/10 text-primary',
+  warning: 'bg-warning/15 text-warning',
+  neutral: 'bg-muted text-muted-foreground',
+  danger: 'bg-destructive/10 text-destructive',
+} as const
+
+export function getStatusColor(status: string): string {
+  return TONE_TEXT[STATUS_TONE[status.toLowerCase()] ?? 'neutral']
+}
+
+/** A tinted background plus matching text colour, for pills and badges. */
 export function getStatusBgColor(status: string): string {
-  const statusMap: Record<string, string> = {
-    running: 'bg-green-500',
-    active: 'bg-green-500',
-    connected: 'bg-green-500',
-    completed: 'bg-green-500',
-    approved: 'bg-green-500',
-    uploading: 'bg-blue-500',
-    deploying: 'bg-blue-500',
-    pending: 'bg-yellow-500',
-    starting: 'bg-yellow-500',
-    stopped: 'bg-gray-500',
-    inactive: 'bg-gray-500',
-    disconnected: 'bg-gray-500',
-    stopping: 'bg-orange-500',
-    error: 'bg-red-500',
-    failed: 'bg-red-500',
-    rejected: 'bg-red-500',
-    degraded: 'bg-orange-500',
-    expired: 'bg-gray-500',
-  }
-  return statusMap[status.toLowerCase()] || 'bg-gray-500'
+  return TONE_BADGE[STATUS_TONE[status.toLowerCase()] ?? 'neutral']
 }

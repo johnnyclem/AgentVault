@@ -443,14 +443,14 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
 
   if (agentError || !agent) {
     return (
-      <div className="p-6 space-y-6">
+      <div className="page">
         <div className="flex items-center gap-4">
-          <Link href="/agents" className="text-gray-500 hover:text-gray-700">
+          <Link href="/agents" className="text-muted-foreground hover:text-foreground">
             <ArrowLeft className="w-6 h-6" />
           </Link>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Agent Not Found</h1>
-            <p className="text-muted-foreground">
+            <h1 className="page-title">Agent Not Found</h1>
+            <p className="page-subtitle">
               {agentError?.message || 'The requested agent could not be found.'}
             </p>
           </div>
@@ -460,24 +460,24 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="page">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <Link href="/agents" className="text-gray-500 hover:text-gray-700">
+          <Link href="/agents" className="text-muted-foreground hover:text-foreground">
             <ArrowLeft className="w-6 h-6" />
           </Link>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">{agent.name}</h1>
-            <p className="text-muted-foreground">
+            <h1 className="page-title">{agent.name}</h1>
+            <p className="page-subtitle">
               ID: {agent.id}
             </p>
           </div>
           <StatusBadge status={agent.status} />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={openArchiveModal}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition"
+            className="flex items-center gap-2 px-3.5 py-2 text-sm font-medium border bg-card rounded-lg hover:bg-muted transition-colors"
           >
             <Archive className="w-4 h-4" />
             Archive My Agent
@@ -485,7 +485,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
           <button
             onClick={handleDeploy}
             disabled={isDeploying}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 transition"
+            className="flex items-center gap-2 px-3.5 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
           >
             {isDeploying ? <LoadingSpinner size="sm" /> : <Play className="w-4 h-4" />}
             {agent.status === 'active' ? '1-Click Redeploy' : '1-Click Deploy'}
@@ -494,7 +494,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
             <button
               onClick={handleStop}
               disabled={isDeploying}
-              className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 transition"
+              className="flex items-center gap-2 px-3.5 py-2 text-sm font-medium border border-destructive/30 text-destructive rounded-lg hover:bg-destructive/10 disabled:opacity-50 transition-colors"
             >
               {isDeploying ? <LoadingSpinner size="sm" /> : <StopCircle className="w-4 h-4" />}
               Stop
@@ -502,7 +502,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
           )}
           <Link
             href={`/agents/${agent.id}/config`}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition"
+            className="flex items-center gap-2 px-3.5 py-2 text-sm font-medium border bg-card rounded-lg hover:bg-muted transition-colors"
           >
             <Settings className="w-4 h-4" />
             Configure
@@ -511,75 +511,75 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
       </div>
 
       {deploySuccess && (
-        <div className="rounded border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+        <div className="rounded-lg border border-success/30 bg-success/10 px-4 py-3 text-sm text-success">
           {deploySuccess}
         </div>
       )}
 
       {deployError && (
-        <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {deployError}
         </div>
       )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-4">
-          <h2 className="text-xl font-semibold flex items-center gap-2">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
             <Activity className="w-5 h-5" />
             Status
           </h2>
           {canisterLoading ? (
             <LoadingSpinner />
           ) : canisterError ? (
-            <p className="text-red-500">Failed to load canister status</p>
+            <p className="text-destructive">Failed to load canister status</p>
           ) : canister ? (
-            <div className="border rounded-lg p-4 space-y-2">
+            <div className="surface p-4 space-y-2 text-sm">
               <p className="flex justify-between">
-                <span className="text-gray-600">Canister ID:</span>
+                <span className="text-muted-foreground">Canister ID:</span>
                 <span className="font-mono">{canister.id}</span>
               </p>
               <p className="flex justify-between">
-                <span className="text-gray-600">Status:</span>
+                <span className="text-muted-foreground">Status:</span>
                 <StatusBadge status={canister.status} />
               </p>
               <p className="flex justify-between">
-                <span className="text-gray-600">Cycles:</span>
+                <span className="text-muted-foreground">Cycles:</span>
                 <span>{formatCycles(canister.cycles)}</span>
               </p>
               <p className="flex justify-between">
-                <span className="text-gray-600">Memory:</span>
+                <span className="text-muted-foreground">Memory:</span>
                 <span>{formatBytes(canister.memory)}</span>
               </p>
               <p className="flex justify-between">
-                <span className="text-gray-600">Controller:</span>
+                <span className="text-muted-foreground">Controller:</span>
                 <span className="font-mono">{canister.controller.slice(0, 8)}...</span>
               </p>
             </div>
           ) : (
-            <p className="text-gray-500">Canister not deployed</p>
+            <p className="text-muted-foreground">Canister not deployed</p>
           )}
         </div>
 
         <div className="space-y-4">
-          <h2 className="text-xl font-semibold flex items-center gap-2">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
             <RefreshCw className="w-5 h-5" />
             Metrics
           </h2>
-          <div className="border rounded-lg p-4 space-y-2">
+          <div className="surface p-4 space-y-2 text-sm">
             <p className="flex justify-between">
-              <span className="text-gray-600">Requests:</span>
+              <span className="text-muted-foreground">Requests:</span>
               <span>{agent.metrics?.requests.toLocaleString() ?? 'N/A'}</span>
             </p>
             <p className="flex justify-between">
-              <span className="text-gray-600">Errors:</span>
-              <span className="text-red-500">{agent.metrics?.errors ?? 'N/A'}</span>
+              <span className="text-muted-foreground">Errors:</span>
+              <span className="text-destructive">{agent.metrics?.errors ?? 'N/A'}</span>
             </p>
             <p className="flex justify-between">
-              <span className="text-gray-600">Avg Latency:</span>
+              <span className="text-muted-foreground">Avg Latency:</span>
               <span>{agent.metrics?.avgLatency ? `${agent.metrics.avgLatency}ms` : 'N/A'}</span>
             </p>
             <p className="flex justify-between">
-              <span className="text-gray-600">Uptime:</span>
+              <span className="text-muted-foreground">Uptime:</span>
               <span>{agent.metrics?.uptime ? `${agent.metrics.uptime}%` : 'N/A'}</span>
             </p>
           </div>
@@ -587,46 +587,46 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
       </div>
 
       <div className="space-y-4">
-        <h2 className="text-xl font-semibold">Configuration</h2>
-        <div className="border rounded-lg p-4 space-y-2">
+        <h2 className="text-lg font-semibold">Configuration</h2>
+        <div className="surface p-4 space-y-2 text-sm">
           <p className="flex justify-between">
-            <span className="text-gray-600">Entry Point:</span>
+            <span className="text-muted-foreground">Entry Point:</span>
             <span className="font-mono">{agent.config.entry}</span>
           </p>
           <p className="flex justify-between">
-            <span className="text-gray-600">Memory:</span>
+            <span className="text-muted-foreground">Memory:</span>
             <span>{agent.config.memory} MB</span>
           </p>
           <p className="flex justify-between">
-            <span className="text-gray-600">Compute:</span>
+            <span className="text-muted-foreground">Compute:</span>
             <span>{agent.config.compute}</span>
           </p>
           <p className="flex justify-between">
-            <span className="text-gray-600">Created:</span>
+            <span className="text-muted-foreground">Created:</span>
             <span>{formatTimestamp(agent.createdAt)}</span>
           </p>
           <p className="flex justify-between">
-            <span className="text-gray-600">Updated:</span>
+            <span className="text-muted-foreground">Updated:</span>
             <span>{formatTimestamp(agent.updatedAt)}</span>
           </p>
         </div>
       </div>
 
       <div className="space-y-4">
-        <h2 className="text-xl font-semibold">Recent Deployments</h2>
+        <h2 className="text-lg font-semibold">Recent Deployments</h2>
         {deploymentsLoading ? (
           <LoadingSpinner />
         ) : deployments.length === 0 ? (
-          <p className="text-gray-500">No deployments yet</p>
+          <p className="text-muted-foreground">No deployments yet</p>
         ) : (
-          <div className="border rounded-lg divide-y">
+          <div className="surface divide-y">
             {deployments.slice(0, 5).map((deployment) => (
               <div key={deployment.id} className="p-4 flex items-center justify-between">
                 <div>
                   <StatusBadge status={deployment.status} />
-                  <span className="ml-2 text-sm text-gray-600">{formatTimestamp(deployment.createdAt)}</span>
+                  <span className="ml-2 text-sm text-muted-foreground">{formatTimestamp(deployment.createdAt)}</span>
                   {deployment.error && (
-                    <p className="mt-1 text-xs text-red-500">{deployment.error}</p>
+                    <p className="mt-1 text-xs text-destructive">{deployment.error}</p>
                   )}
                 </div>
                 {deployment.canisterId && (
@@ -638,14 +638,16 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
         )}
       </div>
 
+      {/* !mt-0: as a child of .page the overlay would inherit space-y's 24px
+          top margin, leaving an undimmed, clickable strip over the header. */}
       {isArchiveModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="w-full max-w-3xl bg-white rounded-lg shadow-xl">
+        <div className="fixed inset-0 !mt-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="w-full max-w-3xl rounded-xl border bg-popover text-popover-foreground shadow-xl">
             <div className="flex items-center justify-between border-b px-5 py-4">
               <h3 className="text-lg font-semibold">Archive My Agent</h3>
               <button
                 onClick={closeArchiveModal}
-                className="text-gray-500 hover:text-gray-700"
+                className="text-muted-foreground hover:text-foreground"
                 disabled={archiveLoading}
               >
                 <XCircle className="w-5 h-5" />
@@ -653,32 +655,32 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
             </div>
             <div className="max-h-[85vh] overflow-auto p-5 space-y-5">
               <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span className={`rounded-full px-2 py-1 ${archiveStep === 'profile' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}>
+                <span className={`rounded-full px-2 py-1 ${archiveStep === 'profile' ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground'}`}>
                   1. Profile
                 </span>
-                <span className={`rounded-full px-2 py-1 ${archiveStep === 'artifacts' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}>
+                <span className={`rounded-full px-2 py-1 ${archiveStep === 'artifacts' ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground'}`}>
                   2. Files
                 </span>
-                <span className={`rounded-full px-2 py-1 ${archiveStep === 'wallets' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}>
+                <span className={`rounded-full px-2 py-1 ${archiveStep === 'wallets' ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground'}`}>
                   3. Wallets
                 </span>
-                <span className={`rounded-full px-2 py-1 ${archiveStep === 'review' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}>
+                <span className={`rounded-full px-2 py-1 ${archiveStep === 'review' ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground'}`}>
                   4. Review
                 </span>
-                <span className={`rounded-full px-2 py-1 ${archiveStep === 'receipt' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}>
+                <span className={`rounded-full px-2 py-1 ${archiveStep === 'receipt' ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground'}`}>
                   5. Receipt
                 </span>
               </div>
 
               {archiveError && (
-                <div className="rounded border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 flex items-start gap-2">
+                <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive flex items-start gap-2">
                   <CircleAlert className="w-4 h-4 mt-0.5" />
                   {archiveError}
                 </div>
               )}
 
               {detectionError && archiveStep === 'artifacts' && (
-                <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700 flex items-start gap-2">
+                <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning flex items-start gap-2">
                   <AlertCircle className="w-4 h-4 mt-0.5" />
                   {detectionError}
                 </div>
@@ -686,15 +688,15 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
 
               {archiveStep === 'profile' && (
                 <div className="space-y-4">
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-muted-foreground">
                     Pick your agent type and optional source path. We’ll try to auto-detect all archive artifacts.
                   </p>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Agent Profile</label>
+                    <label className="block text-sm font-medium mb-1.5">Agent Profile</label>
                     <select
                       value={archiveProfile}
                       onChange={(e) => setArchiveProfile(e.target.value as ArchiveProfile)}
-                      className="w-full border px-3 py-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full border bg-background px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
                     >
                       {PROFILE_OPTIONS.map((option) => (
                         <option key={option.value} value={option.value}>
@@ -704,24 +706,24 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium mb-1.5">
                       Source Path (optional)
                     </label>
                     <input
                       type="text"
                       value={archiveSourcePath}
                       onChange={(event) => setArchiveSourcePath(event.target.value)}
-                      className="w-full border px-3 py-2 rounded font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full border bg-background px-3 py-2 rounded-md font-mono focus:outline-none focus:ring-2 focus:ring-ring"
                       placeholder="Leave blank to auto-detect from agent profile"
                     />
-                    <p className="mt-1 text-xs text-gray-500">
+                    <p className="mt-1 text-xs text-muted-foreground">
                       Example: /Users/me/projects/my-agent
                     </p>
                   </div>
                   <button
                     onClick={handleDetect}
                     disabled={isDetecting}
-                    className="w-full bg-blue-600 text-white rounded px-4 py-2 hover:bg-blue-700 transition disabled:opacity-50"
+                    className="w-full bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
                   >
                     {isDetecting ? (
                       <span className="flex items-center justify-center gap-2">
@@ -735,7 +737,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
 
                   <button
                     onClick={() => setArchiveStep('artifacts')}
-                    className="w-full rounded border px-4 py-2 text-gray-700 hover:bg-gray-100 transition"
+                    className="w-full rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
                   >
                     Continue Manually
                   </button>
@@ -748,12 +750,12 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                     <h4 className="font-medium">Artifact Locations</h4>
                     <button
                       onClick={() => setArchiveStep('profile')}
-                      className="text-sm text-blue-600 hover:underline"
+                      className="text-sm text-primary hover:underline"
                     >
                       Back
                     </button>
                   </div>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-muted-foreground">
                     {detection?.autoDetected
                       ? 'We found some paths automatically. Confirm or edit each required path.'
                       : 'Automatic detection was not possible. Enter each required location manually.'}
@@ -762,7 +764,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                     type="text"
                     value={detection?.sourcePath || archiveSourcePath || ''}
                     onChange={(event) => setArchiveSourcePath(event.target.value)}
-                    className="w-full border px-3 py-2 rounded font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border bg-background px-3 py-2 rounded-md font-mono focus:outline-none focus:ring-2 focus:ring-ring"
                     placeholder="Source path to your agent project"
                   />
                   {requiredKinds.map((kind) => {
@@ -773,24 +775,24 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                     const value = artifactPaths[kind]
                     return (
                       <div key={kind}>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <label className="block text-sm font-medium mb-1.5">
                           {field.label}
                         </label>
                         <input
                           type="text"
                           value={value}
                           onChange={(event) => updateArtifactPath(kind, event.target.value)}
-                          className="w-full border px-3 py-2 rounded font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-full border bg-background px-3 py-2 rounded-md font-mono focus:outline-none focus:ring-2 focus:ring-ring"
                           placeholder={field.hint}
                         />
-                        <p className="text-xs text-gray-500 mt-1">{field.hint}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{field.hint}</p>
                       </div>
                     )
                   })}
                   <div className="flex gap-2 justify-end">
                     <button
                       onClick={() => setArchiveStep('profile')}
-                      className="px-4 py-2 text-sm text-gray-700 border rounded hover:bg-gray-100 transition"
+                      className="px-4 py-2 text-sm font-medium border rounded-lg hover:bg-muted transition-colors"
                     >
                       Back
                     </button>
@@ -799,7 +801,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                         void openWalletStep()
                       }}
                       disabled={!canAdvanceToWallets}
-                      className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50 hover:bg-blue-700 transition"
+                      className="px-4 py-2 text-sm font-medium rounded-lg bg-primary text-primary-foreground disabled:opacity-50 hover:bg-primary/90 transition-colors"
                     >
                       Continue to Wallets
                     </button>
@@ -813,12 +815,12 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                     <h4 className="font-medium">Connect / Select Wallets</h4>
                     <button
                       onClick={() => setArchiveStep('artifacts')}
-                      className="text-sm text-blue-600 hover:underline"
+                      className="text-sm text-primary hover:underline"
                     >
                       Back
                     </button>
                   </div>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-muted-foreground">
                     Archive flow requires one ICP wallet and one Arweave wallet. Create a new one if missing.
                   </p>
 
@@ -829,20 +831,20 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                         ICP Wallet
                       </h5>
                     </div>
-                    {walletError && <div className="text-sm text-rose-700">{walletError}</div>}
+                    {walletError && <div className="text-sm text-destructive">{walletError}</div>}
 
                     {isFetchingWallets ? (
-                      <div className="text-sm text-gray-500 flex items-center gap-2">
+                      <div className="text-sm text-muted-foreground flex items-center gap-2">
                         <Loader2 className="w-4 h-4 animate-spin" />
                         Loading existing wallets...
                       </div>
                     ) : icpWallets.length === 0 ? (
-                      <p className="text-sm text-gray-500">No existing ICP wallets found.</p>
+                      <p className="text-sm text-muted-foreground">No existing ICP wallets found.</p>
                     ) : (
                       <select
                         value={selectedIcpWalletId}
                         onChange={(event) => setSelectedIcpWalletId(event.target.value)}
-                        className="mb-2 w-full border px-3 py-2 rounded"
+                        className="mb-2 w-full border bg-background px-3 py-2 rounded-md"
                       >
                         {icpWallets.map((wallet) => (
                           <option key={wallet.id} value={wallet.id}>
@@ -856,7 +858,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                       <select
                         value={icpWalletMethod}
                         onChange={(event) => setIcpWalletMethod(event.target.value as WalletMethod)}
-                        className="border px-3 py-2 rounded"
+                        className="border bg-background px-3 py-2 rounded-md"
                       >
                         <option value="generate">Generate</option>
                         <option value="import-seed">Import from seed</option>
@@ -868,7 +870,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                           type="text"
                           value={icpSeedPhrase}
                           onChange={(event) => setIcpSeedPhrase(event.target.value)}
-                          className="sm:col-span-2 border px-3 py-2 rounded"
+                          className="sm:col-span-2 border bg-background px-3 py-2 rounded-md"
                           placeholder="Seed phrase"
                         />
                       )}
@@ -878,7 +880,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                           type="text"
                           value={icpPrivateKey}
                           onChange={(event) => setIcpPrivateKey(event.target.value)}
-                          className="sm:col-span-2 border px-3 py-2 rounded"
+                          className="sm:col-span-2 border bg-background px-3 py-2 rounded-md"
                           placeholder="Private key"
                         />
                       )}
@@ -887,7 +889,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                         type="text"
                         value={icpDerivationPath}
                         onChange={(event) => setIcpDerivationPath(event.target.value)}
-                        className="sm:col-span-2 border px-3 py-2 rounded"
+                        className="sm:col-span-2 border bg-background px-3 py-2 rounded-md"
                         placeholder="Derivation path (optional)"
                       />
                     </div>
@@ -895,7 +897,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                       type="button"
                       onClick={() => void createWallet('icp')}
                       disabled={isCreatingWallet === 'icp'}
-                      className="mt-3 w-full border border-blue-600 text-blue-600 rounded px-4 py-2 hover:bg-blue-50 disabled:opacity-50"
+                      className="mt-3 w-full border border-primary/40 text-primary rounded-lg px-4 py-2 text-sm font-medium hover:bg-primary/10 disabled:opacity-50"
                     >
                       {isCreatingWallet === 'icp' ? (
                         <span className="flex items-center justify-center gap-2">
@@ -915,17 +917,17 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                     </h5>
 
                     {isFetchingWallets ? (
-                      <div className="text-sm text-gray-500 flex items-center gap-2">
+                      <div className="text-sm text-muted-foreground flex items-center gap-2">
                         <Loader2 className="w-4 h-4 animate-spin" />
                         Loading existing wallets...
                       </div>
                     ) : arweaveWallets.length === 0 ? (
-                      <p className="text-sm text-gray-500">No existing Arweave wallets found.</p>
+                      <p className="text-sm text-muted-foreground">No existing Arweave wallets found.</p>
                     ) : (
                       <select
                         value={selectedArweaveWalletId}
                         onChange={(event) => setSelectedArweaveWalletId(event.target.value)}
-                        className="mb-2 w-full border px-3 py-2 rounded"
+                        className="mb-2 w-full border bg-background px-3 py-2 rounded-md"
                       >
                         {arweaveWallets.map((wallet) => (
                           <option key={wallet.id} value={wallet.id}>
@@ -939,7 +941,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                       <select
                         value={arweaveWalletMethod}
                         onChange={(event) => setArweaveWalletMethod(event.target.value as WalletMethod)}
-                        className="border px-3 py-2 rounded"
+                        className="border bg-background px-3 py-2 rounded-md"
                       >
                         <option value="generate">Generate</option>
                         <option value="import-seed">Import from seed</option>
@@ -951,7 +953,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                           type="text"
                           value={arweaveSeedPhrase}
                           onChange={(event) => setArweaveSeedPhrase(event.target.value)}
-                          className="sm:col-span-2 border px-3 py-2 rounded"
+                          className="sm:col-span-2 border bg-background px-3 py-2 rounded-md"
                           placeholder="Seed phrase"
                         />
                       )}
@@ -961,7 +963,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                           type="text"
                           value={arweavePrivateKey}
                           onChange={(event) => setArweavePrivateKey(event.target.value)}
-                          className="sm:col-span-2 border px-3 py-2 rounded"
+                          className="sm:col-span-2 border bg-background px-3 py-2 rounded-md"
                           placeholder="Private key"
                         />
                       )}
@@ -970,18 +972,18 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                         type="text"
                         value={arweaveDerivationPath}
                         onChange={(event) => setArweaveDerivationPath(event.target.value)}
-                        className="sm:col-span-2 border px-3 py-2 rounded"
+                        className="sm:col-span-2 border bg-background px-3 py-2 rounded-md"
                         placeholder="Derivation path (optional)"
                       />
 
                       <label className="sm:col-span-2">
-                        <span className="text-xs text-gray-500">
+                        <span className="text-xs text-muted-foreground">
                           Arweave JWK (required if selected wallet does not have one)
                         </span>
                         <textarea
                           value={arweaveJwk}
                           onChange={(event) => setArweaveJwk(event.target.value)}
-                          className="mt-1 w-full border rounded px-3 py-2 font-mono text-sm"
+                          className="mt-1 w-full border bg-background rounded-md px-3 py-2 font-mono text-sm"
                           rows={4}
                           placeholder='{ "kty":"RSA", "n":"...", "e":"..." }'
                         />
@@ -991,7 +993,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                       type="button"
                       onClick={() => void createWallet('arweave')}
                       disabled={isCreatingWallet === 'arweave'}
-                      className="mt-3 w-full border border-blue-600 text-blue-600 rounded px-4 py-2 hover:bg-blue-50 disabled:opacity-50"
+                      className="mt-3 w-full border border-primary/40 text-primary rounded-lg px-4 py-2 text-sm font-medium hover:bg-primary/10 disabled:opacity-50"
                     >
                       {isCreatingWallet === 'arweave' ? (
                         <span className="flex items-center justify-center gap-2">
@@ -1007,14 +1009,14 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                   <div className="flex gap-2 justify-end">
                     <button
                       onClick={() => setArchiveStep('artifacts')}
-                      className="px-4 py-2 text-sm text-gray-700 border rounded hover:bg-gray-100 transition"
+                      className="px-4 py-2 text-sm font-medium border rounded-lg hover:bg-muted transition-colors"
                     >
                       Back
                     </button>
                     <button
                       onClick={() => setArchiveStep('review')}
                       disabled={!canRunArchive}
-                      className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50 hover:bg-blue-700 transition"
+                      className="px-4 py-2 text-sm font-medium rounded-lg bg-primary text-primary-foreground disabled:opacity-50 hover:bg-primary/90 transition-colors"
                     >
                       Review and Run
                     </button>
@@ -1028,27 +1030,27 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                     <h4 className="font-medium">Review Archive Settings</h4>
                     <button
                       onClick={() => setArchiveStep('wallets')}
-                      className="text-sm text-blue-600 hover:underline"
+                      className="text-sm text-primary hover:underline"
                     >
                       Back
                     </button>
                   </div>
-                  <div className="grid gap-3 text-sm text-gray-600 sm:grid-cols-2">
-                    <p><span className="text-gray-500">Profile:</span> {archiveProfile}</p>
-                    <p><span className="text-gray-500">Source:</span> {archiveSourcePath || detection?.sourcePath || 'Unknown'}</p>
+                  <div className="grid gap-3 text-sm sm:grid-cols-2">
+                    <p><span className="text-muted-foreground">Profile:</span> {archiveProfile}</p>
+                    <p><span className="text-muted-foreground">Source:</span> {archiveSourcePath || detection?.sourcePath || 'Unknown'}</p>
                     {requiredKinds.map((kind) => (
                       <p key={kind} className="truncate">
-                        <span className="text-gray-500 capitalize">{kind}:</span> {trimArtifactValues[kind]}
+                        <span className="text-muted-foreground capitalize">{kind}:</span> {trimArtifactValues[kind]}
                       </p>
                     ))}
-                    <p><span className="text-gray-500">ICP Wallet:</span> {selectedIcpWallet?.address || 'Not selected'}</p>
-                    <p><span className="text-gray-500">Arweave Wallet:</span> {selectedArweaveWallet?.address || 'Not selected'}</p>
+                    <p><span className="text-muted-foreground">ICP Wallet:</span> {selectedIcpWallet?.address || 'Not selected'}</p>
+                    <p><span className="text-muted-foreground">Arweave Wallet:</span> {selectedArweaveWallet?.address || 'Not selected'}</p>
                   </div>
                   <div className="flex gap-2 justify-end">
                     <button
                       onClick={runArchive}
                       disabled={!canSubmitArchive || archiveLoading}
-                      className="px-4 py-2 rounded bg-green-600 text-white disabled:opacity-50 hover:bg-green-700 transition"
+                      className="px-4 py-2 text-sm font-medium rounded-lg bg-primary text-primary-foreground disabled:opacity-50 hover:bg-primary/90 transition-colors"
                     >
                       {archiveLoading ? (
                         <span className="flex items-center gap-2">
@@ -1061,7 +1063,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                     </button>
                     <button
                       onClick={() => setArchiveStep('wallets')}
-                      className="px-4 py-2 rounded border text-gray-700 hover:bg-gray-100"
+                      className="px-4 py-2 text-sm font-medium rounded-lg border hover:bg-muted transition-colors"
                     >
                       Back
                     </button>
@@ -1072,20 +1074,20 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
               {archiveStep === 'receipt' && archiveReceipt && (
                 <div className="space-y-4">
                   <div className="text-center">
-                    <CheckCircle2 className="w-10 h-10 text-green-600 mx-auto mb-2" />
+                    <CheckCircle2 className="w-10 h-10 text-success mx-auto mb-2" />
                     <p className="font-semibold">Archive Completed</p>
-                    {archiveDoneMessage && <p className="text-sm text-gray-600 mt-1">{archiveDoneMessage}</p>}
+                    {archiveDoneMessage && <p className="text-sm text-muted-foreground mt-1">{archiveDoneMessage}</p>}
                   </div>
                   <div className="grid gap-2 text-sm">
-                    <p><span className="text-gray-500">Archive ID:</span> {archiveReceipt.archiveId}</p>
-                    <p><span className="text-gray-500">Canister:</span> {archiveReceipt.canisterId}</p>
-                    <p><span className="text-gray-500">Deployed:</span> {archiveReceipt.deployedAt}</p>
+                    <p><span className="text-muted-foreground">Archive ID:</span> {archiveReceipt.archiveId}</p>
+                    <p><span className="text-muted-foreground">Canister:</span> {archiveReceipt.canisterId}</p>
+                    <p><span className="text-muted-foreground">Deployed:</span> {archiveReceipt.deployedAt}</p>
                     <div className="flex items-center gap-2 flex-wrap">
                       <a
                         href={archiveReceipt.canisterExplorerUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="rounded bg-blue-50 text-blue-700 px-3 py-1.5 text-xs"
+                        className="chip"
                       >
                         View Canister
                       </a>
@@ -1094,26 +1096,26 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                           href={archiveReceipt.arweave.explorerUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="rounded bg-purple-50 text-purple-700 px-3 py-1.5 text-xs"
+                          className="chip"
                         >
                           View Arweave Receipt
                         </a>
                       ) : null}
                       <a
-                        href={`/archives?id=${archiveReceipt.archiveId}`}
+                        href={`/archives#${archiveReceipt.archiveId}`}
                         target="_blank"
-                        className="rounded bg-zinc-100 text-zinc-700 px-3 py-1.5 text-xs"
+                        className="chip"
                       >
                         Archive Record
                       </a>
                     </div>
                     {archiveReceipt.arweave?.skippedReason ? (
-                      <p className="text-xs text-amber-600">{archiveReceipt.arweave.skippedReason}</p>
+                      <p className="text-xs text-warning">{archiveReceipt.arweave.skippedReason}</p>
                     ) : null}
                   </div>
                   <button
                     onClick={closeArchiveModal}
-                    className="w-full rounded bg-blue-600 text-white px-4 py-2 hover:bg-blue-700 transition"
+                    className="w-full rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 transition-colors"
                   >
                     Close
                   </button>

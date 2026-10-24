@@ -34,10 +34,10 @@ function TimeAgo({ timestamp }: { timestamp: string }) {
 
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
-    pending: 'bg-yellow-100 text-yellow-700',
-    running: 'bg-blue-100 text-blue-700',
-    completed: 'bg-green-100 text-green-700',
-    failed: 'bg-red-100 text-red-700',
+    pending: 'bg-warning/15 text-warning',
+    running: 'bg-primary/10 text-primary',
+    completed: 'bg-success/15 text-success',
+    failed: 'bg-destructive/10 text-destructive',
   }
 
   return (
@@ -51,25 +51,25 @@ export function TaskDetail({ task, onRetry, isRetrying }: TaskDetailProps) {
   const getStatusIcon = () => {
     switch (task.status) {
       case 'pending':
-        return <Clock className="w-6 h-6 text-yellow-500" />
+        return <Clock className="w-6 h-6 text-warning" />
       case 'running':
-        return <RefreshCw className="w-6 h-6 text-blue-500 animate-spin" />
+        return <RefreshCw className="w-6 h-6 text-primary animate-spin" />
       case 'completed':
-        return <CheckCircle2 className="w-6 h-6 text-green-500" />
+        return <CheckCircle2 className="w-6 h-6 text-success" />
       case 'failed':
-        return <XCircle className="w-6 h-6 text-red-500" />
+        return <XCircle className="w-6 h-6 text-destructive" />
       default:
-        return <Clock className="w-6 h-6 text-gray-500" />
+        return <Clock className="w-6 h-6 text-muted-foreground" />
     }
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <ArrowLeft className="w-6 h-6 text-gray-500 cursor-pointer hover:text-gray-700" />
+        <ArrowLeft className="w-6 h-6 text-muted-foreground cursor-pointer hover:text-foreground" />
         <div>
           <h2 className="text-2xl font-bold tracking-tight">{task.type.charAt(0).toUpperCase() + task.type.slice(1)}</h2>
-          <p className="text-sm text-gray-600">{task.id}</p>
+          <p className="text-sm text-muted-foreground">{task.id}</p>
         </div>
       </div>
 
@@ -86,10 +86,10 @@ export function TaskDetail({ task, onRetry, isRetrying }: TaskDetailProps) {
           <div>
             <h4 className="text-sm font-medium mb-2">Progress</h4>
             <div className="w-full">
-              <div className="h-2 bg-gray-200 rounded-full">
-                <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${task.progress}%` }} />
+              <div className="h-1.5 bg-muted rounded-full">
+                <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${task.progress}%` }} />
               </div>
-              <span className="text-sm text-gray-600 mt-1 block">{task.progress}%</span>
+              <span className="text-sm text-muted-foreground mt-1 block">{task.progress}%</span>
             </div>
           </div>
 
@@ -104,12 +104,12 @@ export function TaskDetail({ task, onRetry, isRetrying }: TaskDetailProps) {
             <h3 className="text-xl font-semibold mb-2">Timing</h3>
             <div className="space-y-2">
               <div className="flex justify-between">
-                <span className="text-gray-600">Created:</span>
+                <span className="text-muted-foreground">Created:</span>
                 <TimeAgo timestamp={task.createdAt} />
               </div>
               {task.completedAt && (
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Completed:</span>
+                  <span className="text-muted-foreground">Completed:</span>
                   <TimeAgo timestamp={task.completedAt} />
                 </div>
               )}
@@ -119,9 +119,9 @@ export function TaskDetail({ task, onRetry, isRetrying }: TaskDetailProps) {
       </div>
 
       {task.error && (
-        <div className="bg-red-50 border border-red-200 p-4 rounded">
+        <div className="bg-destructive/10 border border-destructive/30 text-destructive p-4 rounded-lg">
           <div className="flex items-start gap-2">
-            <AlertTriangle className="w-5 h-5 text-red-500 mt-0.5" />
+            <AlertTriangle className="w-5 h-5 mt-0.5" />
             <div>
               <p className="font-medium">Error:</p>
               <p className="text-sm">{task.error}</p>
@@ -131,7 +131,7 @@ export function TaskDetail({ task, onRetry, isRetrying }: TaskDetailProps) {
             <button
               onClick={onRetry}
               disabled={isRetrying}
-              className="flex items-center gap-2 px-4 py-2 mt-4 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2 mt-4 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50"
             >
               {isRetrying ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
               {isRetrying ? 'Retrying...' : 'Retry Task'}

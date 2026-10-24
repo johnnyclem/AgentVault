@@ -21,7 +21,7 @@ export function TimeAgo({ timestamp, className }: TimeAgoProps) {
   }, [timestamp])
 
   return (
-    <time className={cn('text-sm text-gray-600', className)} dateTime={timestamp} title={new Date(timestamp).toLocaleString()}>
+    <time className={cn('text-sm text-muted-foreground', className)} dateTime={timestamp} title={new Date(timestamp).toLocaleString()}>
       {relativeTime}
     </time>
   )

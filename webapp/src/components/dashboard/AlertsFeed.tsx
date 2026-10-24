@@ -39,9 +39,9 @@ export function AlertsFeed() {
   ]
 
   const severityColors: Record<AlertSeverity, string> = {
-    critical: 'text-red-500 bg-red-500/10',
-    warning: 'text-yellow-500 bg-yellow-500/10',
-    info: 'text-blue-500 bg-blue-500/10',
+    critical: 'text-destructive bg-destructive/10',
+    warning: 'text-warning bg-warning/15',
+    info: 'text-primary bg-primary/10',
   }
 
   const severityIcons: Record<AlertSeverity, any> = {
@@ -51,7 +51,7 @@ export function AlertsFeed() {
   }
 
   return (
-    <div className="rounded-lg border bg-card p-6">
+    <div className="surface p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h3 className="text-lg font-semibold">Recent Alerts</h3>
@@ -59,7 +59,7 @@ export function AlertsFeed() {
             {alerts.length} in last 24 hours
           </p>
         </div>
-        <button className="flex items-center gap-2 rounded-md border bg-muted px-3 py-1.5 text-sm hover:bg-muted/80">
+        <button className="chip px-3 py-1.5 text-sm">
           <Bell className="h-4 w-4" />
           Configure
         </button>

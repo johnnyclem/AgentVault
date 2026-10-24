@@ -20,28 +20,30 @@ export function DataTable<T>({ columns, data, emptyMessage = 'No data available'
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900" />
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-foreground" />
       </div>
     )
   }
 
   if (data.length === 0) {
     return (
-      <div className="flex items-center justify-center py-12 text-gray-500">
+      <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
         {emptyMessage}
       </div>
     )
   }
 
+  // The table's min width lets the wrapper scroll on phones instead of
+  // squeezing every column to one word per line.
   return (
     <div className={cn('overflow-x-auto', className)}>
-      <table className="w-full text-sm">
+      <table className="w-full min-w-[40rem] text-sm">
         <thead>
-          <tr className="border-b border-gray-200">
+          <tr className="border-b">
             {columns.map((column) => (
               <th
                 key={column.key}
-                className="px-4 py-3 text-left font-semibold text-gray-700"
+                className="px-4 py-3 text-left text-xs font-medium text-muted-foreground"
               >
                 {column.label}
               </th>
@@ -50,7 +52,7 @@ export function DataTable<T>({ columns, data, emptyMessage = 'No data available'
         </thead>
         <tbody>
           {data.map((row, rowIndex) => (
-            <tr key={rowIndex} className="border-b border-gray-100 hover:bg-gray-50">
+            <tr key={rowIndex} className="border-b last:border-b-0 hover:bg-muted/50">
               {columns.map((column) => (
                 <td key={column.key} className="px-4 py-3">
                   {column.render

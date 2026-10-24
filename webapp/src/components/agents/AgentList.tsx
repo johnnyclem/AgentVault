@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Plus, Search } from 'lucide-react'
+import { Search } from 'lucide-react'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { formatTimestamp } from '@/lib/utils'
 import type { Agent } from '@/lib/types'
@@ -38,29 +38,20 @@ export function AgentList({ agents = mockAgents }: { agents?: Agent[] }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Search className="w-5 h-5 text-gray-500" />
-          <input
-            type="text"
-            placeholder="Search agents..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <Link
-          href="/agents/new"
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
-        >
-          <Plus className="w-4 h-4" />
-          New Agent
-        </Link>
+      <div className="flex items-center gap-2">
+        <Search className="w-4 h-4 text-muted-foreground" />
+        <input
+          type="text"
+          placeholder="Search agents..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="px-3 py-2 text-sm border rounded-lg bg-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+        />
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {filteredAgents.length === 0 ? (
-          <div className="col-span-full text-center py-12 text-gray-500">
+          <div className="col-span-full text-center py-12 text-sm text-muted-foreground">
             No agents found
           </div>
         ) : (
@@ -68,13 +59,13 @@ export function AgentList({ agents = mockAgents }: { agents?: Agent[] }) {
             <Link
               key={agent.id}
               href={`/agents/${agent.id}`}
-              className="block border rounded-lg p-4 hover:border-blue-500 transition"
+              className="surface block p-4 transition-colors hover:border-primary/40"
             >
               <div className="flex items-start justify-between mb-3">
                 <h3 className="font-semibold">{agent.name}</h3>
                 <StatusBadge status={agent.status} />
               </div>
-              <div className="space-y-1 text-sm text-gray-600">
+              <div className="space-y-1 text-sm text-muted-foreground">
                 <p>ID: {agent.id.slice(0, 8)}...</p>
                 <p>Canister: {agent.canisterId ? agent.canisterId.slice(0, 8) + '...' : 'Not deployed'}</p>
                 <p>Memory: {agent.config.memory} MB</p>

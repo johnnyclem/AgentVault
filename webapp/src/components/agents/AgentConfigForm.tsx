@@ -29,22 +29,22 @@ export function AgentConfigForm({ config, onSave, onCancel }: AgentConfigFormPro
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="surface space-y-5 p-6">
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-sm font-medium mb-1.5">
           Entry Point
         </label>
         <input
           type="text"
           value={entry}
           onChange={(e) => setEntry(e.target.value)}
-          className="w-full px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
           placeholder="src/index.ts"
         />
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-sm font-medium mb-1.5">
           Memory (MB)
         </label>
         <input
@@ -54,18 +54,18 @@ export function AgentConfigForm({ config, onSave, onCancel }: AgentConfigFormPro
           step="128"
           value={memory}
           onChange={(e) => setMemory(parseInt(e.target.value))}
-          className="w-full px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
         />
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-sm font-medium mb-1.5">
           Compute
         </label>
         <select
           value={compute}
           onChange={(e) => setCompute(e.target.value)}
-          className="w-full px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
         >
           <option value="low">Low</option>
           <option value="medium">Medium</option>
@@ -74,27 +74,27 @@ export function AgentConfigForm({ config, onSave, onCancel }: AgentConfigFormPro
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-sm font-medium mb-1.5">
           Cycles (optional)
         </label>
         <input
           type="text"
           value={cycles}
           onChange={(e) => setCycles(e.target.value)}
-          className="w-full px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
           placeholder="1000000000000"
         />
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-sm font-medium mb-1.5">
           Routing Canisters (optional, comma-separated)
         </label>
         <input
           type="text"
           value={routing}
           onChange={(e) => setRouting(e.target.value)}
-          className="w-full px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
           placeholder="rrkah-fqaaa-aaaaa-aaaaq-cai, be2us-64aaa-aaaaa-qaaca-cai"
         />
       </div>
@@ -102,14 +102,14 @@ export function AgentConfigForm({ config, onSave, onCancel }: AgentConfigFormPro
       <div className="flex items-center gap-3">
         <button
           type="submit"
-          className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+          className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
         >
           Save Configuration
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="px-6 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition"
+          className="px-4 py-2 text-sm font-medium border bg-card rounded-lg hover:bg-muted transition-colors"
         >
           Cancel
         </button>

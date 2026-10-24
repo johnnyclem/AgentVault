@@ -142,20 +142,21 @@ export function ConceptGraph({
     }
   }, [nodes.length, edges, width, height])
 
-  const nodeColors: Record<string, string> = {
-    concept: '#3B82F6',
-    entity: '#10B981',
-    relation: '#F59E0B',
-    default: '#6B7280',
+  // Theme token fills, so nodes keep their contrast in light and dark mode
+  const nodeFills: Record<string, string> = {
+    concept: 'fill-primary',
+    entity: 'fill-success',
+    relation: 'fill-warning',
+    default: 'fill-muted-foreground',
   }
 
   if (!conceptId) {
     return (
       <div
-        className="flex items-center justify-center bg-gray-50 border border-gray-200 rounded-lg"
+        className="flex items-center justify-center bg-muted/50 border rounded-lg"
         style={{ width, height }}
       >
-        <p className="text-gray-500 text-sm">Select a concept to view its graph</p>
+        <p className="text-muted-foreground text-sm">Select a concept to view its graph</p>
       </div>
     )
   }
@@ -163,10 +164,10 @@ export function ConceptGraph({
   if (loading) {
     return (
       <div
-        className="flex items-center justify-center bg-gray-50 border border-gray-200 rounded-lg animate-pulse"
+        className="flex items-center justify-center bg-muted/50 border rounded-lg animate-pulse"
         style={{ width, height }}
       >
-        <p className="text-gray-400">Loading graph...</p>
+        <p className="text-muted-foreground">Loading graph...</p>
       </div>
     )
   }
@@ -174,10 +175,10 @@ export function ConceptGraph({
   if (nodes.length === 0) {
     return (
       <div
-        className="flex items-center justify-center bg-gray-50 border border-gray-200 rounded-lg"
+        className="flex items-center justify-center bg-muted/50 border rounded-lg"
         style={{ width, height }}
       >
-        <p className="text-gray-500 text-sm">No graph data available</p>
+        <p className="text-muted-foreground text-sm">No graph data available</p>
       </div>
     )
   }
@@ -188,7 +189,7 @@ export function ConceptGraph({
         ref={svgRef}
         width={width}
         height={height}
-        className="border border-gray-200 rounded-lg bg-white"
+        className="border rounded-lg bg-card"
       >
         {/* Edges */}
         <g className="edges">
@@ -204,7 +205,7 @@ export function ConceptGraph({
                   y1={source.y}
                   x2={target.x}
                   y2={target.y}
-                  stroke="#CBD5E1"
+                  className="stroke-border"
                   strokeWidth={2}
                 />
                 {edge.label && (
@@ -212,7 +213,7 @@ export function ConceptGraph({
                     x={(source.x + target.x) / 2}
                     y={(source.y + target.y) / 2}
                     textAnchor="middle"
-                    className="text-xs fill-gray-400"
+                    className="text-xs fill-muted-foreground"
                   >
                     {edge.label}
                   </text>
@@ -233,15 +234,14 @@ export function ConceptGraph({
             >
               <circle
                 r={20}
-                fill={nodeColors[node.type || 'default'] || nodeColors.default}
-                stroke={selectedNode?.id === node.id ? '#1F2937' : 'none'}
+                stroke={selectedNode?.id === node.id ? 'currentColor' : 'none'}
                 strokeWidth={3}
-                className="transition-all hover:opacity-80"
+                className={`text-foreground transition-all hover:opacity-80 ${nodeFills[node.type || 'default'] || nodeFills.default}`}
               />
               <text
                 y={32}
                 textAnchor="middle"
-                className="text-xs fill-gray-700 font-medium"
+                className="text-xs fill-foreground font-medium"
               >
                 {node.name.slice(0, 15)}
                 {node.name.length > 15 ? '...' : ''}
@@ -252,10 +252,10 @@ export function ConceptGraph({
       </svg>
 
       {selectedNode && (
-        <div className="absolute top-2 right-2 p-3 bg-white border border-gray-200 rounded-lg shadow-sm">
-          <div className="text-sm font-medium text-gray-900">{selectedNode.name}</div>
-          <div className="text-xs text-gray-500 mt-1">ID: {selectedNode.id}</div>
-          <div className="text-xs text-gray-500">Type: {selectedNode.type || 'unknown'}</div>
+        <div className="absolute top-2 right-2 p-3 bg-popover text-popover-foreground border rounded-lg shadow-sm">
+          <div className="text-sm font-medium">{selectedNode.name}</div>
+          <div className="text-xs text-muted-foreground mt-1">ID: {selectedNode.id}</div>
+          <div className="text-xs text-muted-foreground">Type: {selectedNode.type || 'unknown'}</div>
         </div>
       )}
     </div>

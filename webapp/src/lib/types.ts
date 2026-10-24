@@ -133,6 +133,10 @@ export interface Wallet {
   type: 'local' | 'hardware'
   address?: string
   status?: 'connected' | 'disconnected'
+  /** The agent the wallet belongs to, as GET /api/wallets reports it */
+  agentId?: string
+  /** icp, cketh, solana, polkadot or arweave */
+  chain?: string
   createdAt: string
 }
 
@@ -194,6 +198,8 @@ export interface Transaction {
 
 export interface Archive {
   id: string
+  /** The archived agent; absent from servers that predate it */
+  agentName?: string
   status: 'prepared' | 'uploading' | 'completed' | 'failed'
   canisterId: string
   timestamp: string

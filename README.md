@@ -20,6 +20,12 @@ bill required. State lives on-chain, so any agent can be fetched, decrypted,
 and reconstructed from nothing but its canister ID or a single Arweave
 transaction.
 
+AgentVault is not tied to one chatbot or one model. Bring Claude Code,
+OpenClaw, Goose, OpenCode or an agent of your own. The dashboard's inference
+API falls back from a Bittensor subnet to Venice AI to a local Ollama model.
+`agentvault mcp serve` works with any MCP client that can launch a local
+server.
+
 ## Table of Contents
 
 - [Features](#features)
@@ -43,16 +49,18 @@ transaction.
 ## Features
 
 - **Agent Packaging** — compile TypeScript agents to WASM
+- **Bring Your Own Agent** — package Clawdbot/OpenClaw, Goose, Cline, NemoClaw, Polytician or generic `agent.json` agents; the dashboard also archives Claude Code and OpenCode agents; `mint` scaffolds Google ADK agents
 - **Canister Deployment** — deploy to an ICP local replica or mainnet
 - **State Management** — query, fetch, and reconstruct agent state
-- **Multi-Chain Wallets** — ICP, Ethereum, Polkadot, and Solana support
+- **Multi-Chain Wallets** — ICP, ckETH (Ethereum), Solana, Polkadot, and Arweave
 - **VetKeys Integration** — threshold key derivation for secure secrets
 - **Monitoring** — health checks, metrics, and alerting
 - **Archival** — Arweave integration for permanent, off-chain-cheap storage
-- **AI Inference** — Bittensor network integration
+- **AI Inference** — a fallback chain from a Bittensor subnet to Venice AI to a local Ollama model, served by the dashboard's `/api/inference`; the `inference` command queries Bittensor
 - **Fault Tolerance** — mirrored canisters, cron-driven liveness checks, and auto-restore
 - **HyperVault Bridge** — reconstruct a cloud-hosted agent from chain alone
 - **Total Recall** — write-once/read-many archive of agent memories across assistants, with an optional append-only transcript, served over MCP
+- **MCP-Native** — `agentvault mcp serve` gives any MCP client that can launch a local server the HyperVault, wiki and Total Recall tools over stdio
 
 ## Installation
 
@@ -155,19 +163,22 @@ See [`docs/guides/hypervault.md`](docs/guides/hypervault.md) for the full guide.
 
 ## Total Recall
 
-Total Recall is the migration path between assistants. Connect ChatGPT and
-Claude to one `agentvault mcp serve`, and the volume's guardrail tells each
-of them to record every memory it creates, recalls, updates or deletes into
-an append-only, hash-chained archive. Keep using the old assistant; the new
-one ingests the stream (`total_recall_pull`, a notification hook, or a
-webhook) while you build trust. Turn on transcript mode and every turn is
+Total Recall is the migration path between assistants. Connect your
+assistants to one `agentvault mcp serve` (it runs over stdio, so any MCP
+client that can launch a local server works), and the volume's guardrail
+tells each of them to record every memory it creates, recalls, updates or
+deletes into an append-only, hash-chained archive. Keep using the old
+assistant; the new one ingests the stream (`total_recall_pull`, a
+notification hook, or a webhook) while you build trust. For an assistant you
+cannot connect, import what it lets you export: a ChatGPT data export, or a
+pasted memory list. Turn on transcript mode and every turn is
 archived too, in stenographer's native JSONL, so
 [stenographer](https://github.com/johnnyclem/stenographer) indexes it with no
 adapter.
 
 ```bash
 agentvault total-recall init --transcript append
-agentvault mcp serve --total-recall ./.agentvault/total-recall   # register in ChatGPT and Claude
+agentvault mcp serve --total-recall ./.agentvault/total-recall   # register in each MCP client
 agentvault total-recall import chatgpt conversations.json        # what the export does give you
 agentvault total-recall log --since 0 && agentvault total-recall verify
 agentvault total-recall stenographer --run                       # GraphRAG over the transcript
@@ -357,7 +368,7 @@ npm run lint:fix     # ESLint with auto-fix
 
 ## Testing
 
-AgentVault has 1,500+ test cases across 88 test files covering:
+AgentVault has 1,500+ test cases covering:
 
 - CLI commands (init, deploy, package, status)
 - ICP client (connection, deployment, execution)

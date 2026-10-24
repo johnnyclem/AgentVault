@@ -2,50 +2,68 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Light is the default look; ThemeProvider (and the inline script in
+ * app/layout.tsx) adds `dark` to <html> when the viewer picks dark or their OS
+ * prefers it. Status colours (success, warning, destructive) are redefined per
+ * mode so tinted badges stay readable in both: every text-bearing token clears
+ * WCAG AA (4.5:1) for 12px text on its own /10 and /15 tint, on the card and on
+ * the page background, so re-check those ratios before nudging a value.
+ */
 @layer base {
   :root {
-    --background: 252 56% 5%;
-    --foreground: 224 67% 96%;
-    --card: 254 53% 9%;
-    --card-foreground: 224 67% 96%;
-    --popover: 254 53% 8%;
-    --popover-foreground: 224 67% 96%;
-    --primary: 194 100% 62%;
-    --primary-foreground: 248 70% 8%;
-    --secondary: 252 40% 17%;
-    --secondary-foreground: 220 50% 95%;
-    --muted: 248 35% 15%;
-    --muted-foreground: 223 29% 74%;
-    --accent: 325 100% 62%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 79% 59%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 250 47% 24%;
-    --input: 250 47% 24%;
-    --ring: 194 100% 62%;
-    --radius: 0.75rem;
+    color-scheme: light;
+    --background: 0 0% 100%;
+    --foreground: 240 10% 4%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 4%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 4%;
+    --primary: 221 83% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 5% 93%;
+    --secondary-foreground: 240 6% 10%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 41%;
+    --accent: 240 5% 96%;
+    --accent-foreground: 240 6% 10%;
+    --destructive: 0 74% 42%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 76% 24%;
+    --success-foreground: 0 0% 100%;
+    --warning: 26 90% 31%;
+    --warning-foreground: 0 0% 100%;
+    --border: 240 6% 90%;
+    --input: 240 6% 90%;
+    --ring: 221 83% 50%;
+    --radius: 0.625rem;
   }
 
   .dark {
-    --background: 252 56% 5%;
-    --foreground: 224 67% 96%;
-    --card: 254 53% 9%;
-    --card-foreground: 224 67% 96%;
-    --popover: 254 53% 8%;
-    --popover-foreground: 224 67% 96%;
-    --primary: 194 100% 62%;
-    --primary-foreground: 248 70% 8%;
-    --secondary: 252 40% 17%;
-    --secondary-foreground: 220 50% 95%;
-    --muted: 248 35% 15%;
-    --muted-foreground: 223 29% 74%;
-    --accent: 325 100% 62%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 65% 38%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 250 47% 24%;
-    --input: 250 47% 24%;
-    --ring: 194 100% 62%;
+    color-scheme: dark;
+    --background: 0 0% 8%;
+    --foreground: 0 0% 95%;
+    --card: 0 0% 10%;
+    --card-foreground: 0 0% 95%;
+    --popover: 0 0% 11%;
+    --popover-foreground: 0 0% 95%;
+    --primary: 213 94% 68%;
+    --primary-foreground: 222 47% 11%;
+    --secondary: 0 0% 17%;
+    --secondary-foreground: 0 0% 95%;
+    --muted: 0 0% 14%;
+    --muted-foreground: 0 0% 64%;
+    --accent: 0 0% 14%;
+    --accent-foreground: 0 0% 95%;
+    --destructive: 0 91% 71%;
+    --destructive-foreground: 0 75% 15%;
+    --success: 142 69% 58%;
+    --success-foreground: 144 61% 10%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 26 83% 14%;
+    --border: 0 0% 18%;
+    --input: 0 0% 18%;
+    --ring: 213 94% 68%;
   }
 }
 
@@ -56,33 +74,48 @@
 
   body {
     @apply bg-background text-foreground antialiased;
-    background:
-      radial-gradient(1000px 500px at 5% -10%, rgba(63, 220, 255, 0.18), transparent 55%),
-      radial-gradient(800px 420px at 95% -10%, rgba(255, 72, 180, 0.16), transparent 55%),
-      hsl(var(--background));
   }
 }
 
+/*
+ * Shared building blocks for every dashboard page. Pages compose these with
+ * plain utilities; utilities live in a later layer, so a page can still
+ * override a single property (e.g. `page max-w-7xl`).
+ */
 @layer components {
-  .retro-surface {
-    background: linear-gradient(160deg, rgba(14, 9, 38, 0.88), rgba(9, 6, 28, 0.8));
-    border: 1px solid rgba(111, 217, 255, 0.28);
-    box-shadow:
-      0 0 0 1px rgba(255, 69, 184, 0.12) inset,
-      0 0 24px rgba(76, 200, 255, 0.15);
-    backdrop-filter: blur(6px);
+  .page {
+    @apply mx-auto max-w-6xl space-y-6 p-4 md:p-8;
   }
 
-  .retro-chip {
-    border-radius: 999px;
-    border: 1px solid rgba(106, 218, 255, 0.35);
-    background: rgba(28, 19, 64, 0.75);
-    box-shadow: 0 0 14px rgba(91, 210, 255, 0.18);
+  .page-title {
+    @apply text-2xl font-semibold tracking-tight;
   }
 
-  .retro-active {
-    background: linear-gradient(90deg, rgba(72, 225, 255, 0.95), rgba(137, 116, 255, 0.95), rgba(255, 67, 182, 0.95));
-    color: #090514;
-    box-shadow: 0 0 18px rgba(97, 227, 255, 0.45);
+  .page-subtitle {
+    @apply text-sm text-muted-foreground;
+  }
+
+  .surface {
+    @apply rounded-xl border border-border bg-card text-card-foreground shadow-sm;
+  }
+
+  .surface-muted {
+    @apply rounded-xl bg-muted/50;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground;
+  }
+
+  .chip-active {
+    @apply border-transparent bg-secondary text-foreground hover:bg-secondary;
+  }
+
+  .nav-item {
+    @apply flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground;
+  }
+
+  .nav-item-active {
+    @apply bg-secondary font-medium text-foreground hover:bg-secondary;
   }
 }

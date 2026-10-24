@@ -12,17 +12,17 @@ interface TransactionHistoryProps {
 
 export function TransactionHistory({ transactions, emptyMessage = 'No transactions yet', onViewDetails }: TransactionHistoryProps) {
   return (
-    <div className="border rounded-lg divide-y">
-      <div className="flex items-center justify-between p-4 bg-gray-50">
+    <div className="surface divide-y">
+      <div className="flex items-center justify-between p-4 bg-muted/50">
         <span className="font-semibold">Transaction History ({transactions.length})</span>
-        <div className="flex items-center gap-2 text-sm text-blue-600 cursor-pointer hover:underline">
+        <div className="flex items-center gap-2 text-sm text-primary cursor-pointer hover:underline">
           <ExternalLink className="w-4 h-4" />
           <span>View all on explorer</span>
         </div>
       </div>
 
       {transactions.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">
+        <div className="text-center py-12 text-sm text-muted-foreground">
           {emptyMessage}
         </div>
       ) : (
@@ -31,30 +31,30 @@ export function TransactionHistory({ transactions, emptyMessage = 'No transactio
             <div
               key={tx.id}
               onClick={() => onViewDetails?.(tx.id)}
-              className="p-4 hover:bg-gray-50 cursor-pointer transition-colors"
+              className="p-4 hover:bg-muted/50 cursor-pointer transition-colors"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${tx.type === 'send' ? 'bg-red-50' : 'bg-green-50'}`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${tx.type === 'send' ? 'bg-destructive/10' : 'bg-success/15'}`}>
                     {tx.type === 'send' ? (
-                      <ArrowUp className="w-4 h-4 text-red-500" />
+                      <ArrowUp className="w-4 h-4 text-destructive" />
                     ) : (
-                      <ArrowDown className="w-4 h-4 text-green-500" />
+                      <ArrowDown className="w-4 h-4 text-success" />
                     )}
                   </div>
                   <div>
                     <span className="font-medium capitalize">{tx.type}</span>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-muted-foreground">
                       {formatCycles(tx.amount)}
                     </p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-muted-foreground">
                     {tx.type === 'send' && tx.to ? `To: ${tx.to.slice(0, 8)}...` : ''}
                     {tx.type === 'receive' && tx.from ? `From: ${tx.from.slice(0, 8)}...` : ''}
                   </p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted-foreground">
                     {formatTimestamp(tx.timestamp)}
                   </p>
                 </div>
