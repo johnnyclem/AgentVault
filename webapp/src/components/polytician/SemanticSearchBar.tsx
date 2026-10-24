@@ -110,10 +110,10 @@ export function SemanticSearchBar({
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => results.length > 0 && setShowResults(true)}
           placeholder="Search concepts semantically..."
-          className="w-full px-4 py-2 pl-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="w-full px-4 py-2 pl-10 border bg-background rounded-lg placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
         />
         <svg
-          className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
+          className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -127,13 +127,13 @@ export function SemanticSearchBar({
         </svg>
         {loading && (
           <div className="absolute right-3 top-1/2 -translate-y-1/2">
-            <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           </div>
         )}
       </div>
 
       {error && (
-        <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+        <div className="mt-2 p-2 bg-destructive/10 border border-destructive/30 rounded-lg text-sm text-destructive">
           {error}
         </div>
       )}
@@ -141,27 +141,27 @@ export function SemanticSearchBar({
       {showResults && results.length > 0 && (
         <div
           ref={resultsRef}
-          className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-80 overflow-y-auto"
+          className="absolute z-10 w-full mt-1 bg-popover text-popover-foreground border rounded-lg shadow-lg max-h-80 overflow-y-auto"
         >
           {results.map((result) => (
             <button
               key={result.id}
               onClick={() => handleSelect(result)}
-              className="w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+              className="w-full px-4 py-3 text-left hover:bg-muted/50 border-b last:border-b-0"
             >
               <div className="flex justify-between items-start">
                 <div>
-                  <div className="font-medium text-gray-900">{result.id}</div>
-                  <div className="text-sm text-gray-500">{(result.tags ?? []).join(', ')}</div>
+                  <div className="font-medium">{result.id}</div>
+                  <div className="text-sm text-muted-foreground">{(result.tags ?? []).join(', ')}</div>
                 </div>
                 {result.score !== undefined && (
                   <div className="flex flex-col items-end">
-                    <div className="text-xs text-gray-400 mb-1">
+                    <div className="text-xs text-muted-foreground mb-1">
                       {(result.score * 100).toFixed(0)}% match
                     </div>
-                    <div className="w-20 h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden">
                       <div
-                        className="h-full bg-blue-500 rounded-full transition-all"
+                        className="h-full bg-primary rounded-full transition-all"
                         style={{ width: `${result.score * 100}%` }}
                       />
                     </div>
@@ -174,7 +174,7 @@ export function SemanticSearchBar({
       )}
 
       {showResults && query && !loading && results.length === 0 && (
-        <div className="absolute z-10 w-full mt-1 p-4 bg-white border border-gray-200 rounded-lg shadow-lg text-center text-gray-500">
+        <div className="absolute z-10 w-full mt-1 p-4 bg-popover border rounded-lg shadow-lg text-center text-sm text-muted-foreground">
           No matching concepts found
         </div>
       )}

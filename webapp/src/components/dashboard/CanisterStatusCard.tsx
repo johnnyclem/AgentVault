@@ -25,15 +25,15 @@ export function CanisterStatusCard({
   lastActivity,
 }: CanisterStatusCardProps) {
   const statusColors = {
-    running: 'text-green-500',
-    stopped: 'text-gray-500',
-    error: 'text-red-500',
+    running: 'text-success',
+    stopped: 'text-muted-foreground',
+    error: 'text-destructive',
   }
 
   const statusBgColors = {
-    running: 'bg-green-500/10',
-    stopped: 'bg-gray-500/10',
-    error: 'bg-red-500/10',
+    running: 'bg-success/15',
+    stopped: 'bg-muted',
+    error: 'bg-destructive/10',
   }
 
   const statusIcons = {
@@ -48,7 +48,7 @@ export function CanisterStatusCard({
   const memoryMB = Number(memory) / 1024 / 1024
 
   return (
-    <div className="rounded-lg border bg-card p-6 space-y-4">
+    <div className="surface p-6 space-y-4">
       <div className="flex items-start justify-between">
         <div className="space-y-1">
           <div className="flex items-center gap-2">

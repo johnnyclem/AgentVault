@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Blocks, RefreshCw } from 'lucide-react'
 import { useAgentList } from '@/hooks/useAgentList'
@@ -22,7 +22,9 @@ export default function OnChainPage() {
   const { agents, isLoading, error, refetch } = useAgentList()
   const [entries, setEntries] = useState<OnChainEntry[]>([])
 
-  const deployedAgents = agents.filter((agent) => !!agent.canisterId)
+  // Memoised because the effect below depends on it: a fresh array every render
+  // re-ran the effect, whose setEntries re-rendered, refetching canisters forever.
+  const deployedAgents = useMemo(() => agents.filter((agent) => !!agent.canisterId), [agents])
 
   const refreshAll = async () => {
     await refetch()
@@ -89,15 +91,15 @@ export default function OnChainPage() {
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="page">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">On-Chain</h1>
-          <p className="text-muted-foreground">Monitor deployed canister states and network links</p>
+          <h1 className="page-title">On-Chain</h1>
+          <p className="page-subtitle">Monitor deployed canister states and network links</p>
         </div>
         <button
           onClick={refreshAll}
-          className="retro-chip inline-flex items-center gap-2 rounded-md px-3 py-2"
+          className="chip px-3 py-1.5 text-sm"
         >
           <RefreshCw className="h-4 w-4" />
           Refresh
@@ -105,19 +107,19 @@ export default function OnChainPage() {
       </div>
 
       {error ? (
-        <div className="rounded border border-rose-300 bg-rose-500/10 p-4 text-rose-300">
+        <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
           {error.message}
         </div>
       ) : null}
 
       {deployedAgents.length === 0 ? (
-        <div className="rounded border border-zinc-200/20 bg-zinc-950/25 p-10 text-center text-zinc-400">
-          <Blocks className="mx-auto mb-3 h-12 w-12" />
-          <p className="text-lg font-semibold">No deployed agents yet</p>
-          <p className="text-sm">Deploy an agent to start tracking canister state.</p>
+        <div className="surface p-10 text-center">
+          <Blocks className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
+          <p className="font-medium">No deployed agents yet</p>
+          <p className="text-sm text-muted-foreground">Deploy an agent to start tracking canister state.</p>
           <Link
             href="/agents"
-            className="mt-4 inline-flex rounded-md bg-blue-600 px-4 py-2 text-white transition hover:bg-blue-700"
+            className="mt-4 inline-flex rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             Go to Agents
           </Link>
@@ -131,12 +133,12 @@ export default function OnChainPage() {
             return (
               <div
                 key={entry.agentId}
-                className="border border-zinc-200/20 bg-zinc-950/20 p-4"
+                className="surface p-4"
               >
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <h2 className="text-lg font-semibold">{entry.agentName}</h2>
-                    <p className="text-sm text-zinc-400">Agent {entry.agentId}</p>
+                    <h2 className="font-semibold">{entry.agentName}</h2>
+                    <p className="text-sm text-muted-foreground">Agent {entry.agentId}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <StatusBadge status={canister ? canisterStatus : 'error'} />
@@ -144,7 +146,7 @@ export default function OnChainPage() {
                       href={toExplorer(entry.canisterId)}
                       target="_blank"
                       rel="noreferrer"
-                      className="retro-chip rounded-md px-2 py-1 text-xs"
+                      className="chip"
                     >
                       ICP Explorer
                     </a>
@@ -152,37 +154,37 @@ export default function OnChainPage() {
                 </div>
 
                 {canister ? (
-                  <div className="grid gap-2 text-sm text-zinc-300 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
                     <p>
-                      <span className="text-zinc-500">Canister:</span>{' '}
+                      <span className="text-muted-foreground">Canister:</span>{' '}
                       <span className="font-mono">{entry.canisterId}</span>
                     </p>
                     <p>
-                      <span className="text-zinc-500">Cycles:</span>{' '}
+                      <span className="text-muted-foreground">Cycles:</span>{' '}
                       {formatCycles(canister.cycles)}
                     </p>
                     <p>
-                      <span className="text-zinc-500">Memory:</span>{' '}
+                      <span className="text-muted-foreground">Memory:</span>{' '}
                       {formatBytes(canister.memory)}
                     </p>
                     <p>
-                      <span className="text-zinc-500">Controller:</span>{' '}
+                      <span className="text-muted-foreground">Controller:</span>{' '}
                       <span className="font-mono">{canister.controller.slice(0, 12)}...</span>
                     </p>
                     <p>
-                      <span className="text-zinc-500">Updated:</span>{' '}
+                      <span className="text-muted-foreground">Updated:</span>{' '}
                       {formatTimestamp(canister.updatedAt)}
                     </p>
                     <p>
-                      <span className="text-zinc-500">Status:</span> {canisterStatus}
+                      <span className="text-muted-foreground">Status:</span> {canisterStatus}
                     </p>
                     <p>
-                      <span className="text-zinc-500">Error:</span>{' '}
+                      <span className="text-muted-foreground">Error:</span>{' '}
                       {entry.status === 'error' ? 'unable to fetch status' : 'none'}
                     </p>
                   </div>
                 ) : (
-                  <p className="text-sm text-zinc-400">
+                  <p className="text-sm text-muted-foreground">
                     Canister metadata not available. Check ICP canister configuration.
                   </p>
                 )}

@@ -24,30 +24,28 @@ function CopyableCode({ value, truncate = 20 }: { value: string; truncate?: numb
     <button
       type="button"
       onClick={copy}
-      className="inline-flex items-center gap-1.5 font-mono text-xs text-cyan-300 hover:text-cyan-200 transition-colors"
+      className="inline-flex items-center gap-1.5 font-mono text-xs text-foreground hover:text-primary transition-colors"
       title={value}
     >
       <span>{display}</span>
-      {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 opacity-60 hover:opacity-100" />}
+      {copied ? <Check className="w-3 h-3 text-success" /> : <Copy className="w-3 h-3 text-muted-foreground" />}
     </button>
   )
 }
 
 export function ArweaveAnchorCard({ anchor }: ArweaveAnchorCardProps) {
   const statusColor = {
-    confirmed: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/30',
-    pending: 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30',
-    failed: 'text-red-400 bg-red-400/10 border-red-400/30',
+    confirmed: 'text-success bg-success/10 border-success/30',
+    pending: 'text-warning bg-warning/10 border-warning/30',
+    failed: 'text-destructive bg-destructive/10 border-destructive/30',
   }[anchor.status]
 
   return (
-    <div className="retro-surface rounded-xl p-5 space-y-4">
+    <div className="surface p-5 space-y-4">
       <div className="flex items-start justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest">
-            Arweave Anchor
-          </h3>
-          <p className="mt-1 text-xs text-muted-foreground/70">
+          <h3 className="text-sm font-semibold">Arweave Anchor</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
             Permanent public proof · immutable ledger
           </p>
         </div>
@@ -89,17 +87,17 @@ export function ArweaveAnchorCard({ anchor }: ArweaveAnchorCardProps) {
         </Row>
       </div>
 
-      <div className="pt-2 border-t border-white/10 flex items-center gap-3">
+      <div className="pt-3 border-t border-border flex flex-wrap items-center gap-3">
         <a
           href={anchor.permalink}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/20 transition-colors"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary/10 text-primary hover:bg-primary/15 transition-colors"
         >
           <ExternalLink className="w-3.5 h-3.5" />
           View on Arweave
         </a>
-        <span className="text-xs text-muted-foreground/50 flex items-center gap-1">
+        <span className="text-xs text-muted-foreground flex items-center gap-1">
           <Database className="w-3 h-3" />
           Permaweb · immutable
         </span>

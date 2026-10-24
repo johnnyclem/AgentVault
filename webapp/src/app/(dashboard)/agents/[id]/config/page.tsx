@@ -43,12 +43,12 @@ export default function AgentConfigPage({ params }: { params: Promise<{ id: stri
 
   if (error || !agent) {
     return (
-      <div className="p-6 space-y-4">
-        <Link href="/agents" className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900">
+      <div className="page">
+        <Link href="/agents" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="w-4 h-4" />
           Back to Agents
         </Link>
-        <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error?.message || `Agent '${id}' not found`}
         </div>
       </div>
@@ -56,22 +56,22 @@ export default function AgentConfigPage({ params }: { params: Promise<{ id: stri
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-2xl">
+    <div className="page max-w-2xl">
       <Link
         href={`/agents/${id}`}
-        className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="w-4 h-4" />
         Back to {agent.name}
       </Link>
 
-      <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-        <Settings className="w-7 h-7" />
+      <h1 className="page-title flex items-center gap-2">
+        <Settings className="w-6 h-6 text-muted-foreground" />
         Configure {agent.name}
       </h1>
 
       {saveError && (
-        <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {saveError}
         </div>
       )}

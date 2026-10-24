@@ -70,7 +70,7 @@ export function ConceptList({ agentId, onSelect, limit = 50 }: ConceptListProps)
     return (
       <div className="animate-pulse space-y-2">
         {[...Array(5)].map((_, i) => (
-          <div key={i} className="h-12 bg-gray-200 rounded" />
+          <div key={i} className="h-12 bg-muted rounded-lg" />
         ))}
       </div>
     )
@@ -78,11 +78,11 @@ export function ConceptList({ agentId, onSelect, limit = 50 }: ConceptListProps)
 
   if (error) {
     return (
-      <div className="p-4 bg-red-50 border border-red-200 rounded text-red-700">
+      <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-lg text-sm text-destructive">
         {error}
         <button
           onClick={fetchConcepts}
-          className="ml-2 text-red-600 underline hover:no-underline"
+          className="ml-2 underline hover:no-underline"
         >
           Retry
         </button>
@@ -92,7 +92,7 @@ export function ConceptList({ agentId, onSelect, limit = 50 }: ConceptListProps)
 
   if (concepts.length === 0) {
     return (
-      <div className="p-8 text-center text-gray-500">
+      <div className="p-8 text-center text-sm text-muted-foreground">
         No concepts found. Start by creating one or syncing from memory_repo.
       </div>
     )
@@ -101,14 +101,14 @@ export function ConceptList({ agentId, onSelect, limit = 50 }: ConceptListProps)
   return (
     <div className="space-y-2">
       <div className="flex justify-between items-center mb-4">
-        <span className="text-sm text-gray-500">
+        <span className="text-sm text-muted-foreground">
           {total} concept{total !== 1 ? 's' : ''}
         </span>
       </div>
 
-      <div className="overflow-hidden rounded border border-gray-200">
+      <div className="surface overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50">
+          <thead className="bg-muted/50 text-muted-foreground">
             <tr>
               <th className="px-4 py-2 text-left font-medium">ID</th>
               <th className="px-4 py-2 text-left font-medium">Representations</th>
@@ -116,14 +116,14 @@ export function ConceptList({ agentId, onSelect, limit = 50 }: ConceptListProps)
               <th className="px-4 py-2 text-left font-medium">Updated</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y">
             {concepts.map((concept) => (
               <tr
                 key={concept.id}
                 onClick={() => onSelect?.(concept)}
-                className={`hover:bg-gray-50 ${onSelect ? 'cursor-pointer' : ''}`}
+                className={`hover:bg-muted/50 ${onSelect ? 'cursor-pointer' : ''}`}
               >
-                <td className="px-4 py-3 font-medium text-gray-900">
+                <td className="px-4 py-3 font-medium">
                   {concept.id}
                 </td>
                 <td className="px-4 py-3">
@@ -132,7 +132,7 @@ export function ConceptList({ agentId, onSelect, limit = 50 }: ConceptListProps)
                     .map(([representation]) => (
                       <span key={representation} className="inline-flex items-center gap-1 mr-2">
                         {repIcons[representation] || '📄'}
-                        <span className="text-gray-600">{representation}</span>
+                        <span className="text-muted-foreground">{representation}</span>
                       </span>
                     ))}
                 </td>
@@ -141,19 +141,19 @@ export function ConceptList({ agentId, onSelect, limit = 50 }: ConceptListProps)
                     {(concept.tags || []).slice(0, 3).map((tag) => (
                       <span
                         key={tag}
-                        className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs"
+                        className="px-2 py-0.5 bg-primary/10 text-primary rounded-full text-xs"
                       >
                         {tag}
                       </span>
                     ))}
                     {(concept.tags?.length || 0) > 3 && (
-                      <span className="text-gray-400 text-xs">
+                      <span className="text-muted-foreground text-xs">
                         +{concept.tags!.length - 3}
                       </span>
                     )}
                   </div>
                 </td>
-                <td className="px-4 py-3 text-gray-500">
+                <td className="px-4 py-3 text-muted-foreground">
                   {concept.updatedAt
                     ? new Date(concept.updatedAt).toLocaleDateString()
                     : '-'}
@@ -169,17 +169,17 @@ export function ConceptList({ agentId, onSelect, limit = 50 }: ConceptListProps)
           <button
             onClick={() => setOffset(Math.max(0, offset - limit))}
             disabled={offset === 0}
-            className="px-3 py-1 text-sm border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+            className="px-3 py-1 text-sm border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-muted"
           >
             Previous
           </button>
-          <span className="text-sm text-gray-500">
+          <span className="text-sm text-muted-foreground">
             {offset + 1}-{Math.min(offset + limit, total)} of {total}
           </span>
           <button
             onClick={() => setOffset(offset + limit)}
             disabled={offset + limit >= total}
-            className="px-3 py-1 text-sm border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+            className="px-3 py-1 text-sm border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-muted"
           >
             Next
           </button>

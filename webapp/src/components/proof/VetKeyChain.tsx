@@ -64,23 +64,24 @@ function SignatureRow({ sig, index }: { sig: VetKeySignature; index: number }) {
 
   const statusIcon =
     verifying ? (
-      <Clock className="w-4 h-4 text-yellow-400 animate-spin" />
+      <Clock className="w-4 h-4 text-warning animate-spin" />
     ) : verified === true ? (
-      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+      <CheckCircle2 className="w-4 h-4 text-success" />
     ) : verified === false ? (
-      <CheckCircle2 className="w-4 h-4 text-red-400" />
+      <CheckCircle2 className="w-4 h-4 text-destructive" />
     ) : (
       <Clock className="w-4 h-4 text-muted-foreground" />
     )
 
   return (
-    <div className="border border-white/10 rounded-lg overflow-hidden">
+    <div className="border border-border rounded-lg overflow-hidden">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/5 transition-colors"
+        aria-expanded={expanded}
+        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/50 transition-colors"
       >
-        <span className="text-xs text-muted-foreground/50 font-mono w-5 shrink-0">
+        <span className="text-xs text-muted-foreground font-mono w-5 shrink-0">
           {String(index + 1).padStart(2, '0')}
         </span>
         {statusIcon}
@@ -96,7 +97,7 @@ function SignatureRow({ sig, index }: { sig: VetKeySignature; index: number }) {
       </button>
 
       {expanded && (
-        <div className="px-4 pb-4 space-y-3 border-t border-white/10 pt-3 bg-black/20">
+        <div className="px-4 pb-4 space-y-3 border-t border-border pt-3 bg-muted/50">
           <Field label="Action ID" value={sig.actionId} mono />
           <Field label="Action Type" value={sig.actionType} />
           <Field label="Signer Principal" value={truncateHex(sig.signerPrincipal, 10)} mono />
@@ -104,15 +105,16 @@ function SignatureRow({ sig, index }: { sig: VetKeySignature; index: number }) {
           <div className="space-y-1">
             <span className="text-xs text-muted-foreground">Signature</span>
             <div className="flex items-center gap-2">
-              <code className="text-xs font-mono text-cyan-300 flex-1 break-all bg-black/30 px-2 py-1.5 rounded">
+              <code className="text-xs font-mono text-foreground flex-1 break-all bg-background border border-border px-2 py-1.5 rounded">
                 {truncateHex(sig.signature, 18)}
               </code>
               <button
                 type="button"
                 onClick={copySignature}
-                className="shrink-0 p-1.5 rounded hover:bg-white/10 transition-colors text-muted-foreground hover:text-foreground"
+                aria-label="Copy signature"
+                className="shrink-0 p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
               >
-                {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                {copied ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
               </button>
             </div>
           </div>
@@ -120,7 +122,7 @@ function SignatureRow({ sig, index }: { sig: VetKeySignature; index: number }) {
             type="button"
             onClick={handleVerify}
             disabled={verifying}
-            className="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/20 transition-colors disabled:opacity-50"
+            className="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary/10 text-primary hover:bg-primary/15 transition-colors disabled:opacity-50"
           >
             {verifying ? <Clock className="w-3.5 h-3.5 animate-spin" /> : <KeyRound className="w-3.5 h-3.5" />}
             {verifying ? 'Verifying…' : 'Verify in browser'}
@@ -135,7 +137,7 @@ function Field({ label, value, mono }: { label: string; value: string; mono?: bo
   return (
     <div className="flex flex-col gap-0.5">
       <span className="text-xs text-muted-foreground">{label}</span>
-      <span className={cn('text-sm', mono && 'font-mono text-cyan-300 text-xs')}>{value}</span>
+      <span className={cn('text-sm', mono && 'font-mono text-xs')}>{value}</span>
     </div>
   )
 }
@@ -144,17 +146,15 @@ export function VetKeyChain({ signatures }: VetKeyChainProps) {
   const verifiedCount = signatures.filter((s) => s.verified === true).length
 
   return (
-    <div className="retro-surface rounded-xl p-5 space-y-4">
+    <div className="surface p-5 space-y-4">
       <div className="flex items-start justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest">
-            VetKey Signature Chain
-          </h3>
-          <p className="mt-1 text-xs text-muted-foreground/70">
+          <h3 className="text-sm font-semibold">VetKey Signature Chain</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
             ICP threshold signatures · fully client-verifiable
           </p>
         </div>
-        <div className="flex items-center gap-1.5 text-sm font-semibold text-emerald-400">
+        <div className="flex items-center gap-1.5 text-sm font-semibold text-success">
           <KeyRound className="w-4 h-4" />
           <span>
             {verifiedCount}/{signatures.length}
@@ -168,7 +168,7 @@ export function VetKeyChain({ signatures }: VetKeyChainProps) {
         ))}
       </div>
 
-      <p className="text-xs text-muted-foreground/50 pt-1">
+      <p className="text-xs text-muted-foreground pt-1">
         Click any row to expand and verify the signature locally using WebCrypto.
       </p>
     </div>

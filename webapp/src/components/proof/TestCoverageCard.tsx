@@ -14,15 +14,15 @@ function CoverageBar({ label, value, threshold }: { label: string; value: number
     <div className="space-y-1">
       <div className="flex items-center justify-between text-xs">
         <span className="text-muted-foreground">{label}</span>
-        <span className={cn('font-mono font-semibold', passes ? 'text-emerald-400' : 'text-red-400')}>
+        <span className={cn('font-mono font-semibold', passes ? 'text-success' : 'text-destructive')}>
           {value}%
         </span>
       </div>
-      <div className="h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
+      <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
         <div
           className={cn(
             'h-full rounded-full transition-all duration-700',
-            passes ? 'bg-emerald-400' : 'bg-red-400'
+            passes ? 'bg-success' : 'bg-destructive'
           )}
           style={{ width: `${value}%` }}
         />
@@ -35,17 +35,15 @@ export function TestCoverageCard({ coverage }: TestCoverageCardProps) {
   const { overall, lines, branches, functions, statements, threshold, passesThreshold, commitHash, fileCount, generatedAt } = coverage
 
   return (
-    <div className="retro-surface rounded-xl p-5 space-y-4">
+    <div className="surface p-5 space-y-4">
       <div className="flex items-start justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest">
-            Test Coverage
-          </h3>
+          <h3 className="text-sm font-semibold">Test Coverage</h3>
           <div className="mt-1 flex items-baseline gap-2">
             <span
               className={cn(
                 'text-4xl font-bold tabular-nums',
-                passesThreshold ? 'text-emerald-400' : 'text-red-400'
+                passesThreshold ? 'text-success' : 'text-destructive'
               )}
             >
               {overall}%
@@ -54,9 +52,9 @@ export function TestCoverageCard({ coverage }: TestCoverageCardProps) {
           </div>
         </div>
         {passesThreshold ? (
-          <CheckCircle2 className="w-8 h-8 text-emerald-400 shrink-0" />
+          <CheckCircle2 className="w-8 h-8 text-success shrink-0" />
         ) : (
-          <XCircle className="w-8 h-8 text-red-400 shrink-0" />
+          <XCircle className="w-8 h-8 text-destructive shrink-0" />
         )}
       </div>
 
@@ -67,14 +65,14 @@ export function TestCoverageCard({ coverage }: TestCoverageCardProps) {
         <CoverageBar label="Statements" value={statements} threshold={threshold} />
       </div>
 
-      <div className="pt-2 border-t border-white/10 space-y-1">
+      <div className="pt-3 border-t border-border space-y-1">
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <GitCommit className="w-3.5 h-3.5" />
           <span className="font-mono">{commitHash.slice(0, 12)}</span>
-          <span className="opacity-50">·</span>
+          <span aria-hidden="true">·</span>
           <span>{fileCount} files</span>
         </div>
-        <p className="text-xs text-muted-foreground/60">
+        <p className="text-xs text-muted-foreground">
           Generated {new Date(generatedAt).toLocaleString()}
         </p>
       </div>

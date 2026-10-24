@@ -75,16 +75,16 @@ export function ArchivePanel({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="font-medium text-gray-900">Arweave Archive</h3>
+        <h3 className="font-medium">Arweave Archive</h3>
         {conceptId && (
           <button
             onClick={handleArchive}
             disabled={loading}
-            className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {loading ? (
               <span className="flex items-center gap-2">
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
                 Archiving...
               </span>
             ) : (
@@ -95,40 +95,40 @@ export function ArchivePanel({
       </div>
 
       {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+        <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg text-sm text-destructive">
           {error}
         </div>
       )}
 
       {success && (
-        <div className="p-3 bg-green-50 border border-green-200 rounded text-sm text-green-700">
+        <div className="p-3 bg-success/10 border border-success/30 rounded-lg text-sm text-success">
           {success}
         </div>
       )}
 
       {!conceptId && (
-        <div className="p-4 bg-gray-50 border border-gray-200 rounded text-center text-gray-500 text-sm">
+        <div className="p-4 bg-muted/50 border rounded-lg text-center text-muted-foreground text-sm">
           Select a concept to archive it to Arweave permanent storage
         </div>
       )}
 
       {receipts.length > 0 && (
         <div className="mt-6">
-          <h4 className="text-sm font-medium text-gray-700 mb-3">
+          <h4 className="text-sm font-medium mb-3">
             Archive Receipts
           </h4>
           <div className="space-y-2">
             {receipts.map((receipt) => (
               <div
                 key={receipt.txId}
-                className="p-3 bg-gray-50 border border-gray-200 rounded-lg"
+                className="p-3 bg-muted/50 border rounded-lg"
               >
                 <div className="flex justify-between items-start">
                   <div>
-                    <div className="font-medium text-gray-900">
+                    <div className="font-medium">
                       {receipt.conceptName}
                     </div>
-                    <div className="text-xs text-gray-500 mt-1">
+                    <div className="text-xs text-muted-foreground mt-1">
                       {new Date(receipt.timestamp).toLocaleString()}
                     </div>
                   </div>
@@ -136,12 +136,12 @@ export function ArchivePanel({
                     href={receipt.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-blue-600 hover:text-blue-700 text-sm"
+                    className="text-primary hover:underline text-sm"
                   >
                     View on Arweave →
                   </a>
                 </div>
-                <div className="mt-2 font-mono text-xs text-gray-600 break-all">
+                <div className="mt-2 font-mono text-xs text-muted-foreground break-all">
                   {receipt.txId}
                 </div>
               </div>

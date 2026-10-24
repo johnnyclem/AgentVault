@@ -34,27 +34,27 @@ export default function NetworksPage() {
 
   if (error) {
     return (
-      <div className="p-6 space-y-6">
+      <div className="page">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Networks</h1>
-          <p className="text-red-500">{error.message}</p>
+          <h1 className="page-title">Networks</h1>
+          <p className="text-sm text-destructive">{error.message}</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="page">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Networks</h1>
-          <p className="text-muted-foreground">
+          <h1 className="page-title">Networks</h1>
+          <p className="page-subtitle">
             View and manage ICP network connections
           </p>
         </div>
         <button 
           onClick={() => refetch()}
-          className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition"
+          className="flex items-center gap-2 px-3.5 py-2 text-sm font-medium border bg-card rounded-lg hover:bg-muted transition-colors"
         >
           <RefreshCw className="w-4 h-4" />
           Refresh
@@ -63,28 +63,28 @@ export default function NetworksPage() {
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {networks.map((network) => (
-          <div key={network.name} className="border rounded-lg p-6">
+          <div key={network.name} className="surface p-6">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <Globe className="w-5 h-5 text-blue-500" />
+                <Globe className="w-5 h-5 text-muted-foreground" />
                 <h3 className="font-semibold">{network.name}</h3>
               </div>
-              {network.status === 'connected' && <CheckCircle2 className="w-5 h-5 text-green-500" />}
-              {network.status === 'disconnected' && <XCircle className="w-5 h-5 text-gray-500" />}
-              {network.status === 'degraded' && <AlertTriangle className="w-5 h-5 text-yellow-500" />}
+              {network.status === 'connected' && <CheckCircle2 className="w-5 h-5 text-success" />}
+              {network.status === 'disconnected' && <XCircle className="w-5 h-5 text-muted-foreground" />}
+              {network.status === 'degraded' && <AlertTriangle className="w-5 h-5 text-warning" />}
             </div>
 
             <div className="space-y-3">
               <div>
-                <p className="text-sm text-gray-600">Status</p>
+                <p className="text-sm text-muted-foreground">Status</p>
                 <StatusBadge status={network.status} />
               </div>
               <div>
-                <p className="text-sm text-gray-600">URL</p>
+                <p className="text-sm text-muted-foreground">URL</p>
                 <p className="text-sm font-mono">{network.url}</p>
               </div>
               <div>
-                <p className="text-sm text-gray-600">Nodes</p>
+                <p className="text-sm text-muted-foreground">Nodes</p>
                 <p className="text-sm">{network.nodeCount}</p>
               </div>
             </div>
@@ -93,10 +93,10 @@ export default function NetworksPage() {
               <button 
                 onClick={() => handleConnect(network.name)}
                 disabled={connectingTo === network.name}
-                className={`w-full px-4 py-2 rounded transition ${
+                className={`w-full px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
                   network.status === 'connected'
-                    ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    ? 'bg-success/10 text-success hover:bg-success/15'
+                    : 'border hover:bg-muted'
                 } ${connectingTo === network.name ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 {connectingTo === network.name ? 'Connecting...' : network.status === 'connected' ? 'Connected' : 'Connect'}
@@ -106,11 +106,11 @@ export default function NetworksPage() {
         ))}
       </div>
 
-      <div className="border rounded-lg p-6">
-        <h2 className="text-xl font-semibold mb-4">Add Network</h2>
+      <div className="surface p-6">
+        <h2 className="text-lg font-semibold mb-4">Add Network</h2>
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium mb-1.5">
               Network Name
             </label>
             <input
@@ -118,11 +118,11 @@ export default function NetworksPage() {
               placeholder="My Custom Network"
               value={newNetwork.name}
               onChange={(e) => setNewNetwork(prev => ({ ...prev, name: e.target.value }))}
-              className="w-full px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 text-sm border rounded-lg bg-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium mb-1.5">
               Network URL
             </label>
             <input
@@ -130,13 +130,13 @@ export default function NetworksPage() {
               placeholder="https://..."
               value={newNetwork.url}
               onChange={(e) => setNewNetwork(prev => ({ ...prev, url: e.target.value }))}
-              className="w-full px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 text-sm border rounded-lg bg-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
           <button 
             onClick={handleAddNetwork}
             disabled={!newNetwork.name || !newNetwork.url}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Add Network
           </button>

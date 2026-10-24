@@ -46,10 +46,10 @@ const config: Config = {
   themeConfig: {
     image: 'img/og-image.svg',
     metadata: [
-      {name: 'keywords', content: 'ICP, Internet Computer, AI agents, blockchain, canister, deployment, Web3'},
+      {name: 'keywords', content: 'ICP, Internet Computer, AI agents, blockchain, canister, deployment, Web3, MCP, model-agnostic'},
       {name: 'twitter:card', content: 'summary_large_image'},
       {name: 'twitter:title', content: 'AgentVault — Production infrastructure for autonomous AI agents'},
-      {name: 'twitter:description', content: 'Deploy AI agents to ICP canisters with a durable identity, multi-chain wallet, encrypted secrets, and versioned memory.'},
+      {name: 'twitter:description', content: 'Deploy AI agents to ICP canisters with a durable identity, multi-chain wallet, encrypted secrets, and versioned memory. Not tied to one chatbot or one model.'},
     ],
     colorMode: {
       defaultMode: 'light',

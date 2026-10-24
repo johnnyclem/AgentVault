@@ -34,10 +34,19 @@
 
 .heroDescription {
   max-width: 620px;
-  margin: 0 auto 2rem;
+  margin: 0 auto 1rem;
   font-size: 1.08rem;
   color: var(--av-text-muted);
   line-height: 1.65;
+}
+
+.heroAgnostic {
+  max-width: 620px;
+  margin: 0 auto 2rem;
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--av-text);
+  line-height: 1.6;
 }
 
 .heroButtons {
@@ -269,6 +278,13 @@
   font-size: clamp(1rem, 2vw, 1.15rem);
 }
 
+.panelNote {
+  margin: 1rem 0 0;
+  color: var(--av-text-muted);
+  font-size: 0.86rem;
+  line-height: 1.6;
+}
+
 .walletList {
   display: grid;
   gap: 0.6rem;
@@ -441,40 +457,6 @@
   margin-bottom: 1rem;
 }
 
-.profileList {
-  display: grid;
-  gap: 0.6rem;
-}
-
-.profileButton {
-  border: 1px solid var(--av-border);
-  border-radius: var(--av-radius-sm);
-  background: var(--av-bg);
-  text-align: left;
-  color: var(--av-text);
-  padding: 0.8rem;
-  cursor: pointer;
-  display: grid;
-  gap: 0.25rem;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
-}
-
-.profileButton:hover {
-  border-color: var(--ifm-color-primary);
-  box-shadow: var(--av-shadow-sm);
-}
-
-.profileButtonActive {
-  border-color: var(--ifm-color-primary);
-  box-shadow: 0 0 0 1px var(--ifm-color-primary);
-}
-
-.profilePath {
-  color: var(--ifm-color-primary);
-  font-family: var(--ifm-font-family-monospace);
-  font-size: 0.74rem;
-}
-
 .storagePillRow {
   margin-top: 1rem;
   display: flex;
@@ -560,6 +542,37 @@
 
 .inlineLink:hover {
   color: var(--ifm-color-primary-dark);
+}
+
+.agnosticSection {
+  padding: 4.5rem 0 0;
+}
+
+.agnosticGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.agnosticCard {
+  min-width: 0;
+  border: 1px solid var(--av-border);
+  border-radius: var(--av-radius-md);
+  background: var(--av-bg);
+  padding: 1.4rem;
+  box-shadow: var(--av-shadow-sm);
+}
+
+.agnosticCardTitle {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+}
+
+.agnosticCardBody {
+  margin: 0;
+  color: var(--av-text-muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
 }
 
 .ecosystemSection {
@@ -659,7 +672,8 @@
     grid-template-columns: 1fr;
   }
 
-  .ecosystemGrid {
+  .ecosystemGrid,
+  .agnosticGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -677,7 +691,8 @@
     grid-template-columns: 1fr;
   }
 
-  .ecosystemGrid {
+  .ecosystemGrid,
+  .agnosticGrid {
     grid-template-columns: 1fr;
   }
 }

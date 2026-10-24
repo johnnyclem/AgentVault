@@ -4,7 +4,7 @@ import { Activity, ArrowDownRight, ArrowUpRight, Zap } from 'lucide-react'
 
 export function MetricsChart() {
   return (
-    <div className="rounded-lg border bg-card p-6">
+    <div className="surface p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h3 className="text-lg font-semibold">Metrics Overview</h3>
@@ -33,7 +33,7 @@ export function MetricsChart() {
             </div>
           </div>
           <div className="text-right">
-            <div className="flex items-center gap-1 text-red-500">
+            <div className="flex items-center gap-1 text-destructive">
               <ArrowDownRight className="h-4 w-4" />
               <span className="text-sm font-medium">-12.5%</span>
             </div>
@@ -56,7 +56,7 @@ export function MetricsChart() {
             </div>
           </div>
           <div className="text-right">
-            <div className="flex items-center gap-1 text-green-500">
+            <div className="flex items-center gap-1 text-success">
               <ArrowUpRight className="h-4 w-4" />
               <span className="text-sm font-medium">+23.4%</span>
             </div>
@@ -79,7 +79,7 @@ export function MetricsChart() {
             </div>
           </div>
           <div className="text-right">
-            <div className="flex items-center gap-1 text-green-500">
+            <div className="flex items-center gap-1 text-success">
               <ArrowDownRight className="h-4 w-4" />
               <span className="text-sm font-medium">-2.1%</span>
             </div>

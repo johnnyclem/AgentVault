@@ -1,66 +1,233 @@
 'use client'
 
+import { Suspense, useEffect, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
-import { ShieldCheck, ArrowRight } from 'lucide-react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Archive, ChevronRight, ShieldCheck, Wallet } from 'lucide-react'
 import { useAgentList } from '@/hooks/useAgentList'
-import { LoadingSpinner } from '@/components/common/LoadingSpinner'
-import { StatusBadge } from '@/components/common/StatusBadge'
+import { useArchives } from '@/hooks/useArchives'
+import { useWallets } from '@/hooks/useWallets'
+import { cn, formatTimestamp } from '@/lib/utils'
+import {
+  VAULT_CATEGORIES,
+  VAULT_FILTERS,
+  buildVaultItems,
+  countByCategory,
+  knownCount,
+  parseVaultFilter,
+  type SourceStatus,
+  type VaultCategory,
+  type VaultFilter,
+  type VaultItem,
+} from './vault-items'
 
-export default function VaultIndexPage() {
-  const { agents, isLoading, error } = useAgentList()
+interface Source extends SourceStatus {
+  /** Lower-case noun for messages: "Couldn't load wallets" */
+  noun: string
+  error: Error | null
+  retry: () => void
+}
+
+const TILE_ICONS = { wallets: Wallet, archives: Archive, proofs: ShieldCheck } as const
+
+const LIST_FORMAT = new Intl.ListFormat('en', { type: 'conjunction' })
+
+const EMPTY_COPY: Record<VaultFilter, ReactNode> = {
+  all: 'Nothing here yet. Add an agent, a wallet or an archive and it shows up here.',
+  wallets: (
+    <>
+      No wallets yet. Create one with{' '}
+      <code className="font-mono text-foreground">agentvault wallet create --agent-id &lt;agent&gt; --chain icp</code>.
+    </>
+  ),
+  archives: 'No archives yet. Archive an agent from its page to keep a copy here.',
+  proofs: 'No agents yet. Each agent you add gets a compliance proof here.',
+}
+
+export default function VaultPage() {
+  const wallets = useWallets()
+  const archives = useArchives()
+  const agents = useAgentList()
+  const [filter, setFilter] = useState<VaultFilter>('all')
+  const [mounted, setMounted] = useState(false)
+
+  // Until mount every source counts as loading: the hooks only start fetching
+  // in their own effects, so their first render would otherwise look empty.
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const sources: Record<VaultCategory, Source> = {
+    wallets: { noun: 'wallets', pending: !mounted || wallets.isLoading, error: wallets.error, retry: wallets.refetch },
+    archives: { noun: 'archives', pending: !mounted || archives.isLoading, error: archives.error, retry: archives.refetch },
+    proofs: { noun: 'proofs', pending: !mounted || agents.isLoading, error: agents.error, retry: agents.refetch },
+  }
+
+  const items = useMemo(
+    () => buildVaultItems({ wallets: wallets.wallets, archives: archives.archives, agents: agents.agents }),
+    [wallets.wallets, archives.archives, agents.agents]
+  )
+  const counts = countByCategory(items)
+
+  const relevant: readonly VaultCategory[] = filter === 'all' ? VAULT_CATEGORIES : [filter]
+  const visible = filter === 'all' ? items : items.filter((item) => item.category === filter)
+  const pending = relevant.filter((category) => sources[category].pending)
+  const failed = relevant.filter((category) => !sources[category].pending && sources[category].error)
+
+  const selectFilter = (id: VaultFilter) => {
+    setFilter(id)
+    replaceFilterInUrl(id)
+  }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="page max-w-3xl">
       <div className="space-y-1">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="w-6 h-6 text-cyan-400" />
-          <h1 className="text-2xl font-bold tracking-tight">Vault Proofs</h1>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          Mathematical proof of compliance for every agent — test coverage, VetKey signatures, and Arweave anchors.
+        <h1 className="page-title">Vault</h1>
+        <p className="page-subtitle">
+          Wallets, archives and proofs for every agent you run: Claude Code, Goose, OpenCode, OpenClaw or your own stack.
         </p>
       </div>
 
-      {isLoading ? (
-        <div className="flex items-center justify-center min-h-[200px]">
-          <LoadingSpinner size="lg" />
-        </div>
-      ) : error ? (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-          {error.message}
-        </div>
-      ) : agents.length === 0 ? (
-        <div className="retro-surface rounded-xl p-8 text-center space-y-2">
-          <ShieldCheck className="w-10 h-10 text-muted-foreground/40 mx-auto" />
-          <p className="text-muted-foreground">No agents found. Deploy an agent to see its compliance proof.</p>
-        </div>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {agents.map((agent) => (
-            <Link
-              key={agent.id}
-              href={`/vault/${agent.id}/proof`}
-              className="retro-surface rounded-xl p-5 space-y-3 hover:bg-white/5 transition-all hover:shadow-[0_0_20px_rgba(107,225,255,0.18)] group"
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Filter the vault">
+        {VAULT_FILTERS.map(({ id, label }) => {
+          const count = knownCount(id, counts, sources)
+          return (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={filter === id}
+              onClick={() => selectFilter(id)}
+              className={cn('chip text-sm', filter === id && 'chip-active')}
             >
-              <div className="flex items-start justify-between gap-2">
-                <div className="space-y-0.5 min-w-0">
-                  <p className="font-semibold truncate">{agent.name}</p>
-                  <p className="text-xs font-mono text-muted-foreground/70 truncate">{agent.id}</p>
-                </div>
-                <StatusBadge status={agent.status} showDot />
-              </div>
+              {label}
+              {count !== null && <span className="font-normal tabular-nums">{count}</span>}
+            </button>
+          )
+        })}
+      </div>
 
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>View proof</span>
-                </div>
-                <ArrowRight className="w-4 h-4 text-muted-foreground/40 group-hover:text-cyan-400 group-hover:translate-x-1 transition-all" />
-              </div>
-            </Link>
+      {failed.length > 0 && (
+        <div className="space-y-1.5 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm" role="alert">
+          {failed.map((category) => (
+            <div key={category} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="font-medium text-destructive">Couldn&apos;t load {sources[category].noun}.</span>
+              <span className="min-w-0 break-words text-muted-foreground">{sources[category].error?.message}</span>
+              <button
+                type="button"
+                onClick={sources[category].retry}
+                className="ml-auto text-sm font-medium text-foreground underline-offset-4 hover:underline"
+              >
+                Retry
+              </button>
+            </div>
           ))}
         </div>
       )}
+
+      {visible.length > 0 ? (
+        <ul className="surface divide-y divide-border overflow-hidden">
+          {visible.map((item) => (
+            <VaultRow key={item.key} item={item} />
+          ))}
+          {pending.length > 0 && (
+            <li className="px-4 py-3 text-xs text-muted-foreground">
+              Loading {LIST_FORMAT.format(pending.map((category) => sources[category].noun))}…
+            </li>
+          )}
+        </ul>
+      ) : pending.length > 0 ? (
+        <ul className="surface divide-y divide-border overflow-hidden" aria-busy="true" aria-label="Loading the vault">
+          {[0, 1, 2].map((row) => (
+            <li key={row} className="flex items-center gap-3 px-4 py-3">
+              <span className="h-9 w-9 shrink-0 animate-pulse rounded-lg bg-muted" />
+              <span className="flex-1 space-y-2">
+                <span className="block h-3 w-32 animate-pulse rounded bg-muted" />
+                <span className="block h-3 w-24 animate-pulse rounded bg-muted" />
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : failed.length < relevant.length ? (
+        <p className="surface px-4 py-10 text-center text-sm text-muted-foreground">{EMPTY_COPY[filter]}</p>
+      ) : null}
+
+      {/* Last child: during the static render React leaves a placeholder element here, which space-y would otherwise count. */}
+      <Suspense fallback={null}>
+        <FilterFromUrl onFilter={setFilter} />
+      </Suspense>
     </div>
+  )
+}
+
+/** Writes the filter into ?filter= without a navigation; All leaves the parameter out. */
+function replaceFilterInUrl(filter: VaultFilter) {
+  const url = new URL(window.location.href)
+  if (filter === 'all') url.searchParams.delete('filter')
+  else url.searchParams.set('filter', filter)
+  window.history.replaceState(null, '', url)
+}
+
+/**
+ * Keeps the selected pill in step with ?filter=. A soft navigation to this
+ * same page (the sidebar's plain /vault link) does not remount it, so reading
+ * the address bar once on mount would leave the old pill pressed; the search
+ * params follow every navigation, and Next.js routes history.replaceState
+ * through them too. It renders nothing and sits in its own Suspense boundary,
+ * so only this empty component waits for the browser and the rest of the page
+ * still prerenders.
+ */
+function FilterFromUrl({ onFilter }: { onFilter: (filter: VaultFilter) => void }) {
+  const router = useRouter()
+  const value = useSearchParams().get('filter')
+
+  useEffect(() => {
+    const filter = parseVaultFilter(value)
+    onFilter(filter)
+    // An unknown value (or an explicit "all") shows everything, so the address
+    // bar should say so too. This can run while the page is still hydrating,
+    // before Next.js has hooked history.replaceState, so it goes through the
+    // router instead.
+    if (value !== null && filter === 'all') {
+      const url = new URL(window.location.href)
+      url.searchParams.delete('filter')
+      router.replace(`${url.pathname}${url.search}${url.hash}`, { scroll: false })
+    }
+  }, [value, onFilter, router])
+
+  return null
+}
+
+function VaultRow({ item }: { item: VaultItem }) {
+  const Icon = TILE_ICONS[item.category]
+
+  return (
+    <li>
+      <Link
+        href={item.href}
+        className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      >
+        <span
+          aria-hidden="true"
+          className={cn(
+            'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
+            item.category === 'wallets' ? 'bg-primary/10 text-primary' : 'bg-muted text-foreground'
+          )}
+        >
+          {item.monogram ? (
+            <span className="text-[10px] font-semibold tracking-tight">{item.monogram}</span>
+          ) : (
+            <Icon className="h-4 w-4" />
+          )}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium">{item.title}</span>
+          <span className="block truncate text-xs text-muted-foreground">{item.subtitle}</span>
+        </span>
+        {item.timestamp && (
+          <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">{formatTimestamp(item.timestamp)}</span>
+        )}
+        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      </Link>
+    </li>
   )
 }

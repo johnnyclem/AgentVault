@@ -25,24 +25,24 @@ function TimeAgo({ timestamp }: { timestamp: string }) {
   const diffHours = Math.floor(diffMins / 60)
   const diffDays = Math.floor(diffHours / 24)
 
-  if (diffDays > 0) return <span className="text-xs text-gray-500">{diffDays}d ago</span>
-  if (diffHours > 0) return <span className="text-xs text-gray-500">{diffHours}h ago</span>
-  if (diffMins > 0) return <span className="text-xs text-gray-500">{diffMins}m ago</span>
-  return <span className="text-xs text-gray-500">just now</span>
+  if (diffDays > 0) return <span className="text-xs text-muted-foreground">{diffDays}d ago</span>
+  if (diffHours > 0) return <span className="text-xs text-muted-foreground">{diffHours}h ago</span>
+  if (diffMins > 0) return <span className="text-xs text-muted-foreground">{diffMins}m ago</span>
+  return <span className="text-xs text-muted-foreground">just now</span>
 }
 
 export function TaskQueueTable({ tasks, emptyMessage = 'No tasks found', isLoading = false }: TaskQueueTableProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <RefreshCw className="w-8 h-8 text-gray-400 animate-spin" />
+        <RefreshCw className="w-8 h-8 text-muted-foreground animate-spin" />
       </div>
     )
   }
 
   if (tasks.length === 0) {
     return (
-      <div className="py-12 text-center text-gray-500">
+      <div className="py-12 text-center text-sm text-muted-foreground">
         {emptyMessage}
       </div>
     )
@@ -51,21 +51,21 @@ export function TaskQueueTable({ tasks, emptyMessage = 'No tasks found', isLoadi
   const getStatusIcon = (status: Task['status']) => {
     switch (status) {
       case 'running':
-        return <RefreshCw className="w-5 h-5 text-blue-500 animate-spin" />
+        return <RefreshCw className="w-5 h-5 text-primary animate-spin" />
       case 'completed':
-        return <CheckCircle2 className="w-5 h-5 text-green-500" />
+        return <CheckCircle2 className="w-5 h-5 text-success" />
       case 'failed':
-        return <XCircle className="w-5 h-5 text-red-500" />
+        return <XCircle className="w-5 h-5 text-destructive" />
       case 'pending':
       default:
-        return <Clock className="w-5 h-5 text-yellow-500" />
+        return <Clock className="w-5 h-5 text-warning" />
     }
   }
 
   return (
-    <div className="border rounded-lg divide-y">
+    <div className="surface divide-y">
       {tasks.map((task) => (
-        <div key={task.id} className="p-4 hover:bg-gray-50">
+        <div key={task.id} className="p-4 hover:bg-muted/50">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
               {getStatusIcon(task.status)}
@@ -73,18 +73,18 @@ export function TaskQueueTable({ tasks, emptyMessage = 'No tasks found', isLoadi
             </div>
             <TimeAgo timestamp={task.createdAt} />
           </div>
-          <div className="text-sm text-gray-600 mb-2">{task.message}</div>
+          <div className="text-sm text-muted-foreground mb-2">{task.message}</div>
           <div className="flex items-center gap-4">
-            <div className="flex-1 h-2 bg-gray-200 rounded-full">
+            <div className="flex-1 h-1.5 bg-muted rounded-full">
               <div
-                className="h-full bg-blue-500 rounded-full transition-all"
+                className="h-full bg-primary rounded-full transition-all"
                 style={{ width: `${task.progress}%` }}
               />
             </div>
-            <span className="text-xs text-gray-500 w-10 text-right">{task.progress}%</span>
+            <span className="text-xs text-muted-foreground w-10 text-right">{task.progress}%</span>
           </div>
           {task.error && (
-            <div className="mt-2 text-sm text-red-600 bg-red-50 px-2 py-1 rounded">
+            <div className="mt-2 text-sm text-destructive bg-destructive/10 px-2 py-1 rounded-md">
               {task.error}
             </div>
           )}

@@ -5,6 +5,7 @@ import { listAllArchiveRecords } from '@/lib/server/archive-workflow'
 
 interface ArchiveRecordResponse {
   id: string
+  agentName: string
   status: 'prepared' | 'uploading' | 'completed' | 'failed'
   canisterId: string
   timestamp: string
@@ -27,6 +28,7 @@ export async function GET(
 
       return {
         id: record.id,
+        agentName: record.agentName,
         status: toArchiveStatus(record.status),
         canisterId,
         timestamp: new Date(record.timestamp).toISOString(),
