@@ -53,7 +53,87 @@ directory, it shows *that* the archive changed, not who changed it;
 anchoring the heads elsewhere (`anchor --canister-id`, a signed MemoryRepo
 commit) is what makes truncation of the newest lines detectable.
 
-## Quick start
+## Quick start: the guided setup
+
+```bash
+agentvault total-recall onboard
+```
+
+One conversation, about two minutes:
+
+1. **Your archive.** Where it lives: your home folder (one archive for every
+   assistant and project, the default), this project, or anywhere. If one
+   already exists it is found and reused.
+2. **What to keep.** Memories only, or memories plus a full transcript; and
+   whether to note when an assistant *recalls* a memory.
+3. **Bring your history in.** Your ChatGPT data export (the unzipped folder
+   or `conversations.json`; sharded `conversations-000.json` files are read
+   in order) and ChatGPT's saved memories. The export leaves the memories
+   out, so the wizard hands you a prompt to paste into ChatGPT that returns
+   them verbatim, and takes the answer by paste or from a file.
+4. **Connect your assistants.** Claude Code (`.mcp.json` in the project) and
+   Claude Desktop. The server entry uses absolute paths to `node` and the
+   CLI, because GUI apps like Claude Desktop don't inherit your shell's
+   `PATH`, so an `npx` or `agentvault` that works in a terminal is often not
+   found there.
+
+Then it does all of it, and **proves it works**: it starts the server the
+way an assistant would, against a throwaway copy of your policy, and checks
+that the guardrail is delivered, the tools are listed, a probe memory
+written is read back, and the hash chain verifies. The probe never touches
+your real archive. The last screen hands you the words to say to Claude
+(pull everything with `total_recall_pull`, summarize it, ask about anything
+outdated, and keep recording).
+
+It is safe to run again whenever you like, for example with a newer ChatGPT
+export: imports are idempotent by message id, nothing already archived is
+rewritten, an assistant config that already has the entry is reported
+"already connected", and a config that changes is backed up first
+(`<file>.bak-<timestamp>`). A config file that isn't valid JSON is left
+exactly as it was and reported. Ctrl-C at any question changes nothing.
+
+**ChatGPT, honestly.** Your ChatGPT history and saved memories come across
+through the export and the pasted list. *Live* capture from ChatGPT (every
+new memory it forms while you keep using it) needs ChatGPT to reach the
+server, and ChatGPT connects to remote MCP servers over HTTPS, while
+AgentVault's server speaks stdio only today. The wizard says so and offers
+ChatGPT greyed out. Until an HTTP transport exists, re-run the wizard with a
+fresh export to top up.
+
+### Scripted
+
+`--yes` skips every question and uses flags; nothing is connected unless
+`--connect` says so, and the result is printed as JSON (exit code 1 if any
+step reported a problem):
+
+```bash
+agentvault total-recall onboard --yes \
+  --transcript append --record-recalls on \
+  --chatgpt-export ~/Downloads/chatgpt-export \
+  --memories ./chatgpt-memories.txt \
+  --connect claude-code,claude-desktop
+```
+
+| Flag | Meaning |
+|---|---|
+| `--volume <dir>` (on `total-recall`) | the archive; else `$AGENTVAULT_TOTAL_RECALL_DIR`, else the one found below |
+| `--transcript off\|append` | what to keep; unset keeps an existing archive's setting |
+| `--record-recalls on\|off` | whether `recalled` events are kept |
+| `--chatgpt-export <path>` | `conversations.json`, or the unzipped export folder |
+| `--memories <file>` | ChatGPT's saved memories, one per line |
+| `--connect <list>` | `claude-code`, `claude-desktop`, or `none` |
+| `--project <dir>` | where Claude Code's `.mcp.json` goes (default: here) |
+| `--no-test` | skip the end-to-end server check |
+
+### Which archive a command uses
+
+Every `total-recall` command resolves the archive the same way: `--volume`,
+then `$AGENTVAULT_TOTAL_RECALL_DIR`, then `./.agentvault/total-recall` if it
+exists, then `~/.agentvault/total-recall` if it exists, else the project
+default (where `init` creates one). A home-folder archive is therefore found
+from anywhere.
+
+## Quick start: by hand
 
 ```bash
 # 1. Create the volume (transcript off by default)
@@ -64,9 +144,9 @@ agentvault total-recall policy --transcript append      # optional: full transcr
 agentvault mcp serve --total-recall ./.agentvault/total-recall
 ```
 
-Register that command as an MCP server in ChatGPT (connector) and in Claude
-(`.mcp.json`, Claude Desktop config). On connect, each client receives the
-volume's guardrail as the server's `instructions`:
+Register that command as an MCP server in Claude (`.mcp.json`, Claude
+Desktop config). On connect, each client receives the volume's guardrail as
+the server's `instructions`:
 
 > GUARDRAIL: whenever you create, recall, update or delete a memory about the
 > user (your own memory feature included), call total_recall_record in the
@@ -186,7 +266,12 @@ watchVolume(volume, (event) => console.log(event.seq, event.op, event.memory.key
 ## Limits (v1)
 
 - Reads load a whole file; a volume of hundreds of thousands of events
-  wants an index (stenographer's, or a follow-up).
+  wants an index (stenographer's, or a follow-up). A single
+  `conversations.json` is read into memory whole, which a very large
+  unsharded export can exceed; ChatGPT shards big exports, and the importer
+  reads the shards one at a time.
+- The server speaks stdio only, so assistants that need a remote MCP URL
+  (ChatGPT today) can't write to it live.
 - The lock is a directory lock file; it serializes writers on one machine,
   not across machines sharing a network filesystem.
 - Search is lexical. Semantic search over the archive is stenographer's job.

@@ -202,15 +202,19 @@ function readLines(file: string): string[] {
   return lines;
 }
 
-/** Append one complete line and fsync. */
-function appendLine(file: string, line: string): void {
+/** Append complete lines in one write and fsync once. */
+function appendLines(file: string, lines: string[]): void {
   const fd = fs.openSync(file, 'a', 0o600);
   try {
-    fs.writeSync(fd, line + '\n');
+    fs.writeFileSync(fd, lines.join('\n') + '\n');
     fs.fsyncSync(fd);
   } finally {
     fs.closeSync(fd);
   }
+}
+
+function appendLine(file: string, line: string): void {
+  appendLines(file, [line]);
 }
 
 const LOCK_FILE = '.lock';
@@ -364,25 +368,42 @@ export class TotalRecallVolume {
 
   /** Append a transcript message (stenographer-compatible line). */
   appendTranscript(input: TranscriptMessageInput): TranscriptMessage {
-    const timestamp = input.timestamp ?? new Date().toISOString();
+    return this.appendTranscriptBatch([input])[0]!;
+  }
+
+  /**
+   * Append many transcript messages under one lock, in one write, with one
+   * fsync: what an import wants (a long history is tens of thousands of
+   * lines). Every message is validated before anything is written, so a bad
+   * one in the middle writes nothing.
+   */
+  appendTranscriptBatch(inputs: TranscriptMessageInput[]): TranscriptMessage[] {
+    if (inputs.length === 0) return [];
     return withLock(this.dir, () => {
-      const { seq, prevHash } = this.nextPosition(this.transcriptPath);
-      const unhashed = {
-        format: TOTAL_RECALL_TRANSCRIPT_FORMAT,
-        seq,
-        id: input.id ?? contentId('msg', input.provider, input.sessionId, input.role, timestamp, input.content, String(seq)),
-        role: input.role,
-        content: input.content,
-        timestamp,
-        sessionId: input.sessionId,
-        ...(input.model ? { model: input.model } : {}),
-        ...(input.toolCalls && input.toolCalls.length > 0 ? { toolCalls: input.toolCalls } : {}),
-        provider: input.provider,
-        prevHash,
-      };
-      const message = transcriptMessageSchema.parse({ ...unhashed, hash: lineHash(unhashed) });
-      appendLine(this.transcriptPath, JSON.stringify(message));
-      return message;
+      let { seq, prevHash } = this.nextPosition(this.transcriptPath);
+      const messages: TranscriptMessage[] = [];
+      for (const input of inputs) {
+        const timestamp = input.timestamp ?? new Date().toISOString();
+        const unhashed = {
+          format: TOTAL_RECALL_TRANSCRIPT_FORMAT,
+          seq,
+          id: input.id ?? contentId('msg', input.provider, input.sessionId, input.role, timestamp, input.content, String(seq)),
+          role: input.role,
+          content: input.content,
+          timestamp,
+          sessionId: input.sessionId,
+          ...(input.model ? { model: input.model } : {}),
+          ...(input.toolCalls && input.toolCalls.length > 0 ? { toolCalls: input.toolCalls } : {}),
+          provider: input.provider,
+          prevHash,
+        };
+        const message = transcriptMessageSchema.parse({ ...unhashed, hash: lineHash(unhashed) });
+        messages.push(message);
+        prevHash = message.hash;
+        seq += 1;
+      }
+      appendLines(this.transcriptPath, messages.map((m) => JSON.stringify(m)));
+      return messages;
     });
   }
 
@@ -468,6 +489,20 @@ export class TotalRecallVolume {
       if (options.limit && out.length >= options.limit) break;
     }
     return out;
+  }
+
+  /** Every message id in the transcript, without validating lines (cheap enough to re-run an import). */
+  transcriptIds(): Set<string> {
+    const ids = new Set<string>();
+    for (const raw of readLines(this.transcriptPath)) {
+      try {
+        const id = (JSON.parse(raw) as { id?: unknown }).id;
+        if (typeof id === 'string') ids.add(id);
+      } catch {
+        /* verify() reports unreadable lines */
+      }
+    }
+    return ids;
   }
 
   readAnchors(): AnchorRecord[] {

@@ -26,14 +26,15 @@ import { spawn } from 'node:child_process';
 import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
+import { addOnboardCommand } from './total-recall-onboard.js';
 import {
-  DEFAULT_VOLUME_DIR,
   MEMORY_OPS,
   TotalRecallVolume,
   importChatGptConversations,
   importMemoryList,
   notifyEvent,
   policyInstructions,
+  resolveVolumeDir,
   watchVolume,
   type MemoryEvent,
   type MemoryOp,
@@ -42,9 +43,9 @@ import {
 
 const totalRecallCmd = new Command('total-recall');
 
-/** Volume dir from `--volume`, env, or the project default. */
+/** Volume dir from `--volume`, env, this project's archive, or the one in your home folder. */
 function volumeDir(options: { volume?: string }): string {
-  return path.resolve(options.volume ?? process.env.AGENTVAULT_TOTAL_RECALL_DIR ?? DEFAULT_VOLUME_DIR);
+  return resolveVolumeDir({ flag: options.volume, env: process.env.AGENTVAULT_TOTAL_RECALL_DIR });
 }
 
 function openVolume(options: { volume?: string }): TotalRecallVolume {
@@ -78,6 +79,7 @@ totalRecallCmd
     console.log(chalk.yellow('Specify a subcommand:'));
     console.log(
       chalk.gray(`
+  ${chalk.cyan('agentvault total-recall onboard')}                      Guided setup (start here)
   ${chalk.cyan('agentvault total-recall init')}                         Create a volume
   ${chalk.cyan('agentvault total-recall status')}                       Counts, heads, policy
   ${chalk.cyan('agentvault total-recall policy --transcript append')}   Turn full-transcript mode on
@@ -108,7 +110,8 @@ totalRecallCmd
         policy: { transcript: options.transcript },
       });
       console.log(chalk.green(`✔ Created total-recall volume ${volume.volumeId} at ${target}`));
-      console.log(chalk.gray('\nServe it to your assistants with:'));
+      console.log(chalk.gray('\nTip: `agentvault total-recall onboard` walks through importing history and connecting assistants.'));
+      console.log(chalk.gray('\nOr serve it to your assistants by hand with:'));
       console.log(chalk.cyan(`  agentvault mcp serve --total-recall ${target}`));
       console.log(chalk.gray('\nGuardrail every connected assistant receives:\n'));
       console.log(policyInstructions(volume.policy, { volumeId: volume.volumeId }));
@@ -575,5 +578,7 @@ totalRecallCmd
       die(error instanceof Error ? error.message : String(error));
     }
   });
+
+addOnboardCommand(totalRecallCmd);
 
 export { totalRecallCmd };

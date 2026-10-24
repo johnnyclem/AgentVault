@@ -91,25 +91,61 @@ export function chatGptConversationMessages(conversation: ChatGptConversation): 
   return out;
 }
 
+function readConversations(filePath: string): ChatGptConversation[] {
+  const data = JSON.parse(fs.readFileSync(filePath, 'utf8')) as unknown;
+  if (!Array.isArray(data)) throw new Error(`${filePath}: expected a JSON array of conversations`);
+  return data as ChatGptConversation[];
+}
+
+/** Append one conversation's new messages as a single batch; returns how many were new and how many were already there. */
+function importConversation(
+  volume: TotalRecallVolume,
+  conversation: ChatGptConversation,
+  existing: Set<string>,
+  summary: ImportSummary,
+): void {
+  const fresh: TranscriptMessageInput[] = [];
+  const messages = chatGptConversationMessages(conversation);
+  if (messages.length === 0) return;
+  summary.conversations += 1;
+  for (const message of messages) {
+    if (existing.has(message.id!)) {
+      summary.skipped += 1;
+      continue;
+    }
+    existing.add(message.id!);
+    fresh.push(message);
+  }
+  volume.appendTranscriptBatch(fresh);
+  summary.messages += fresh.length;
+}
+
 /** Append every message of a `conversations.json` export to the transcript. */
 export function importChatGptConversations(volume: TotalRecallVolume, filePath: string): ImportSummary {
-  const data = JSON.parse(fs.readFileSync(filePath, 'utf8')) as unknown;
-  const conversations = Array.isArray(data) ? (data as ChatGptConversation[]) : [];
-  if (!Array.isArray(data)) throw new Error(`${filePath}: expected a JSON array of conversations`);
-  const existing = new Set(volume.readTranscript().map((m) => m.id));
+  const conversations = readConversations(filePath);
+  const existing = volume.transcriptIds();
   const summary: ImportSummary = { conversations: 0, messages: 0, skipped: 0 };
-  for (const conversation of conversations) {
-    const messages = chatGptConversationMessages(conversation);
-    if (messages.length === 0) continue;
-    summary.conversations += 1;
-    for (const message of messages) {
-      if (existing.has(message.id!)) {
-        summary.skipped += 1;
-        continue;
-      }
-      volume.appendTranscript(message);
-      existing.add(message.id!);
-      summary.messages += 1;
+  for (const conversation of conversations) importConversation(volume, conversation, existing, summary);
+  return summary;
+}
+
+/**
+ * The same import, yielding to the event loop between batches of
+ * conversations so a spinner can keep turning, and reporting how far it is.
+ */
+export async function importChatGptConversationsAsync(
+  volume: TotalRecallVolume,
+  filePath: string,
+  options: { onProgress?: (done: number, total: number) => void } = {},
+): Promise<ImportSummary> {
+  const conversations = readConversations(filePath);
+  const existing = volume.transcriptIds();
+  const summary: ImportSummary = { conversations: 0, messages: 0, skipped: 0 };
+  for (let i = 0; i < conversations.length; i++) {
+    importConversation(volume, conversations[i]!, existing, summary);
+    if ((i + 1) % 25 === 0 || i + 1 === conversations.length) {
+      options.onProgress?.(i + 1, conversations.length);
+      await new Promise<void>((resolve) => setImmediate(resolve));
     }
   }
   return summary;

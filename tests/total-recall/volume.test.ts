@@ -123,6 +123,41 @@ describe('transcript', () => {
   });
 });
 
+describe('transcript batches', () => {
+  it('appends many messages under one lock as one verified chain, and writes nothing if one is invalid', () => {
+    const v = TotalRecallVolume.init(path.join(root, 'vol'));
+    v.appendTranscript({ role: 'user', content: 'first', sessionId: 's', provider: 'chatgpt', id: 'm0' });
+    const batch = v.appendTranscriptBatch(
+      Array.from({ length: 50 }, (_, i) => ({ role: (i % 2 ? 'assistant' : 'user') as 'user' | 'assistant', content: `m${i + 1}`, sessionId: 's', provider: 'chatgpt', id: `m${i + 1}` })),
+    );
+    expect(batch.map((m) => m.seq)).toEqual(Array.from({ length: 50 }, (_, i) => i + 2));
+    expect(batch[0]!.prevHash).toBe(v.readTranscript({ limit: 1 })[0]!.hash);
+    expect(v.verify().valid).toBe(true);
+    expect(v.appendTranscriptBatch([])).toEqual([]);
+
+    const before = fs.readFileSync(v.transcriptPath, 'utf8');
+    expect(() =>
+      v.appendTranscriptBatch([
+        { role: 'user', content: 'fine', sessionId: 's', provider: 'chatgpt' },
+        { role: 'user', content: 'bad', sessionId: '', provider: 'chatgpt' },
+      ]),
+    ).toThrow();
+    expect(fs.readFileSync(v.transcriptPath, 'utf8')).toBe(before);
+    expect(v.verify().valid).toBe(true);
+  });
+
+  it('lists transcript ids without validating, and skips a damaged line', () => {
+    const v = TotalRecallVolume.init(path.join(root, 'vol'));
+    expect(v.transcriptIds().size).toBe(0);
+    v.appendTranscriptBatch([
+      { role: 'user', content: 'a', sessionId: 's', provider: 'chatgpt', id: 'x1' },
+      { role: 'user', content: 'b', sessionId: 's', provider: 'chatgpt', id: 'x2' },
+    ]);
+    fs.appendFileSync(v.transcriptPath, 'not json\n');
+    expect([...v.transcriptIds()].sort()).toEqual(['x1', 'x2']);
+  });
+});
+
 describe('integrity', () => {
   it('verifies clean chains and anchors', () => {
     const v = TotalRecallVolume.init(path.join(root, 'vol'));

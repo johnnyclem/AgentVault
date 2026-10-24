@@ -4,6 +4,44 @@ All notable changes to AgentVault will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased] - Total Recall onboarding
+
+### Added
+- **`agentvault total-recall onboard`: a guided, re-runnable setup.** One
+  conversation covers where the archive lives (home folder, project, or
+  anywhere; an existing one is found and reused), what it keeps, which
+  ChatGPT history to bring in (the data export, sharded
+  `conversations-NNN.json` included, and ChatGPT's saved memories via a
+  prompt the wizard gives you to paste into ChatGPT), and which assistants to
+  connect (Claude Code's `.mcp.json`, Claude Desktop's config). It then
+  applies the plan with progress, starts the real server exactly as an
+  assistant would against a throwaway copy of the policy (guardrail
+  delivered, tools listed, probe written and read back, chain verified;
+  nothing lands in the real archive), and ends with the words to say to
+  Claude. Idempotent: imports skip what is already archived, a config that
+  already has the entry is left alone, a config that changes gets a
+  timestamped backup first, and one that isn't valid JSON is never touched.
+  `--yes` plus flags (`--transcript`, `--record-recalls`, `--chatgpt-export`,
+  `--memories`, `--connect`, `--project`, `--no-test`) runs it unattended and
+  prints JSON; Ctrl-C changes nothing.
+- **Archive discovery.** Every `total-recall` command resolves the archive as
+  `--volume`, then `$AGENTVAULT_TOTAL_RECALL_DIR`, then the project's
+  `.agentvault/total-recall` if present, then `~/.agentvault/total-recall` if
+  present, else the project default. A home-folder archive is found from
+  anywhere.
+- Library: `applyPlan`, `selfTest`, `locateChatGptExport`, `writeClientConfig`,
+  `mergeMcpServer`, `clientTargets`, `buildServerEntry`, `resolveVolumeDir`,
+  `renderCard` and the two hand-off prompts, exported from
+  `agentvault/total-recall`.
+
+### Changed
+- ChatGPT imports are fast and resumable: `TotalRecallVolume.appendTranscriptBatch`
+  writes a conversation's messages under one lock with one fsync (a long
+  history is tens of thousands of lines), `transcriptIds` finds what is
+  already archived without validating every line, and
+  `importChatGptConversationsAsync` reports progress while yielding to the
+  event loop.
+
 ## [Unreleased] - Total Recall
 
 ### Added
