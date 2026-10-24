@@ -381,6 +381,7 @@ These routes serve Polytician's `vault_*` tools and Polytician's concepts. Each 
 | `POST /api/memory-repo/commits` | Commit entries to a `memory_repo` branch (Polytician's `vault_memory_push`). Signed. |
 | `POST /api/memory-repo/tombstone` | Commit a deletion of one key. Signed. |
 | `GET /api/memory-repo/branches/:branch` | The branch's current entries, replayed from every commit (Polytician's `vault_memory_pull`). Anonymous query. |
+| `GET /api/memory-repo/receipts` | Receipts for the writes the two write routes signed, newest first, for the dashboard's Signed memory writes page (`limit` 1 to 50, default 10; `cursor`), with the memory_repo canister the server writes to as `canisterId`. Polytician does not call it, and its errors are `{ message, code }`. See [MemoryRepo: write receipts](../memory-repo.md#write-receipts). |
 | `/api/polytician/:agentId/{stats,search,concepts,concepts/:id,archive}` | Polytician's concepts in the namespace `agentId`. |
 
 The `memory_repo` canister refuses anonymous writes, so the two write routes sign with the server's own
@@ -415,6 +416,7 @@ routes read them on every request.
 | `ICP_LOCAL_URL` | `/api/memory-repo/*` | Replica host for a local replica; the default is `https://ic0.app`. |
 | `AGENTVAULT_ICP_IDENTITY_PEM_FILE` | memory_repo writes | Path of the PEM key the write routes sign with. |
 | `AGENTVAULT_ICP_IDENTITY_PEM` | memory_repo writes | The PEM text itself, for hosts without a filesystem (literal `\n` sequences are accepted). Set this or the file, not both. |
+| `AGENTVAULT_RECEIPTS_DIR` | memory_repo write receipts | Where receipts for signed writes are kept; the default is `~/.agentvault/receipts`. Use an absolute path on a persistent volume: a relative one resolves against the server's working directory. |
 | `POLYTICIAN_ENTRY_POINT` | `/api/polytician/*` | The command that starts Polytician over stdio, e.g. `polytician`. Add `--config <path>` to give it a config file. |
 | `AGENTVAULT_API_URL` | `/api/polytician/*` | The webapp's own base URL. With the token, it is passed to Polytician as `POLYTICIAN_AV_API_URL` and `POLYTICIAN_AV_API_TOKEN`, so Polytician offers its `vault_*` tools. https, or http to localhost. |
 

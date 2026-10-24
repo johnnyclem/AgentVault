@@ -39,7 +39,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // Onto the named branch in one call, as the commits route does: the
     // canister's current branch is shared by every writer
     const diff = JSON.stringify({ deleted: body.key })
-    const commitResult = await actor.commitToBranch(body.branch, `tombstone: ${body.key}`, diff, ['tombstone'])
+    const commitResult = await signed.commitToBranch('tombstone', body.branch, `tombstone: ${body.key}`, diff, ['tombstone'])
 
     if ('err' in commitResult) {
       return polyticianClientError(400, 'COMMIT_ERROR', `Tombstone commit failed: ${commitResult.err}`)

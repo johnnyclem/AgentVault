@@ -221,6 +221,60 @@ never use the current branch:
 None of them moves the current branch. `agentvault memory commit`, `merge`, `cherry-pick` and `rebase` still work
 on the current branch, as git does, and `memory commit` prints the branch the canister recorded the commit on.
 
+### Write receipts
+
+The webapp keeps a receipt for each memory_repo write its routes sign that the canister accepts: the
+`commitToBranch` calls of `POST /api/memory-repo/commits` (commits) and `POST /api/memory-repo/tombstone`
+(deletion markers), and the `createBranchFrom` call the commits route makes for a new branch. A receipt holds the
+exact call the server signed (canister, method, Candid argument, sender, expiry and nonce), its signature and the
+server's public key, the certificate the Internet Computer returned for the reply, and the reply.
+
+**What a receipt shows.** From its bytes alone, anyone can check that the server's key signed this exact call and,
+for a mainnet canister, that the subnet certified the canister's reply. The dashboard's Signed memory writes page
+(`/vault/memory-writes`, linked from each agent's Evidence page) runs these checks in your browser: it recomputes
+the request id, checks the signature and that the sender is the signing key's principal, checks the certificate
+against the IC root key built into the page, and checks that the certified reply is the recorded result. It also
+checks that the receipt names the memory_repo canister this server writes to (`MEMORY_REPO_CANISTER_ID`): a receipt
+left from an earlier canister, or from another server sharing the receipt directory, is not shown as verified.
+The checks run in a Web Worker, one receipt at a time, newest first. A write whose signed argument is larger
+than 256 KiB is not checked automatically; its row says "Not checked yet (large write)" and offers a Check button.
+
+**What it does not show.**
+
+- Which agent or person asked for the write. The server signs for anyone holding the API token, and the branch,
+  message and entries are whatever the client sent.
+- That the list is complete. The server stores the receipts, so it can lose or leave out any of them. It cannot
+  make a receipt verify for a write the Internet Computer did not accept.
+- Anything about a write to a local replica beyond its signature. The replica hands out its own root key, so its
+  certificates prove nothing to anyone else; the page shows such receipts as not anchored.
+
+**What is not captured.** Writes made before receipt capture was added (there is no backfill); writes the canister
+refused or answered with an error, which wrote nothing; and writes that do not go through the webapp's routes:
+the CLI (`agentvault memory commit` and the rest), `agentvault merge`, HyperVault and Total Recall keep no receipts
+yet. A receipt that cannot be built or stored is logged on the server
+(`memory_repo write receipt not captured …` or `… not stored …`) and the write is answered exactly as without one.
+The answer waits at most a second for the receipt to reach the disk; past that the write is answered anyway
+(`… still being stored …`) and the receipt is stored, or its failure logged, when the disk responds. Once one
+receipt has waited on the disk for 10 seconds, later receipts are not stored until it finishes (each is logged as not
+stored).
+
+**Where they live.** In `~/.agentvault/receipts/`, beside the archive index in `~/.agentvault/archives/`, or in
+`AGENTVAULT_RECEIPTS_DIR` when it is set. Each receipt is one JSON line, in one file per UTC day
+(`memory-repo-writes-YYYY-MM-DD.jsonl`, continuing in `.1.jsonl`, `.2.jsonl` and so on past 16 MiB). The receipts
+hold the memory content that was written (which the canister also serves to anyone who queries it), so the
+directory is created mode 700 and the files mode 600. On a host whose disk does not survive a restart, point
+`AGENTVAULT_RECEIPTS_DIR` at a persistent volume, or the receipts are lost with it. Give it as an absolute path: a
+relative one resolves against the server's working directory, which for the standalone build is inside
+`.next/standalone` and is replaced on every deploy.
+
+**Retention.** Receipts are kept indefinitely; nothing deletes them. You may prune old day files yourself.
+
+`GET /api/memory-repo/receipts` serves them, newest first, behind the API token (`limit` 1 to 50, default 10, and
+the `cursor` from the previous page). It sends the receipts as stored and no verdict. Beside each page it sends
+`canisterId`, the memory_repo canister this server writes to (`null` when `MEMORY_REPO_CANISTER_ID` is not set), and
+`writesConfigured`, whether that canister and a signing identity are both set. A cursor for a day file that has
+since been pruned is refused like one the server did not issue (`400 INVALID_CURSOR`); start again from the newest.
+
 ## CLI Reference
 
 Every `memory` subcommand takes these options:

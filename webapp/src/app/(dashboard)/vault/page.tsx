@@ -117,6 +117,18 @@ export default function VaultPage() {
         })}
       </div>
 
+      {/* Signed memory writes belong to the deployment, not to an agent, so they get one page instead of a row per agent. */}
+      {filter === 'evidence' && (
+        <p className="text-xs text-muted-foreground">
+          Each agent&apos;s Evidence lists its Arweave receipts. The memory writes this server signs are not tied to any one
+          agent:{' '}
+          <Link href="/vault/memory-writes" className="font-medium text-foreground underline-offset-4 hover:underline">
+            Signed memory writes
+          </Link>{' '}
+          lists them for the whole deployment.
+        </p>
+      )}
+
       {failed.length > 0 && (
         <div className="space-y-1.5 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm" role="alert">
           {failed.map((category) => (

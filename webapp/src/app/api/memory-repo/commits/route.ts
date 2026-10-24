@@ -57,7 +57,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (!(await branchExists())) {
       // From main, not the current branch, so a new sync branch does not
       // start with another branch's entries
-      const created = await actor.createBranchFrom(body.branch, ROOT_BRANCH)
+      const created = await signed.createBranchFrom(body.branch, ROOT_BRANCH)
       // "already exists" when another push created it in the meantime
       if ('err' in created && !(await branchExists())) {
         return polyticianClientError(400, 'BRANCH_ERROR', `Failed to create branch: ${created.err}`)
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const diff = JSON.stringify(body.entries)
     const tags = body.entries.flatMap(e => e.tags ?? [])
 
-    const commitResult = await actor.commitToBranch(body.branch, body.message, diff, tags)
+    const commitResult = await signed.commitToBranch('commit', body.branch, body.message, diff, tags)
 
     if ('err' in commitResult) {
       return polyticianClientError(400, 'COMMIT_ERROR', `Commit failed: ${commitResult.err}`)
