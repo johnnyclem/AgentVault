@@ -75,6 +75,7 @@ const STATUS_TONE: Record<string, 'success' | 'info' | 'warning' | 'neutral' | '
   completed: 'success',
   approved: 'success',
   uploading: 'info',
+  submitted: 'info',
   deploying: 'info',
   pending: 'warning',
   starting: 'warning',

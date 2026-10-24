@@ -8,6 +8,8 @@ export * from './arweave-client.js';
 export {
   type ArchiveMetadata,
   type ArchiveOptions,
+  type ArchiveDisplayStatus,
+  archiveDisplayStatus,
   prepareArchive,
   markArchiveUploading,
   updateArchiveTransaction,

@@ -53,7 +53,7 @@ server.
 - **Canister Deployment** — deploy to an ICP local replica or mainnet
 - **State Management** — query, fetch, and reconstruct agent state
 - **Multi-Chain Wallets** — ICP, ckETH (Ethereum), Solana, Polkadot, and Arweave
-- **VetKeys Integration** — threshold key derivation for secure secrets
+- **Secret Sharing** — t-of-n Shamir secret sharing for seed phrases in the library (`src/security/shamir.ts`); the ICP VetKeys (vetKD) integration is not wired yet
 - **Monitoring** — health checks, metrics, and alerting
 - **Archival** — Arweave integration for permanent, off-chain-cheap storage
 - **AI Inference** — a fallback chain from a Bittensor subnet to Venice AI to a local Ollama model, served by the dashboard's `/api/inference`; the `inference` command queries Bittensor
@@ -241,8 +241,8 @@ see the full workflow before writing your own:
 | `promote` | Promote canister between environments | Stable |
 | `rollback` | Rollback canister deployment | Stable |
 | `inference` | Query AI inference services | Experimental |
-| `archive` | Archive to Arweave | Experimental |
-| `approve` | Multi-signature approvals | Experimental |
+| `archive` | Manage the local archive records in `~/.agentvault/archives`; it uploads nothing (the dashboard's Archive flow uploads the Arweave receipt) | Experimental |
+| `approve` | Approval requests with a signer quorum, tracked locally (signer names are not authenticated, it is not cryptographic multisig, and no deploy waits for an approval) | Experimental |
 | `profile` | Profile canister performance | Experimental |
 | `trace` | View execution traces | Experimental |
 
@@ -283,7 +283,7 @@ see the full workflow before writing your own:
 |---------|-------------|
 | `orchestrate` | Orchestrate an AI-assisted development session governed by AgentVault |
 | `mcp` | Manage MCP (Model Context Protocol) server registrations |
-| `mint` | Scaffold a new Google ADK agent with on-chain canister and birthday backup |
+| `mint` | Scaffold a new Google ADK agent and write a local birthday record (no canister is deployed) |
 | `pilot` | Initialize a private ICP replica and deploy Guild canisters |
 | `hypervault` | Bridge a HyperVault cloud account across hot/warm/cold tiers (see [HyperVault](#hypervault)) |
 
@@ -326,7 +326,7 @@ agentvault/
 │   ├── packaging/          # WASM compilation
 │   ├── canister/           # Actor bindings
 │   ├── wallet/             # Multi-chain wallet
-│   ├── security/           # VetKeys and encryption
+│   ├── security/           # Encryption, secret sharing, TOTP, approvals
 │   ├── monitoring/         # Health and metrics
 │   ├── archival/           # Arweave client
 │   └── inference/          # Bittensor client
@@ -386,9 +386,11 @@ npm run test
 | Wallet at-rest encryption | ✅ AES-256-GCM via `encryptWalletSecrets` |
 | Backup atomic writes | ✅ write→fsync→rename via `atomicWriteFileSync` |
 | Vault TLS CA cert | ✅ honoured via `undici.Agent` dispatcher |
-| VetKeys threshold signatures | ⚠️ Simulated (real canister integration pending) |
+| VetKeys threshold signatures | ⚠️ Not implemented — nothing in AgentVault produces them yet |
+| Wallet transaction signing | ⚠️ Partial — `wallet sign` signs ckETH, Solana and Polkadot transfers; ICP and Arweave signing is not implemented |
 | Bittensor inference | ⚠️ Requires API access |
 | Arweave archival | ⚠️ Requires wallet setup |
+| Dashboard evidence page | ⚠️ Partial — lists the Arweave receipts written by the dashboard's Archive flow and checks each one in your browser against arweave.net. A receipt passes only when its transaction is mined and its bytes match the SHA-256 the server recorded for the upload; receipts over 5 MB are not downloaded. HyperVault and backup Arweave uploads are not listed. Signed agent actions, test coverage and compliance scores are not implemented |
 | `trace` / `profile` CLI | ⚠️ Stub — Phase 3 not yet implemented |
 | `stats` CLI historical analysis | ⚠️ Partial — current values only |
 

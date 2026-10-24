@@ -18,8 +18,8 @@ actually wired up in this repo today, and how to close the gaps.
 - **What it is:** CLI + ICP canister system that packages a TypeScript agent to WASM, deploys it to an
   Internet Computer canister, and gives it a durable identity, multi-chain wallet, secrets vault, and
   versioned memory that survives independent of any browser session or host process.
-- **Key subsystems:** `src/deployment`, `src/packaging`, `src/wallet`, `src/security` (VetKeys, multisig,
-  MFA), `src/monitoring`, `src/orchestration` (Claude Code / Google ADK session orchestration).
+- **Key subsystems:** `src/deployment`, `src/packaging`, `src/wallet`, `src/security` (encryption, secret
+  sharing, local approvals, MFA), `src/monitoring`, `src/orchestration` (Claude Code / Google ADK session orchestration).
 - **Persistence model:** on-chain canister state, plus `MemoryRepo` — a git-style versioned memory
   canister (commits/branches/merge/rebase/cherry-pick, anchored by a genesis `Soul.md`), documented in
   `docs/memory-repo.md`.
@@ -155,7 +155,7 @@ actually wired up in this repo today, and how to close the gaps.
          │              ┌─────────────────┐
          └─────────────►│   AgentVault     │   policy check → canister exec
                         │ (canister exec,  │   → wallet/secrets/state →
-                        │  wallet, vault)  │   VetKeys-signed, on-chain
+                        │  wallet, vault)  │   stored in the canister
                         └─────────────────┘
 ```
 

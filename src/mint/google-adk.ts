@@ -6,7 +6,6 @@ import {
   prepareArchive,
   markArchiveUploading,
   updateArchiveTransaction,
-  confirmArchive,
   failArchive,
   getArchiveData,
 } from '../archival/archive-manager.js';
@@ -153,16 +152,17 @@ async function createArweaveBirthdayArchive(
   agentName: string,
   template: GoogleAdkTemplate,
   canisterId: string,
-  backupPath: string,
   arweaveJwkPath?: string,
 ): Promise<{ archiveId?: string; transactionId?: string; warnings: string[] }> {
   const warnings: string[] = [];
+  // Uploaded as is when an Arweave wallet is given, where it is public and
+  // permanent, so it carries no local paths (the backup's path stays in the
+  // mint result).
   const archivePayload = {
     kind: 'birthday-backup',
     agentName,
     template,
     canisterId,
-    backupPath,
     createdAt: new Date().toISOString(),
   };
 
@@ -209,8 +209,10 @@ async function createArweaveBirthdayArchive(
       return { archiveId: prepared.archiveId, warnings };
     }
 
+    // Left pending with its transaction ID: the node accepted the upload, but
+    // nothing has checked that it was mined, and an accepted upload can still
+    // be dropped.
     updateArchiveTransaction(prepared.archiveId, upload.transactionId);
-    confirmArchive(prepared.archiveId);
     return { archiveId: prepared.archiveId, transactionId: upload.transactionId, warnings };
   } catch (error) {
     failArchive(prepared.archiveId, error instanceof Error ? error.message : 'Unknown error');
@@ -247,7 +249,6 @@ export async function mintGoogleAdkAgent(options: MintGoogleAdkAgentOptions): Pr
     agentName,
     options.template,
     canisterId,
-    backupPath,
     options.arweaveJwkPath,
   );
   warnings.push(...archive.warnings);

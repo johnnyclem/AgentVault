@@ -2,7 +2,9 @@
  * The webapp's GET /api/archives, which the Archives page and the Vault list
  * read. Each record carries the archived agent's name (the Vault titles its
  * archive rows with it) next to the fields the Archives page already used,
- * with the archive store's statuses mapped to the page's.
+ * with the archive store's statuses mapped to the page's. Nothing on the
+ * server checks that an upload was mined, so an archive with a transaction id
+ * is 'submitted', never 'completed', even where the store says 'confirmed'.
  *
  * The archive store is replaced with fixed records; Next.js is not installed
  * at the repository root, so next/server is a stand-in.
@@ -82,7 +84,7 @@ describe('GET /api/archives', () => {
       {
         id: 'archive-1761300000000-1a2b3c4d',
         agentName: 'research-agent',
-        status: 'completed',
+        status: 'submitted',
         canisterId: 'rrkah-fqaaa-aaaaa-aaaaq-cai',
         timestamp: '2026-10-22T10:00:00.000Z',
         size: 2048,
@@ -100,6 +102,25 @@ describe('GET /api/archives', () => {
         checksum: 'def456',
       },
     ]);
+  });
+
+  it('labels an uploaded archive submitted whether the store says pending or confirmed, and never completed', async () => {
+    store.records.push(
+      { ...store.records[1], id: 'pending-with-tx', transactionId: 'tDHtC3A3H8mdz7OQh7gDs2LFKWr4vVQtnIjxs7WUaoQ' },
+      { ...store.records[1], id: 'uploading', status: 'uploading' },
+      { ...store.records[1], id: 'failed', status: 'failed' },
+    );
+
+    const { body } = await list();
+    const statuses = Object.fromEntries((body.data ?? []).map((archive) => [archive['id'], archive['status']]));
+
+    expect(statuses).toEqual({
+      'archive-1761300000000-1a2b3c4d': 'submitted',
+      'archive-1761400000000-5e6f7a8b': 'prepared',
+      'pending-with-tx': 'submitted',
+      uploading: 'uploading',
+      failed: 'failed',
+    });
   });
 
   it('narrows to one agent with ?agent=', async () => {

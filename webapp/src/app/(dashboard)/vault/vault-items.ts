@@ -2,22 +2,23 @@ import type { Agent, Archive, Wallet } from '@/lib/types'
 
 /*
  * The /vault list is assembled from three endpoints the dashboard already has:
- * wallets, archives and agents (each agent has a compliance proof page). The
- * mapping lives apart from the page so the masking rules can be tested without
- * a browser. Imports from '@/' stay type-only: the root test suite loads this
- * file directly and cannot resolve the webapp's aliases at runtime.
+ * wallets, archives and agents (each agent has an evidence page listing its
+ * Arweave receipts). The mapping lives apart from the page so the masking rules
+ * can be tested without a browser. Imports from '@/' stay type-only: the root
+ * test suite loads this file directly and cannot resolve the webapp's aliases
+ * at runtime.
  */
 
-export type VaultCategory = 'wallets' | 'archives' | 'proofs'
+export type VaultCategory = 'wallets' | 'archives' | 'evidence'
 export type VaultFilter = 'all' | VaultCategory
 
-export const VAULT_CATEGORIES: readonly VaultCategory[] = ['wallets', 'archives', 'proofs']
+export const VAULT_CATEGORIES: readonly VaultCategory[] = ['wallets', 'archives', 'evidence']
 
 export const VAULT_FILTERS: readonly { id: VaultFilter; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'wallets', label: 'Wallets' },
   { id: 'archives', label: 'Archives' },
-  { id: 'proofs', label: 'Proofs' },
+  { id: 'evidence', label: 'Evidence' },
 ]
 
 export interface VaultItem {
@@ -39,6 +40,18 @@ const CHAINS: Record<string, { label: string; ticker: string }> = {
   solana: { label: 'Solana', ticker: 'SOL' },
   polkadot: { label: 'Polkadot', ticker: 'DOT' },
   arweave: { label: 'Arweave', ticker: 'AR' },
+}
+
+/**
+ * The sources a filter's rows are built from, so the page reports every one
+ * that is loading or failed. Evidence rows are agents, but their receipt
+ * counts come from the archives: a failed archives request turns each row
+ * into "Receipts not loaded", and the Retry for it must show under that filter too.
+ */
+export function sourcesFor(filter: VaultFilter): readonly VaultCategory[] {
+  if (filter === 'all') return VAULT_CATEGORIES
+  if (filter === 'evidence') return ['evidence', 'archives']
+  return [filter]
 }
 
 /** Unknown values (a typo in ?filter=, or none) fall back to showing everything. */
@@ -92,13 +105,39 @@ export function archiveToItem(archive: Archive): VaultItem {
   }
 }
 
-export function agentToProofItem(agent: Agent): VaultItem {
+/** How many Arweave receipts an agent has, or why that is not known. */
+export type ReceiptCount = number | 'loading' | 'unavailable'
+
+/**
+ * Receipts per agent id, counted the way the evidence route finds them: an
+ * archive with an Arweave transaction id, recorded under the agent's id (the
+ * archive workflow stores agent.id as the archive's agentName).
+ */
+export function countReceipts(archives: readonly Archive[]): Map<string, number> {
+  const counts = new Map<string, number>()
+  for (const archive of archives) {
+    if (archive.agentName && archive.arweaveTxId) {
+      counts.set(archive.agentName, (counts.get(archive.agentName) ?? 0) + 1)
+    }
+  }
+  return counts
+}
+
+export function receiptSubtitle(count: ReceiptCount): string {
+  if (count === 'loading') return 'Loading receipts…'
+  if (count === 'unavailable') return 'Receipts not loaded'
+  if (count === 0) return 'No receipts yet'
+  return `${count} Arweave receipt${count === 1 ? '' : 's'}`
+}
+
+export function agentToEvidenceItem(agent: Agent, receipts: ReceiptCount): VaultItem {
   return {
-    key: `proof:${agent.id}`,
-    category: 'proofs',
+    key: `evidence:${agent.id}`,
+    category: 'evidence',
     title: agent.name || agent.id,
-    subtitle: `Compliance proof · ${agent.status}`,
-    href: `/vault/${agent.id}/proof`,
+    subtitle: receiptSubtitle(receipts),
+    // The page kept its /proof path so existing links still work.
+    href: `/vault/${encodeURIComponent(agent.id)}/proof`,
     timestamp: validTimestamp(agent.updatedAt),
   }
 }
@@ -109,20 +148,33 @@ export function sortByRecent(items: readonly VaultItem[]): VaultItem[] {
   return [...items].sort((a, b) => time(b) - time(a) || 0)
 }
 
+/**
+ * Every row, newest first. An agent's receipt count comes from the archives,
+ * so while they load, or after they fail, its row says so instead of showing
+ * "No receipts yet" for archives the page has not seen.
+ */
 export function buildVaultItems(sources: {
   wallets: readonly Wallet[]
   archives: readonly Archive[]
   agents: readonly Agent[]
+  archivesStatus: SourceStatus
 }): VaultItem[] {
+  const receipts = countReceipts(sources.archives)
+  const receiptsFor = (agent: Agent): ReceiptCount => {
+    if (sources.archivesStatus.pending) return 'loading'
+    if (sources.archivesStatus.error) return 'unavailable'
+    return receipts.get(agent.id) ?? 0
+  }
+
   return sortByRecent([
     ...sources.wallets.map(walletToItem),
     ...sources.archives.map(archiveToItem),
-    ...sources.agents.map(agentToProofItem),
+    ...sources.agents.map((agent) => agentToEvidenceItem(agent, receiptsFor(agent))),
   ])
 }
 
 export function countByCategory(items: readonly VaultItem[]): Record<VaultFilter, number> {
-  const counts: Record<VaultFilter, number> = { all: items.length, wallets: 0, archives: 0, proofs: 0 }
+  const counts: Record<VaultFilter, number> = { all: items.length, wallets: 0, archives: 0, evidence: 0 }
   for (const item of items) counts[item.category] += 1
   return counts
 }

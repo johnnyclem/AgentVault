@@ -512,7 +512,8 @@ export async function archiveHyperVault(options: ArchiveOptions): Promise<Archiv
       errors.push(`Arweave upload failed: ${upload.error ?? 'unknown error'}`);
     }
 
-    // 7. Verify — re-fetch and check the whole chain
+    // 7. Verify — re-fetch and check the whole chain. The signature must be
+    //    by the key this run signed with, not just any key in the bundle.
     if (arweaveTx) {
       step('verify', arweaveTx);
       try {
@@ -521,9 +522,14 @@ export async function archiveHyperVault(options: ArchiveOptions): Promise<Archiv
           const state = JSON.parse(fetched.state) as { snapshot?: string };
           if (state.snapshot) {
             const roundTripped = JSON.parse(state.snapshot) as HypervaultSnapshot;
-            const result = await verifySnapshot(roundTripped, { passphrase: options.passphrase });
-            verified = result.signatureValid && result.checksumsValid;
+            const result = await verifySnapshot(roundTripped, {
+              passphrase: options.passphrase,
+              expectedPublicKey: snapshot.publicKey,
+            });
+            verified = result.signatureValid && result.checksumsValid && result.merkleRootValid;
             if (!verified) errors.push(...result.errors);
+          } else {
+            errors.push('Re-fetched Arweave bundle does not contain a hypervault snapshot');
           }
         } else {
           errors.push('Could not re-fetch bundle from Arweave for verification');

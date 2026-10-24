@@ -29,7 +29,6 @@
  *                   preventing unauthorized code upgrades.
  */
 
-import Memory    "mo:base/Memory";
 import Buffer    "mo:base/Buffer";
 import Int       "mo:base/Int";
 import Nat       "mo:base/Nat";
@@ -43,12 +42,17 @@ import Option    "mo:base/Option";
 import Principal "mo:base/Principal";
 import Nat32     "mo:base/Nat32";
 import Cycles    "mo:base/ExperimentalCycles";
+import Error     "mo:base/Error";
 import Prim      "mo:prim";
+
+actor AgentVault {
 
 // ==================== Management Canister – HTTP Outcall Interface ====================
 //
-// Used exclusively by the heartbeat health-check to ping Binance.
-// Declared at module scope so the actor reference is resolved at compile time.
+// Used exclusively by the heartbeat health-check to ping Binance. Declared
+// inside the actor because moc rejects any non-import declaration outside the
+// main actor ("an actor or actor class must be the only non-imported
+// declaration in a program").
 
 type HttpHeader          = { name : Text; value : Text };
 type HttpMethod          = { #get; #head; #post };
@@ -68,14 +72,6 @@ type ManagementCanister = actor {
 };
 
 let mgmt : ManagementCanister = actor "aaaaa-aa";
-
-// ==================== Canister Actor ====================
-//
-// Everything below is the actor body. The declarations above (imports, the
-// management-canister interface and the `mgmt` reference) stay at module scope
-// so the actor reference resolves at compile time.
-
-actor AgentVault {
 
 // ==================== Domain Types ====================
 
@@ -173,11 +169,11 @@ public type EncryptedSecret = {
   createdAt  : Int;
 };
 
-// ── VetKeys BLS Threshold Share Commitments (Production) ─────────────────────
+// ── BLS Threshold Share Commitments (registry only) ──────────────────────────
 //
-// Public data only — private share scalars are NEVER stored on-chain.
-// The Feldman VSS commitment array allows on-chain verification of each
-// share's public key without revealing any secret material.
+// Public data only — private share scalars are NEVER stored on-chain. The
+// canister stores these strings after length checks; it never verifies a
+// share against the Feldman commitments.
 
 /// Public commitment record for one BLS12-381 key share (safe to store on-chain).
 public type ThresholdShareCommitment = {
@@ -189,11 +185,14 @@ public type ThresholdShareCommitment = {
   commitment : Text;
 };
 
-/// Per-share health status produced by the heartbeat health check.
+/// Per-share result of the heartbeat format check. `healthy` is always false:
+/// the check only measures string lengths and nothing verifies a share
+/// cryptographically, so no share is ever reported healthy.
 public type ShareHealthStatus = {
   index   : Nat;
   healthy : Bool;
-  /// "ok" | "missing_pubkey" | "pubkey_too_short" | "commitment_too_short"
+  /// "not_checked" | "format_ok_unverified" | "missing_pubkey" |
+  /// "pubkey_too_short" | "commitment_too_short"
   reason  : Text;
 };
 
@@ -280,7 +279,7 @@ stable var walletRegistry   : [(Text, WalletInfo)]  = [];
 stable var transactionQueue : [QueuedTransaction]   = [];
 stable var encryptedSecrets : [EncryptedSecret]     = [];
 
-// ── BLS Threshold Share Production State ──────────────────────────────────────
+// ── BLS Threshold Share Registry State ────────────────────────────────────────
 
 /// Compressed G1 hex of the master public key (a0 · G1.BASE = Feldman C_0).
 stable var thresholdMasterPublicKey  : Text                       = "";
@@ -304,7 +303,8 @@ stable var sharesInitialized         : Bool                       = false;
 /// Latest per-share health reports (refreshed every heartbeat interval).
 stable var shareHealthReports        : [ShareHealthStatus]        = [];
 
-/// Aggregate health flag — true when all shares pass their integrity check.
+/// Aggregate health flag. Always false: no check can show the shares are
+/// valid (kept as a stable variable so upgrades keep the same stable layout).
 stable var sharesAllHealthy          : Bool                       = false;
 
 /// Nanosecond timestamp of the most recent share health check.
@@ -585,14 +585,13 @@ system func heartbeat() : async () {
     lastHealthStatus := "KILLED:consecutive_failures=" # Nat.toText(consecutiveTimeouts);
   };
 
-  // ── Share health check (runs at the same 5-minute cadence) ──────────────
+  // ── Share format check (runs at the same 5-minute cadence) ──────────────
   //
-  // Validates the structural integrity of all stored share commitments.
   // Checks that each share's publicKey and commitment fields have the
   // expected minimum lengths for a compressed BLS12-381 G1 point (96 hex
-  // chars) and a SHA-256 hex digest (64 chars).  Cryptographic pairing
-  // verification is performed off-chain by the TypeScript layer; the canister
-  // provides a tamper-evident registry and an on-chain health report.
+  // chars) and a SHA-256 hex digest (64 chars). Nothing in AgentVault checks
+  // the shares cryptographically, so the check can find malformed strings
+  // but never reports a share healthy.
   if (sharesInitialized) {
     let shareNow = Time.now();
     if (shareNow - lastShareHealthCheckNs >= SHARE_HEALTH_INTERVAL_NS) {
@@ -608,42 +607,42 @@ system func heartbeat() : async () {
 };
 
 /**
- * Structural integrity check for BLS threshold share commitments.
+ * Format check for BLS threshold share commitments.
  *
- * For each stored ThresholdShareCommitment, verifies:
+ * For each stored ThresholdShareCommitment, checks only that:
  *   1. publicKey field is non-empty and ≥ 96 hex chars (compressed G1 point)
  *   2. commitment field is ≥ 64 hex chars (SHA-256 digest)
  *
- * Results are written to shareHealthReports and sharesAllHealthy.
+ * Passing these length checks does not make a share valid, so every report
+ * has healthy = false; a well-formed share gets reason "format_ok_unverified".
+ * Results are written to shareHealthReports; sharesAllHealthy stays false.
  * Called automatically from the system heartbeat.
  */
 private func runShareHealthCheck() : async () {
   if (not sharesInitialized) return;
 
-  var allOk = true;
   let reports = Buffer.Buffer<ShareHealthStatus>(thresholdShareCommitments.size());
 
   for (sc in thresholdShareCommitments.vals()) {
     let pkLen     = Text.size(sc.publicKey);
     let commitLen = Text.size(sc.commitment);
 
-    let (healthy, reason) : (Bool, Text) =
+    let reason : Text =
       if (pkLen == 0) {
-        (false, "missing_pubkey")
+        "missing_pubkey"
       } else if (pkLen < 96) {
-        (false, "pubkey_too_short")
+        "pubkey_too_short"
       } else if (commitLen < 64) {
-        (false, "commitment_too_short")
+        "commitment_too_short"
       } else {
-        (true, "ok")
+        "format_ok_unverified"
       };
 
-    if (not healthy) { allOk := false };
-    reports.add({ index = sc.index; healthy; reason });
+    reports.add({ index = sc.index; healthy = false; reason });
   };
 
   shareHealthReports := Buffer.toArray(reports);
-  sharesAllHealthy   := allOk;
+  sharesAllHealthy   := false;
 };
 
 /**
@@ -1013,14 +1012,15 @@ public shared(msg) func deleteEncryptedSecret(secretId : Text) : async {
   if (found) { #ok("Deleted: " # secretId) } else { #err("Not found: " # secretId) }
 };
 
-// ── Production VetKeys: BLS Threshold Share Registration ─────────────────────
+// ── BLS Threshold Share Registration ─────────────────────────────────────────
 
 /**
- * Register production BLS threshold share commitments.
+ * Register BLS threshold share commitments.
  *
- * Called by the owner after generating BLS12-381 threshold shares off-chain
- * (via the TypeScript `generateBlsThresholdShares` helper).  Only the public
- * portions are stored here — share scalars NEVER leave the TypeScript layer.
+ * Stores public commitment strings supplied by the owner after length checks
+ * only. AgentVault has no tool that generates these shares and nothing checks
+ * them cryptographically, so registering them does not enable threshold
+ * signing (see getVetKeysStatus and verifyThresholdSignature).
  *
  * Parameters (all public/commitment data, no secrets):
  *   masterPublicKey  – compressed G1 hex of a0 · G1.BASE (= Feldman C_0)
@@ -1065,28 +1065,31 @@ public shared(msg) func initializeThresholdShares(
   thresholdTotalParties     := totalParties;
   sharesInitialized         := true;
 
-  // Initialise health reports as all-healthy (first structural check runs on
-  // the next heartbeat interval).
+  // Nothing has been checked yet: the first format check runs on the next
+  // heartbeat interval, and no check can mark a share healthy.
   shareHealthReports := Array.tabulate<ShareHealthStatus>(
     totalParties,
     func(i : Nat) : ShareHealthStatus {
-      { index = i + 1; healthy = true; reason = "initialized" }
+      { index = i + 1; healthy = false; reason = "not_checked" }
     }
   );
-  sharesAllHealthy := true;
+  sharesAllHealthy := false;
 
   #ok(
     "Threshold shares initialized: " # Nat.toText(threshold) #
     "-of-" # Nat.toText(totalParties) #
-    " | masterPK=" # Text.size(masterPublicKey) # "chars"
+    " | masterPK=" # Nat.toText(Text.size(masterPublicKey)) # "chars"
   )
 };
 
 /**
- * Query the current BLS threshold share health status.
+ * Query the BLS threshold share registry and its last format check.
  *
- * Returns the share count, threshold parameters, master public key,
- * group commitment, and per-share health reports from the last heartbeat run.
+ * Returns the share count, threshold parameters, master public key, group
+ * commitment, and the per-share format reports from the last heartbeat run.
+ * allHealthy and every report's healthy are always false: the canister only
+ * checks string lengths, which cannot show a share is valid. Reports stored
+ * by an earlier canister version are returned with healthy = false too.
  */
 public query func getShareHealthStatus() : async {
   initialized     : Bool;
@@ -1102,8 +1105,13 @@ public query func getShareHealthStatus() : async {
     initialized     = sharesInitialized;
     threshold       = thresholdThreshold;
     totalParties    = thresholdTotalParties;
-    allHealthy      = sharesAllHealthy;
-    reports         = shareHealthReports;
+    allHealthy      = false;
+    reports         = Array.map<ShareHealthStatus, ShareHealthStatus>(
+      shareHealthReports,
+      func(r : ShareHealthStatus) : ShareHealthStatus {
+        { index = r.index; healthy = false; reason = r.reason }
+      }
+    );
     masterPublicKey = thresholdMasterPublicKey;
     groupCommitment = thresholdGroupCommitment;
     lastCheckNs     = lastShareHealthCheckNs;
@@ -1111,77 +1119,50 @@ public query func getShareHealthStatus() : async {
 };
 
 /**
- * Verify a combined BLS threshold signature (structural / registry check).
+ * Threshold signature verification is not implemented.
  *
- * Validates that:
- *   1. Shares have been initialized (production mode is active)
- *   2. The transaction ID is non-empty
- *   3. The signature is a plausible BLS12-381 G2 hex point (≥192 chars)
- *
- * Full pairing-based cryptographic verification is performed off-chain by
- * the TypeScript layer using `verifyBlsSignature()`.
+ * No BLS pairing check exists in this canister or anywhere else in
+ * AgentVault, so this always returns #err instead of calling a signature
+ * verified because it has a plausible length. The method keeps its
+ * (transactionId, signature) parameters so existing callers get an explicit
+ * refusal rather than a missing method.
  */
-public query func verifyThresholdSignature(transactionId : Text, signature : Text) : async {
+public query func verifyThresholdSignature(_ : Text, _ : Text) : async {
   #ok : Text;
   #err : Text;
 } {
-  if (Text.size(transactionId) == 0) {
-    return #err("Transaction ID cannot be empty");
-  };
-  if (not sharesInitialized) {
-    return #err(
-      "Threshold shares not initialized. " #
-      "Call initializeThresholdShares() after bootstrap."
-    );
-  };
-  if (Text.size(signature) < 192) {
-    return #err(
-      "Invalid BLS signature: expected compressed G2 point hex (≥192 chars), got " #
-      Nat.toText(Text.size(signature)) # " chars"
-    );
-  };
-  #ok("verified")
+  #err("threshold signature verification is not implemented")
 };
 
 /**
- * Acknowledge a threshold key derivation request.
+ * Threshold key derivation is not implemented.
  *
- * Validates inputs and confirms that shares are initialized.
- * The actual BLS key derivation occurs off-chain; this call serves as an
- * on-chain audit point and parameter sanity check.
+ * AgentVault has no vetKD or threshold key derivation, so this always
+ * returns #err and derives nothing. It ignores both arguments: the first
+ * was a seed phrase sent in plaintext over Candid, which no caller should
+ * send. The (Text, Nat) parameters stay so the Candid interface is unchanged.
  */
-public shared(msg) func deriveVetKeysKey(seedPhrase : Text, threshold : Nat) : async {
+public shared(msg) func deriveVetKeysKey(_ : Text, _ : Nat) : async {
   #ok : Text;
   #err : Text;
 } {
   assertWriteAllowed(msg.caller);
-  if (Text.size(seedPhrase) == 0) { return #err("Seed phrase cannot be empty") };
-  if (threshold < 2)  { return #err("Threshold must be at least 2") };
-  if (threshold > 10) { return #err("Threshold cannot exceed 10") };
-  // Seed phrase is NEVER stored or logged.
-  if (not sharesInitialized) {
-    return #err(
-      "Threshold shares not initialized. " #
-      "Generate BLS shares off-chain and call initializeThresholdShares() first."
-    );
-  };
-  #ok("Key derivation acknowledged. Master public key: " # thresholdMasterPublicKey)
+  #err("threshold key derivation is not implemented")
 };
 
 /**
  * Return VetKeys operational status.
  *
- * Reports #production once shares have been registered via
- * initializeThresholdShares(); #mock before that.
+ * This canister has no vetKD or threshold-signing implementation: share
+ * commitments registered through initializeThresholdShares() are stored after
+ * length checks only. So the status is disabled and #mock whether or not
+ * shares are registered. #production stays in the result type so the Candid
+ * interface (agent.did and the TypeScript IDL) is unchanged.
  */
 public query func getVetKeysStatus() : async {
   enabled : Bool; thresholdSupported : Bool; mode : { #mock; #production };
 } {
-  {
-    enabled           = sharesInitialized;
-    thresholdSupported = true;
-    mode              = if (sharesInitialized) { #production } else { #mock };
-  }
+  { enabled = false; thresholdSupported = false; mode = #mock }
 };
 
 // ==================== Multi-Agent Trade Consensus (Phase 6) ====================
@@ -1195,6 +1176,10 @@ public query func getVetKeysStatus() : async {
 //   3. Heartbeat calls expireStaleConsensusProposals() each round; proposals
 //      older than CONSENSUS_TIMEOUT_NS are automatically cancelled.
 //   4. Only a proposal in #approved state should trigger trade execution.
+//
+// Nothing on-chain or off-chain verifies vote signatures, so castConsensusVote
+// refuses approval votes and no proposal can become #approved by voting.
+// Vetoes, explicit cancellation and timeouts still cancel proposals.
 
 /// 30 seconds in nanoseconds — both agents must vote within this window.
 let CONSENSUS_TIMEOUT_NS : Int = 30 * 1_000_000_000;
@@ -1219,7 +1204,9 @@ public type ConsensusProposal = {
 public type ConsensusVoteRecord = {
   agentId   : Text;
   chain     : Text;
-  /// HMAC-SHA256 hex over "<proposalId>:<nonce>:<agentId>:<approve|veto>"
+  /// Unverified; stored as supplied after a length check. (Meant to be an
+  /// HMAC-SHA256 hex over "<proposalId>:<nonce>:<agentId>:<approve|veto>",
+  /// which nothing checks and no third party could check.)
   signature : Text;
   approve   : Bool;
   votedAt   : Int;
@@ -1279,15 +1266,17 @@ public shared(msg) func proposeConsensus(
 /**
  * Cast an agent vote on a pending consensus proposal.
  *
- * Accepts a vote only if:
+ * Approval votes are refused: the signature is stored as given after a length
+ * check and nothing on-chain or off-chain verifies it, so counting it would
+ * let any authorized caller approve a trade with an arbitrary string. No
+ * proposal can therefore become #approved by voting.
+ *
+ * A veto is recorded and cancels the proposal (cancelling needs no trust), but
+ * only if:
  *   1. The proposal exists and is still #pending.
  *   2. The echoed nonce matches the stored nonce (anti-replay).
  *   3. The agentId has not already voted (no double-vote).
- *   4. The signature is at least 64 hex characters (basic sanity check;
- *      cryptographic verification is performed off-chain by the TypeScript layer).
- *
- * If any agent votes #veto the proposal is immediately cancelled.
- * Once 2 approvals are recorded the proposal moves to #approved.
+ *   4. The signature is at least 64 characters (length check only).
  */
 public shared(msg) func castConsensusVote(
   proposalId : Text,
@@ -1299,18 +1288,23 @@ public shared(msg) func castConsensusVote(
 ) : async { #ok : Text; #err : Text } {
   assertWriteAllowed(msg.caller);
 
+  if (approve) {
+    return #err(
+      "Approval votes are not accepted: vote signatures are not verified, " #
+      "so no proposal can be approved"
+    );
+  };
+
   if (Text.size(signature) < 64) {
     return #err("Signature too short — must be at least 64 hex characters");
   };
 
-  var updated = false;
   var result : { #ok : Text; #err : Text } = #err("Proposal not found: " # proposalId);
 
   consensusProposals := Array.map<ConsensusProposal, ConsensusProposal>(
     consensusProposals,
     func(p : ConsensusProposal) : ConsensusProposal {
       if (p.proposalId != proposalId) { return p };
-      updated := true;
 
       // Reject votes on already-resolved proposals.
       switch (p.status) {
@@ -1343,57 +1337,13 @@ public shared(msg) func castConsensusVote(
         agentId   = agentId;
         chain     = chain;
         signature = signature;
-        approve   = approve;
+        approve   = false;
         votedAt   = Time.now();
       };
 
-      let newVotes = Array.append<ConsensusVoteRecord>(p.votes, [newVote]);
-
       // Veto: cancel immediately.
-      if (not approve) {
-        result := #ok("Vote recorded — proposal cancelled (veto by " # agentId # ")");
-        return {
-          proposalId       = p.proposalId;
-          nonce            = p.nonce;
-          tradeDescription = p.tradeDescription;
-          pair             = p.pair;
-          direction        = p.direction;
-          quantity         = p.quantity;
-          originChain      = p.originChain;
-          status           = #cancelled;
-          votes            = newVotes;
-          createdAt        = p.createdAt;
-          resolvedAt       = ?Time.now();
-          cancelReason     = ?("veto by agent " # agentId);
-        };
-      };
-
-      // Count approvals.
-      var approvalCount : Nat = 0;
-      for (v in newVotes.vals()) {
-        if (v.approve) { approvalCount += 1 };
-      };
-
-      if (approvalCount >= 2) {
-        result := #ok("Consensus reached — proposal approved");
-        return {
-          proposalId       = p.proposalId;
-          nonce            = p.nonce;
-          tradeDescription = p.tradeDescription;
-          pair             = p.pair;
-          direction        = p.direction;
-          quantity         = p.quantity;
-          originChain      = p.originChain;
-          status           = #approved;
-          votes            = newVotes;
-          createdAt        = p.createdAt;
-          resolvedAt       = ?Time.now();
-          cancelReason     = null;
-        };
-      };
-
-      result := #ok("Vote recorded — waiting for remaining approvals");
-      return {
+      result := #ok("Vote recorded — proposal cancelled (veto by " # agentId # ")");
+      {
         proposalId       = p.proposalId;
         nonce            = p.nonce;
         tradeDescription = p.tradeDescription;
@@ -1401,12 +1351,12 @@ public shared(msg) func castConsensusVote(
         direction        = p.direction;
         quantity         = p.quantity;
         originChain      = p.originChain;
-        status           = #pending;
-        votes            = newVotes;
+        status           = #cancelled;
+        votes            = Array.append<ConsensusVoteRecord>(p.votes, [newVote]);
         createdAt        = p.createdAt;
-        resolvedAt       = null;
-        cancelReason     = null;
-      };
+        resolvedAt       = ?Time.now();
+        cancelReason     = ?("veto by agent " # agentId);
+      }
     }
   );
 

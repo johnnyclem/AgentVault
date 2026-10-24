@@ -33,8 +33,8 @@ AgentVault is a complete solution for creating, deploying, and managing AI agent
 - Health monitoring and alerts
 
 ### 🔒 Security
-- Multi-signature approval workflows
-- VetKeys integration for enhanced security
+- Approval workflows with a signer quorum (tracked locally, not cryptographic multisig)
+- Shamir secret sharing for seed phrases (ICP vetKD is not integrated)
 - Encrypted backup and restore
 
 ### 📊 Monitoring & Metrics
@@ -46,7 +46,6 @@ AgentVault is a complete solution for creating, deploying, and managing AI agent
 ### 🗄️ Archival
 - Arweave blockchain integration
 - Local backup management
-- Backup verification and restoration
 
 ## Documentation
 

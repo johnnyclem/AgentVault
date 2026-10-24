@@ -10,6 +10,7 @@ import type {
   TransactionRequest,
   SignedTransaction,
 } from './types.js';
+import { looksLikeChainSignature } from './chain-signature.js';
 
 /**
  * Transaction action type
@@ -36,7 +37,8 @@ export interface QueuedTransaction {
     action: TransactionAction;
     parameters: [string, string][];
     priority: TransactionPriority;
-    threshold?: number;
+    /** Candid `opt nat` as the agent decodes it: [] (no threshold) or [n] */
+    threshold: [] | [bigint];
   };
   status: TransactionStatus;
   result?: string;
@@ -46,6 +48,26 @@ export interface QueuedTransaction {
   signedAt?: number;
   completedAt?: number;
   errorMessage?: string;
+}
+
+/**
+ * Read a queued transaction's signing threshold. The canister sends Candid
+ * `opt nat`, which the agent decodes as [] or [bigint]; no threshold means 1.
+ * Returns null for anything else, so the caller fails the transaction rather
+ * than guess.
+ */
+export function readThreshold(raw: unknown): number | null {
+  if (raw === undefined || (Array.isArray(raw) && raw.length === 0)) {
+    return 1;
+  }
+  const value = Array.isArray(raw) && raw.length === 1 ? raw[0] : raw;
+  if (typeof value === 'bigint' && value >= 0n) {
+    return Number(value);
+  }
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 0) {
+    return value;
+  }
+  return null;
 }
 
 /**
@@ -140,7 +162,10 @@ export class TransactionQueueProcessor {
 
       const signed = await signCallback(wallet, action);
 
-      if (!signed) {
+      // A transaction is only recorded as signed when the provider returned
+      // something shaped like a chain signature; an empty value, a bare "0x"
+      // or a short placeholder is a failed signing, never a signed one.
+      if (!signed || !looksLikeChainSignature(signed.signature)) {
         await this.markFailed(tx.id, 'Signing failed');
         return {
           transactionId: tx.id,
@@ -150,7 +175,7 @@ export class TransactionQueueProcessor {
         };
       }
 
-      await this.markSigned(tx.id, signed.signature || '');
+      await this.markSigned(tx.id, signed.signature);
 
       return {
         transactionId: tx.id,

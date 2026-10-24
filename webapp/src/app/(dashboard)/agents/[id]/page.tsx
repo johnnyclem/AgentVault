@@ -7,7 +7,6 @@ import {
   AlertCircle,
   Activity,
   Archive,
-  CheckCircle2,
   CircleAlert,
   KeyRound,
   Loader2,
@@ -15,6 +14,7 @@ import {
   RefreshCw,
   Settings,
   StopCircle,
+  Upload,
   XCircle,
 } from 'lucide-react'
 import { StatusBadge } from '@/components/common/StatusBadge'
@@ -23,6 +23,7 @@ import { useDeployments } from '@/hooks/useDeployments'
 import { useAgent } from '@/hooks/useAgent'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { apiClient } from '@/lib/api-client'
+import { describeArchiveOutcome, evidenceHref } from '@/lib/proof/archive-outcome'
 import { formatBytes, formatCycles, formatTimestamp } from '@/lib/utils'
 
 type ArchiveProfile = 'claude-code' | 'openclaw' | 'goose' | 'opencode' | 'other'
@@ -146,7 +147,6 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
   const [archiveLoading, setArchiveLoading] = useState(false)
   const [archiveError, setArchiveError] = useState<string | null>(null)
   const [archiveReceipt, setArchiveReceipt] = useState<ArchiveReceipt | null>(null)
-  const [archiveDoneMessage, setArchiveDoneMessage] = useState<string | null>(null)
 
   // Built explicitly rather than via Object.fromEntries + cast: the entries
   // form produces an index signature that does not overlap ArtifactPaths, and
@@ -238,7 +238,6 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
     setWalletError(null)
     setArchiveError(null)
     setArchiveReceipt(null)
-    setArchiveDoneMessage(null)
     setIsCreatingWallet(null)
     setIcpSeedPhrase('')
     setIcpPrivateKey('')
@@ -416,7 +415,6 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
       }
 
       setArchiveReceipt(response.data)
-      setArchiveDoneMessage('Archive + deployment completed successfully')
       setArchiveStep('receipt')
       setTimeout(() => refetchAgent(), 200)
       setTimeout(() => refetchDeployments(), 200)
@@ -458,6 +456,8 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
       </div>
     )
   }
+
+  const archiveOutcome = archiveReceipt ? describeArchiveOutcome(archiveReceipt.arweave) : null
 
   return (
     <div className="page">
@@ -1046,6 +1046,11 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                     <p><span className="text-muted-foreground">ICP Wallet:</span> {selectedIcpWallet?.address || 'Not selected'}</p>
                     <p><span className="text-muted-foreground">Arweave Wallet:</span> {selectedArweaveWallet?.address || 'Not selected'}</p>
                   </div>
+                  <p className="text-sm text-muted-foreground">
+                    Running this publishes a deployment receipt to Arweave, publicly and permanently: the agent&apos;s
+                    id and name, its canister id and network, and each artifact&apos;s file name, size and SHA-256. No file
+                    contents or local paths are included, and the upload shows the address of the paying Arweave wallet.
+                  </p>
                   <div className="flex gap-2 justify-end">
                     <button
                       onClick={runArchive}
@@ -1071,12 +1076,17 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                 </div>
               )}
 
-              {archiveStep === 'receipt' && archiveReceipt && (
+              {archiveStep === 'receipt' && archiveReceipt && archiveOutcome && (
                 <div className="space-y-4">
+                  {/* The run ends when the gateway accepts the upload, before it is mined, so no success icon. */}
                   <div className="text-center">
-                    <CheckCircle2 className="w-10 h-10 text-success mx-auto mb-2" />
-                    <p className="font-semibold">Archive Completed</p>
-                    {archiveDoneMessage && <p className="text-sm text-muted-foreground mt-1">{archiveDoneMessage}</p>}
+                    {archiveOutcome.submitted ? (
+                      <Upload className="w-10 h-10 text-muted-foreground mx-auto mb-2" aria-hidden="true" />
+                    ) : (
+                      <CircleAlert className="w-10 h-10 text-warning mx-auto mb-2" aria-hidden="true" />
+                    )}
+                    <p className="font-semibold">{archiveOutcome.title}</p>
+                    <p className="text-sm text-muted-foreground mt-1">{archiveOutcome.detail}</p>
                   </div>
                   <div className="grid gap-2 text-sm">
                     <p><span className="text-muted-foreground">Archive ID:</span> {archiveReceipt.archiveId}</p>
@@ -1100,6 +1110,11 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                         >
                           View Arweave Receipt
                         </a>
+                      ) : null}
+                      {archiveOutcome.submitted ? (
+                        <Link href={evidenceHref(agent.id)} className="chip">
+                          Check it on the Evidence page
+                        </Link>
                       ) : null}
                       <a
                         href={`/archives#${archiveReceipt.archiveId}`}

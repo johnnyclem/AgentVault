@@ -230,6 +230,38 @@ export interface ImportResult {
   warnings: string[];
 }
 
+/** The fields of a backup manifest that are safe to publish on Arweave. */
+export interface PublicBackupManifest {
+  version: string;
+  agentName: string;
+  created: Date;
+  canisterId?: string;
+  components: string[];
+  checksums: Record<string, string>;
+  size: number;
+  encryptedZipSha256: string;
+}
+
+/**
+ * An Arweave upload is public and permanent, so the manifest anchored there is
+ * an explicit allow-list rather than the local manifest with fields removed:
+ * the agent config, the captured canister state (memory, tasks, context), the
+ * local file path and the wrapped key never leave this machine, and a field
+ * added to BackupManifest later stays private until it is added here.
+ */
+export function publicBackupManifest(manifest: BackupManifest, encryptedZipSha256: string): PublicBackupManifest {
+  return {
+    version: manifest.version,
+    agentName: manifest.agentName,
+    created: manifest.created,
+    ...(manifest.canisterId ? { canisterId: manifest.canisterId } : {}),
+    components: [...manifest.components],
+    checksums: { ...manifest.checksums },
+    size: manifest.size,
+    encryptedZipSha256,
+  };
+}
+
 async function uploadManifestToArweave(manifest: BackupManifest, encryptedZipSha256: string, jwkPath?: string): Promise<string | undefined> {
   if (!jwkPath) {
     return undefined;
@@ -239,7 +271,7 @@ async function uploadManifestToArweave(manifest: BackupManifest, encryptedZipSha
   const jwk = JSON.parse(raw) as JWKInterface;
   const client = new ArweaveClient();
 
-  const result = await client.uploadJSON({ manifest, encryptedZipSha256 }, jwk, {
+  const result = await client.uploadJSON({ manifest: publicBackupManifest(manifest, encryptedZipSha256), encryptedZipSha256 }, jwk, {
     tags: {
       'App-Name': 'AgentVault',
       'Backup-Type': 'full-state-manifest',

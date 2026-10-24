@@ -37,7 +37,8 @@ describe('SmallChatBridge', () => {
       expect(selectors).toContain('bootstrap');
       expect(selectors).toContain('queueTransaction');
       expect(selectors).toContain('storeEncryptedSecret');
-      expect(selectors).toContain('deriveVetKeysKey');
+      // Not implemented in the canister, and it takes a plaintext seed phrase
+      expect(selectors).not.toContain('deriveVetKeysKey');
       expect(selectors).toContain('registerWallet');
     });
   });

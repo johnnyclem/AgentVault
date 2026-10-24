@@ -145,9 +145,12 @@ type StackLayer = {
  * before adding a name here.
  *
  * The dashboard's archive workflow (webapp/src/lib/server/archive-workflow.ts)
- * deploys the packaged agent code and uploads a JSON receipt (canister, file
- * paths, backup manifest) to Arweave. It does not copy the agent's config,
- * skill or memory files anywhere, so the Agents card must not say it does.
+ * deploys the packaged agent code and uploads a JSON deployment receipt to
+ * Arweave: the agent's id and name, canister id, network and time, and for
+ * each artifact its kind, file name and (except for directories and the
+ * credential file) size and SHA-256. No paths, no file contents. It does not
+ * copy the agent's config, skill or memory files anywhere, so the Agents card
+ * must not say it does.
  */
 const stackLayers: StackLayer[] = [
   {

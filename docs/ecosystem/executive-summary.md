@@ -89,8 +89,8 @@ AgentVault's side it is **one pattern borrowed (smallchat), one client for the c
 - **Cost & context efficiency:** the Polytician enricher's truncate-at-N-characters step is the weakest
   link in AgentVault's orchestration pipeline for any long-running session. Short-hand exists
   specifically to solve this.
-- **Auditability:** AgentVault already cares deeply about audit trails (VetKeys signing, on-chain
-  commits, policy engine logging). Stenographer's decision supersession and its hash-chained truth
+- **Auditability:** AgentVault already cares deeply about audit trails (on-chain commits, policy
+  engine logging). Stenographer's decision supersession and its hash-chained truth
   ledger are a natural fit for "why did the agent decide X" queries that MemoryRepo doesn't answer today.
 - **Duplication risk:** Building deeper conversational memory into AgentVault from scratch would
   re-invent what Stenographer already does. The cheaper path is integration, not reimplementation

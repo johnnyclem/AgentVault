@@ -1,24 +1,27 @@
 /**
- * ICP On-Chain Audit Log — AgentVault MFA Layer 5
+ * ICP audit submission for MFA events — AgentVault MFA Layer 5
  *
- * Writes every MFA approval event to ICP stable memory so the audit trail
- * is tamper-evident, globally verifiable, and independent of the local filesystem.
+ * Intended to store every MFA approval event on the agent canister. On-chain
+ * submission does not work yet: submitIcpAuditEntry calls a canister method,
+ * `storeMfaAuditEntry`, that canister/agent.mo does not have (its MFA write
+ * method is `logMfaApproval`, which takes a different record and refuses
+ * anonymous callers), and it calls it without an identity. Every submission
+ * therefore fails and the entry stays in a local YAML retry queue
+ * (~/.agentvault/mfa/icp-audit-queue.yaml), which `flushIcpAuditQueue()`
+ * retries. Nothing here makes the audit trail tamper-evident.
  *
- * Design
- * ──────
- *  • Each audit entry is serialised to JSON and submitted via an update call to
- *    the AgentVault canister's `storeMfaAuditEntry` method.
- *  • The canister appends entries to a stable Vec (survives upgrades) and enforces:
- *      – Append-only: no deletions, no overwrites.
- *      – Caller-checked: only authorised principals can write.
- *      – nonce-ordered: entries with nonce N+1 must arrive after N.
- *  • Reads use `getMfaAuditLog(branchId)` — a query call, free and fast.
- *  • If the ICP node is unreachable, entries are buffered in a local YAML queue
- *    and replayed the next time `flushIcpAuditQueue()` is called.
+ * What it does
+ * ────────────
+ *  • submitIcpAuditEntry: tries the update call; on any failure (including
+ *    no canister configured) queues the entry locally and returns the reason.
+ *  • flushIcpAuditQueue: retries queued entries; an entry is dropped after 10
+ *    failed attempts. Returns how many were stored and the last failure reason.
+ *  • queryIcpAuditLog: reads `getMfaAuditLog(branchId)` (a query the canister
+ *    does have); returns [] on any error.
  *
- * Canister interface (Candid excerpt — see canister/agent.mo)
- * ────────────────────────────────────────────────────────────
- *   storeMfaAuditEntry : (MfaAuditEntryInput) -> (variant { ok : nat; err : text })
+ * Canister interface this module assumes
+ * ──────────────────────────────────────
+ *   storeMfaAuditEntry : (MfaAuditEntryInput) -> (variant { ok : nat; err : text })   (missing)
  *   getMfaAuditLog     : (branchId : text)    -> (vec MfaAuditEntry)          query
  *
  * Setup
@@ -234,17 +237,21 @@ export async function queryIcpAuditLog(branchId: string): Promise<MfaAuditEntry[
 /**
  * Retry queued audit entries that previously failed to reach ICP.
  *
- * Call this periodically (e.g. on CLI startup or via `agentvault repo audit --flush`).
- * Returns the number of entries successfully flushed.
+ * Called by `agentvault repo flush-queue`. Returns the number of entries
+ * stored on the canister and, when any submission failed, the last failure
+ * reason (so callers can report the actual error rather than guess).
  */
-export async function flushIcpAuditQueue(): Promise<number> {
+export async function flushIcpAuditQueue(): Promise<{ flushed: number; lastError?: string }> {
   const queue = loadQueue();
-  if (queue.length === 0) return 0;
+  if (queue.length === 0) return { flushed: 0 };
 
   const config = getIcpConfig();
-  if (!config) return 0;
+  if (!config) {
+    return { flushed: 0, lastError: 'no canister configured (set AGENTVAULT_CANISTER_ID)' };
+  }
 
   let flushed = 0;
+  let lastError: string | undefined;
   const remaining: QueuedEntry[] = [];
 
   for (const item of queue) {
@@ -253,6 +260,7 @@ export async function flushIcpAuditQueue(): Promise<number> {
     if (result.ok) {
       flushed += 1;
     } else {
+      lastError = result.reason;
       // Keep in queue; cap at 10 attempts to avoid infinite retry
       if (item.attempts < 10) {
         remaining.push(item);
@@ -261,7 +269,7 @@ export async function flushIcpAuditQueue(): Promise<number> {
   }
 
   saveQueue(remaining);
-  return flushed;
+  return { flushed, lastError };
 }
 
 /** Return the number of entries currently in the local retry queue. */

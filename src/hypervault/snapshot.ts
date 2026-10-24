@@ -102,8 +102,16 @@ export interface BuildSnapshotOptions {
 export interface SnapshotVerifyResult {
   valid: boolean;
   checksumsValid: boolean;
+  /** True only when the Merkle root was recomputed from every entry and matched */
   merkleRootValid: boolean;
   signatureValid: boolean;
+  /**
+   * The ed25519 key the manifest signature was checked against: the one
+   * embedded in the bundle. Unless the caller passed expectedPublicKey, a
+   * valid signature shows only that the bundle is internally consistent, not
+   * who signed it.
+   */
+  publicKey: string;
   errors: string[];
 }
 
@@ -421,9 +429,9 @@ export async function verifySnapshot(
     merkleRootValid = computeMerkleRoot(plaintexts) === snapshot.manifest.merkleRoot;
     if (!merkleRootValid) errors.push('Merkle root mismatch');
   } else if (encrypted.size > 0 && !canDecrypt) {
-    // Signature still binds the Merkle root; report it as unverifiable.
-    merkleRootValid = checksumsValid;
-    errors.push('Encrypted entries present and no passphrase supplied; Merkle root only partially verified');
+    // The root cannot be recomputed without the encrypted entries' plaintext,
+    // so it stays unverified (merkleRootValid false).
+    errors.push('Encrypted entries present and no passphrase supplied; Merkle root not verified');
   }
 
   return {
@@ -431,6 +439,7 @@ export async function verifySnapshot(
     checksumsValid,
     merkleRootValid,
     signatureValid,
+    publicKey: snapshot.publicKey,
     errors,
   };
 }

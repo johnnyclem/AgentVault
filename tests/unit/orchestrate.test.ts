@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { existsSync, readFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { ClaudeOrchestrator } from '../../src/orchestration/claude.js';
@@ -290,9 +290,164 @@ describe('ClaudeOrchestrator – failure path (no credentials)', () => {
       expect(result.auditLogId).toBeDefined();
       expect(existsSync(result.auditLogId!)).toBe(true);
       const log = JSON.parse(readFileSync(result.auditLogId!, 'utf-8')) as Record<string, unknown>;
-      expect(log['outcome']).toBe('rolled_back');
+      // Nothing is rolled back, so the log must not say it was
+      expect(log['outcome']).toBe('failure');
     }
   });
+});
+
+// ---------------------------------------------------------------------------
+// ClaudeOrchestrator – no signing claims (nothing signs or commits the state)
+// ---------------------------------------------------------------------------
+
+describe('ClaudeOrchestrator – does not claim the state is signed', () => {
+  const canisterId = 'rrkah-fqaaa-aaaaa-aaaaq-cai';
+  let tmpDir: string;
+
+  beforeEach(() => {
+    // No package.json, so the orchestrator skips the npm test run.
+    tmpDir = mkdtempSync(join(tmpdir(), 'agentvault_unsigned_'));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      id: 'msg_1',
+      content: [{ type: 'text', text: '{"done":true,"summary":"nothing to change"}' }],
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 1, output_tokens: 1 },
+    }), { status: 200 })));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    removeTempProject(tmpDir);
+  });
+
+  it('does not tell the model its changes will be signed', async () => {
+    const result = await new ClaudeOrchestrator(tmpDir).orchestrate({
+      task: 'Prompt wording check',
+      canisterId,
+      dryRun: true,
+    });
+
+    expect(result.prompt?.system).toContain('recorded in a local audit log');
+    expect(result.prompt?.system).toContain('`npm test` runs if the project has a package.json');
+    expect(result.prompt?.system).not.toMatch(/VetKeys|signed|immutable/);
+  });
+
+  it('reports the state as unsigned and not written to the canister', async () => {
+    const messages: string[] = [];
+    const result = await new ClaudeOrchestrator(tmpDir).orchestrate({
+      task: 'Progress wording check',
+      canisterId,
+      apiKey: 'test-key',
+      onProgress: (msg) => messages.push(msg),
+    });
+
+    expect(result.success).toBe(true);
+    expect(messages.some((m) => m.startsWith('State snapshot hash:') && m.includes('not signed'))).toBe(true);
+    expect(messages).toContain(
+      `State snapshot not written to canister ${canisterId}: canister state commits are not implemented`,
+    );
+    expect(messages.some((m) => /signed with|state signed|committed/i.test(m))).toBe(false);
+  });
+
+  it('reports tests as skipped, not passed, when the project has no package.json', async () => {
+    const messages: string[] = [];
+    const result = await new ClaudeOrchestrator(tmpDir).orchestrate({
+      task: 'No package.json',
+      apiKey: 'test-key',
+      onProgress: (msg) => messages.push(msg),
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.testsPassed).toBe(false);
+    expect(result.testsSkipped).toBe(true);
+    expect(messages).toContain('Tests skipped (no package.json)');
+    expect(messages).not.toContain('Tests passed');
+    const log = JSON.parse(readFileSync(result.auditLogId!, 'utf-8')) as Record<string, unknown>;
+    expect(log['testResult']).toBe('skipped');
+  });
+
+  it('lists reviewers without claiming an approval request exists', async () => {
+    const messages: string[] = [];
+    const result = await new ClaudeOrchestrator(tmpDir).orchestrate({
+      task: 'Reviewers',
+      apiKey: 'test-key',
+      requireApproval: true,
+      reviewers: ['alice', 'bob'],
+      onProgress: (msg) => messages.push(msg),
+    });
+
+    expect(result.success).toBe(true);
+    expect(result).not.toHaveProperty('approvalRequestId');
+    expect(messages).toContain(
+      'Reviewers listed: alice, bob. Approval gating is not implemented: no approval request was created and nothing waits for one.',
+    );
+    expect(messages.some((m) => /approval request created|approval required/i.test(m))).toBe(false);
+    const log = JSON.parse(readFileSync(result.auditLogId!, 'utf-8')) as Record<string, unknown>;
+    expect(log['reviewers']).toEqual(['alice', 'bob']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ClaudeOrchestrator – test outcomes (npm test really runs)
+// ---------------------------------------------------------------------------
+
+describe('ClaudeOrchestrator – test outcomes', () => {
+  let tmpDir: string;
+
+  function projectWithTestScript(script: string): string {
+    const dir = mkdtempSync(join(tmpdir(), 'agentvault_tests_'));
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'p', scripts: { test: script } }));
+    return dir;
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      id: 'msg_1',
+      content: [{ type: 'text', text: '{"done":true,"summary":"done"}' }],
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 1, output_tokens: 1 },
+    }), { status: 200 })));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    removeTempProject(tmpDir);
+  });
+
+  it('reports passed only when npm test ran and exited 0', async () => {
+    tmpDir = projectWithTestScript('exit 0');
+    const messages: string[] = [];
+    const result = await new ClaudeOrchestrator(tmpDir).orchestrate({
+      task: 'Passing tests',
+      apiKey: 'test-key',
+      onProgress: (msg) => messages.push(msg),
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.testsPassed).toBe(true);
+    expect(result.testsSkipped).toBe(false);
+    expect(messages).toContain('Tests passed');
+    const log = JSON.parse(readFileSync(result.auditLogId!, 'utf-8')) as Record<string, unknown>;
+    expect(log['testResult']).toBe('passed');
+  }, 60_000);
+
+  it('says failing changes were left in place instead of claiming a rollback', async () => {
+    tmpDir = projectWithTestScript('exit 1');
+    const messages: string[] = [];
+    const result = await new ClaudeOrchestrator(tmpDir).orchestrate({
+      task: 'Failing tests',
+      apiKey: 'test-key',
+      onProgress: (msg) => messages.push(msg),
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.testsPassed).toBe(false);
+    expect(messages).toContain('Tests failed – any changes were left in the working tree (nothing was rolled back)');
+    expect(messages.some((m) => /rolling back/i.test(m))).toBe(false);
+    const log = JSON.parse(readFileSync(result.auditLogId!, 'utf-8')) as Record<string, unknown>;
+    expect(log['testResult']).toBe('failed');
+    expect(log['outcome']).toBe('failure');
+  }, 60_000);
 });
 
 // ---------------------------------------------------------------------------

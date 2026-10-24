@@ -1,16 +1,17 @@
 /**
  * Claude Code Orchestration Module
  *
- * Integrates Anthropic's Claude Code (agentic coding tool) with AgentVault
- * canisters, providing governed, auditable, and reconstructible AI-assisted
- * development sessions.
+ * Integrates Anthropic's Claude Code (agentic coding tool) with AgentVault,
+ * providing governed AI-assisted development sessions with a local audit log.
  *
  * Flow:
- *   1. Export canister state + .agentvault/conventions/
+ *   1. Snapshot the working tree (file hashes) and load .agentvault/conventions/
  *   2. Launch Claude Code (API or local CLI fallback)
  *   3. Feed context via system prompt / MCP project rules
- *   4. On success: run CI, sign with VetKeys, commit new state version
- *   5. On failure: roll back to previous state with full trace
+ *   4. On success: run `npm test` (when there is a package.json) and write the
+ *      audit log (the new state is not signed and not written to the canister)
+ *   5. On failure: record the failure in the audit log (changes are not
+ *      rolled back)
  *
  * References: PRD-001
  */
@@ -88,9 +89,11 @@ export interface OrchestrationResult {
   stateSnapshotBefore?: string;
   stateSnapshotAfter?: string;
   filesChanged: string[];
+  /** True only when `npm test` ran and passed */
   testsPassed: boolean;
+  /** True when no test ran because the project has no package.json */
+  testsSkipped?: boolean;
   auditLogId?: string;
-  approvalRequestId?: string;
   error?: string;
   durationMs: number;
   /** SmallChat session report (present when SmallChat is enabled) */
@@ -122,7 +125,7 @@ export interface AuditEntry {
   stateSnapshotAfter?: string;
   filesChanged: string[];
   testResult: 'passed' | 'failed' | 'skipped';
-  outcome: 'success' | 'failure' | 'rolled_back' | 'dry_run';
+  outcome: 'success' | 'failure' | 'dry_run';
   durationMs: number;
   claudeModel: string;
   reviewers?: string[];
@@ -172,8 +175,9 @@ function loadConventions(projectRoot: string): string {
 }
 
 /**
- * Snapshot the current working tree (file list + hashes) so we can detect
- * what changed and, if needed, reconstruct state after a failed run.
+ * Snapshot the current working tree (file list + short content hashes) so we
+ * can detect which files changed. It holds no file contents, so it cannot be
+ * used to restore anything.
  */
 function snapshotWorkingTree(projectRoot: string): string {
   const snapshot: Record<string, string> = {};
@@ -256,7 +260,7 @@ function buildSystemPrompt(task: string, conventions: string, canisterId?: strin
     : '';
 
   const canisterSection = canisterId
-    ? `\n\n## Canister Context\n\nYou are operating inside an AgentVault session bound to canister \`${canisterId}\`. All changes you produce will be validated, signed with VetKeys, and committed as a new immutable state snapshot. Do not introduce any behaviour that bypasses the canister's audit trail.`
+    ? `\n\n## Canister Context\n\nYou are operating inside an AgentVault session bound to canister \`${canisterId}\`. After you finish, \`npm test\` runs if the project has a package.json, and the session is recorded in a local audit log.`
     : '';
 
   return `You are Claude Code, an agentic software engineer operating inside an \
@@ -435,17 +439,16 @@ async function runClaudeCLI(
 // ---------------------------------------------------------------------------
 
 /**
- * Run project tests and return whether they passed.
- * Prefers `npm test` if package.json is present, else returns true (skipped).
+ * Run the project's tests with `npm test`. Without a package.json no test
+ * runs, and the result is 'skipped', never 'passed'.
  */
 async function runTests(
   projectRoot: string,
   onProgress?: (msg: string) => void
-): Promise<boolean> {
+): Promise<'passed' | 'failed' | 'skipped'> {
   const pkgPath = path.join(projectRoot, 'package.json');
   if (!fs.existsSync(pkgPath)) {
-    emit(onProgress, 'No package.json found – skipping test run');
-    return true;
+    return 'skipped';
   }
 
   emit(onProgress, 'Running tests...');
@@ -454,27 +457,10 @@ async function runTests(
       cwd: projectRoot,
       timeout: 5 * 60 * 1000, // 5 minutes max for tests
     });
-    return true;
+    return 'passed';
   } catch {
-    return false;
+    return 'failed';
   }
-}
-
-// ---------------------------------------------------------------------------
-// VetKeys signing stub
-// ---------------------------------------------------------------------------
-
-/**
- * Sign a state snapshot hash using VetKeys threshold cryptography.
- * Returns a hex-encoded signature commitment.
- *
- * When a real VetKeys canister is configured this should use the full
- * VetKeysImplementation.deriveThresholdKey() flow.  For now we produce a
- * deterministic HMAC-SHA256 commitment keyed off the canister ID.
- */
-function signStateSnapshot(snapshotHash: string, canisterId?: string): string {
-  const key = canisterId ?? 'local';
-  return crypto.createHmac('sha256', key).update(snapshotHash).digest('hex');
 }
 
 // ---------------------------------------------------------------------------
@@ -706,7 +692,7 @@ export class ClaudeOrchestrator {
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
       emit(onProgress, `Claude Code session failed: ${error}`);
-      emit(onProgress, 'Rolling back to previous state...');
+      emit(onProgress, 'Claude Code session failed; nothing was rolled back');
 
       const entry: AuditEntry = {
         sessionId,
@@ -717,7 +703,7 @@ export class ClaudeOrchestrator {
         stateSnapshotBefore,
         filesChanged: [],
         testResult: 'skipped',
-        outcome: 'rolled_back',
+        outcome: 'failure',
         durationMs: Date.now() - startTime,
         claudeModel: model,
         reviewers: options.reviewers,
@@ -760,10 +746,10 @@ export class ClaudeOrchestrator {
     // -----------------------------------------------------------------------
     // 7. Run tests / CI
     // -----------------------------------------------------------------------
-    const testsPassed = await runTests(this.projectRoot, onProgress);
+    const testResult = await runTests(this.projectRoot, onProgress);
 
-    if (!testsPassed) {
-      emit(onProgress, 'Tests failed – rolling back to previous state');
+    if (testResult === 'failed') {
+      emit(onProgress, 'Tests failed – any changes were left in the working tree (nothing was rolled back)');
 
       const entry: AuditEntry = {
         sessionId,
@@ -775,7 +761,7 @@ export class ClaudeOrchestrator {
         stateSnapshotAfter,
         filesChanged,
         testResult: 'failed',
-        outcome: 'rolled_back',
+        outcome: 'failure',
         durationMs: Date.now() - startTime,
         claudeModel: model,
         reviewers: options.reviewers,
@@ -797,35 +783,34 @@ export class ClaudeOrchestrator {
       };
     }
 
-    emit(onProgress, 'Tests passed');
+    emit(onProgress, testResult === 'passed' ? 'Tests passed' : 'Tests skipped (no package.json)');
 
     // -----------------------------------------------------------------------
-    // 8. Sign output with VetKeys and create new canister state version
+    // 8. Report the new state's hash. Nothing signs it (VetKeys signing is not
+    //    implemented) and nothing writes it to the canister, so the progress
+    //    output says so instead of reporting a signature or a commit.
     // -----------------------------------------------------------------------
     const snapshotHash = crypto
       .createHash('sha256')
       .update(stateSnapshotAfter)
       .digest('hex');
 
-    const vetKeySignature = signStateSnapshot(snapshotHash, options.canisterId);
-    emit(onProgress, `State signed with VetKeys: ${vetKeySignature.slice(0, 16)}...`);
+    emit(onProgress, `State snapshot hash: ${snapshotHash.slice(0, 16)}... (not signed; VetKeys signing is not implemented)`);
 
     if (options.canisterId) {
-      emit(onProgress, `Committing new state snapshot to canister ${options.canisterId}...`);
-      // In a production implementation this would call the canister actor to
-      // store the new state version via createICPClient / callAgentMethod.
-      emit(onProgress, 'State snapshot committed (simulated)');
+      emit(onProgress, `State snapshot not written to canister ${options.canisterId}: canister state commits are not implemented`);
     }
 
     // -----------------------------------------------------------------------
-    // 9. Approval workflow (optional)
+    // 9. Reviewers (optional). They are recorded in the audit log only: no
+    //    approval request is created and nothing waits for one.
     // -----------------------------------------------------------------------
-    let approvalRequestId: string | undefined;
     if (options.requireApproval && (options.reviewers?.length ?? 0) > 0) {
-      approvalRequestId = `approval_${sessionId}`;
-      emit(onProgress, `Approval required from: ${(options.reviewers ?? []).join(', ')}`);
-      emit(onProgress, `Approval request created: ${approvalRequestId}`);
-      // In production this delegates to the existing approve command / multi-sig module.
+      emit(
+        onProgress,
+        `Reviewers listed: ${(options.reviewers ?? []).join(', ')}. Approval gating is not implemented: ` +
+          'no approval request was created and nothing waits for one.'
+      );
     }
 
     // -----------------------------------------------------------------------
@@ -840,7 +825,7 @@ export class ClaudeOrchestrator {
       stateSnapshotBefore,
       stateSnapshotAfter,
       filesChanged,
-      testResult: 'passed',
+      testResult,
       outcome: 'success',
       durationMs: Date.now() - startTime,
       claudeModel: model,
@@ -889,9 +874,9 @@ export class ClaudeOrchestrator {
       stateSnapshotBefore,
       stateSnapshotAfter,
       filesChanged,
-      testsPassed: true,
+      testsPassed: testResult === 'passed',
+      testsSkipped: testResult === 'skipped',
       auditLogId,
-      approvalRequestId,
       durationMs: Date.now() - startTime,
       smallChat: smallChatReport.enabled ? smallChatReport : undefined,
       semanticMemory,

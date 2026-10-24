@@ -11,10 +11,10 @@
  *   5. Parameter sanitization — validate against Candid schemas
  *   6. Audit trail — log every dispatch decision
  *
- * Integrates with existing AgentVault security modules:
- *   - src/security/multisig.ts — approval workflows
+ * Related AgentVault security modules (this file does not call them):
+ *   - src/security/multisig.ts — local approval tracking
  *   - src/security/mfa-approval.ts — TOTP/WebAuthn MFA
- *   - src/security/icp-audit.ts — on-chain audit logging
+ *   - src/security/icp-audit.ts — audit submission (on-chain storage does not work yet)
  */
 
 import * as crypto from 'node:crypto';

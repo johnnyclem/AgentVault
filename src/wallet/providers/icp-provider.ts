@@ -2,10 +2,9 @@
  * ICP Wallet Provider
  *
  * Provider for ICP wallet operations in CLI flows.
- * Supports balance checks and transaction signing payloads.
+ * Supports balance checks; signing and sending transactions are not implemented.
  */
 
-import { createHash, createHmac } from 'node:crypto';
 import type {
   Balance,
   Transaction,
@@ -61,20 +60,15 @@ export class IcpProvider extends BaseWalletProvider {
     throw new Error('Sending ICP transactions is not supported by this wallet provider yet');
   }
 
+  /**
+   * Not implemented: this provider has no ICP transaction signer, so it
+   * throws rather than return something that is not a chain signature.
+   */
   async signTransaction(
-    tx: any,
-    privateKey: string
+    _tx: any,
+    _privateKey: string
   ): Promise<SignedTransaction> {
-    const payload = JSON.stringify(tx);
-    const signature = createHmac('sha256', privateKey).update(payload).digest('hex');
-    const txHash = createHash('sha256').update(signature).digest('hex');
-
-    return {
-      txHash,
-      signedTx: payload,
-      signature,
-      request: tx as TransactionRequest,
-    };
+    throw new Error('Signing ICP transactions is not implemented by this wallet provider');
   }
 
   async getTransactionHistory(_address: string): Promise<Transaction[]> {

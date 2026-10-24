@@ -1,169 +1,91 @@
 'use client'
 
-import { use, useEffect, useState } from 'react'
+import { use } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, RefreshCw, ShieldCheck, Clock } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
-import { ComplianceBadge } from '@/components/proof/ComplianceBadge'
-import { ComplianceScoreCard } from '@/components/proof/ComplianceScoreCard'
-import { TestCoverageCard } from '@/components/proof/TestCoverageCard'
-import { VetKeyChain } from '@/components/proof/VetKeyChain'
-import { ArweaveAnchorCard } from '@/components/proof/ArweaveAnchorCard'
-import { ShareProofButton } from '@/components/proof/ShareProofButton'
+import { ArweaveReceiptCard } from '@/components/proof/ArweaveReceiptCard'
 import { useProof } from '@/hooks/useProof'
 
-export default function VaultProofPage({ params }: { params: Promise<{ id: string }> }) {
+/*
+ * An agent's evidence: its Arweave receipts, each checked in the browser.
+ * The URL keeps its old /proof name because links to it already exist.
+ */
+export default function EvidencePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
-  const { proof, isLoading, error, lastRefreshed, refetch, shareProof } = useProof(id)
-  const [pulseRefresh, setPulseRefresh] = useState(false)
-
-  // Flash the refresh icon on each update
-  useEffect(() => {
-    if (lastRefreshed) {
-      setPulseRefresh(true)
-      const t = setTimeout(() => setPulseRefresh(false), 800)
-      return () => clearTimeout(t)
-    }
-  }, [lastRefreshed])
-
-  if (isLoading && !proof) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="flex flex-col items-center gap-3 text-muted-foreground">
-          <LoadingSpinner size="lg" />
-          <p className="text-sm">Loading compliance proof…</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (error && !proof) {
-    return (
-      <div className="page">
-        <div className="space-y-2">
-          <BackToProofs />
-          <h1 className="page-title">Proof not available</h1>
-        </div>
-        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {error.message}
-        </div>
-      </div>
-    )
-  }
+  const { evidence, isLoading, error, refetch } = useProof(id)
+  const agentHref = `/agents/${encodeURIComponent(id)}`
 
   return (
-    <div className="page print:p-4 print:space-y-4">
-      {/* Header */}
+    <div className="page max-w-3xl">
       <div className="space-y-2">
-        <BackToProofs />
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="w-5 h-5 text-primary" />
-              <h1 className="page-title">Proof of Compliance</h1>
-            </div>
-            {proof && (
-              <p className="text-sm text-muted-foreground">
-                <span className="font-medium text-foreground">{proof.agentName}</span>
-                {proof.taskDescription && (
-                  <> · {proof.taskDescription}</>
-                )}
-              </p>
-            )}
-            {proof && (
-              <div className="pt-1">
-                <ComplianceBadge compliance={proof.compliance} size="sm" />
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2 print:hidden">
-            {/* Real-time refresh indicator */}
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Clock className="w-3.5 h-3.5" />
-              {lastRefreshed
-                ? `Updated ${lastRefreshed.toLocaleTimeString()}`
-                : 'Waiting for first update…'}
-            </div>
-            <button
-              type="button"
-              onClick={refetch}
-              disabled={isLoading}
-              className="p-2 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground disabled:opacity-50"
-              title="Refresh proof"
-            >
-              <RefreshCw
-                className={`w-4 h-4 transition-transform ${pulseRefresh ? 'rotate-180' : ''} ${isLoading ? 'animate-spin' : ''}`}
-              />
-            </button>
-            {proof && (
-              <ShareProofButton onShare={shareProof} vaultId={id} />
-            )}
-          </div>
+        <BackToEvidence />
+        <div className="space-y-1">
+          <h1 className="page-title">Evidence</h1>
+          <p className="page-subtitle">{evidence?.agentName ?? id}</p>
         </div>
       </div>
 
-      {/* Print-only metadata */}
-      {proof && (
-        <div className="hidden print:block text-xs text-muted-foreground border-b border-border pb-3 mb-3">
-          <p>Vault ID: {proof.vaultId} · Agent: {proof.agentId}</p>
-          <p>Commit: {proof.commitHash.slice(0, 12)} · Generated: {new Date(proof.updatedAt).toLocaleString()}</p>
+      {isLoading ? (
+        <div className="flex min-h-[200px] items-center justify-center gap-3 text-sm text-muted-foreground">
+          <LoadingSpinner />
+          Loading evidence…
         </div>
-      )}
+      ) : error?.code === 'AGENT_NOT_FOUND' ? (
+        <p className="surface px-4 py-10 text-center text-sm text-muted-foreground">
+          There is no agent called <code className="font-mono text-foreground">{id}</code>. It may have been removed, or
+          the link may be wrong.
+        </p>
+      ) : error ? (
+        <div
+          className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm"
+          role="alert"
+        >
+          <span className="font-medium text-destructive">Couldn&apos;t load evidence.</span>
+          <span className="min-w-0 break-words text-muted-foreground">{error.message}</span>
+          <button
+            type="button"
+            onClick={refetch}
+            className="ml-auto text-sm font-medium text-foreground underline-offset-4 hover:underline"
+          >
+            Retry
+          </button>
+        </div>
+      ) : evidence && evidence.receipts.length === 0 ? (
+        <p className="surface px-4 py-10 text-center text-sm text-muted-foreground">
+          No Arweave receipts for this agent yet.{' '}
+          <Link href={agentHref} className="font-medium text-foreground underline-offset-4 hover:underline">
+            Archive the agent
+          </Link>{' '}
+          to create one.
+        </p>
+      ) : evidence ? (
+        <div className="space-y-4">
+          {evidence.receipts.map((receipt) => (
+            <ArweaveReceiptCard key={receipt.archiveId} receipt={receipt} />
+          ))}
+        </div>
+      ) : null}
 
-      {proof && (
-        <>
-          {/* Top row: Compliance Score + Coverage */}
-          <div className="grid gap-5 lg:grid-cols-2">
-            <ComplianceScoreCard compliance={proof.compliance} />
-            <TestCoverageCard coverage={proof.coverage} />
-          </div>
-
-          {/* VetKey Chain */}
-          <VetKeyChain signatures={proof.vetKeyChain} />
-
-          {/* Arweave Anchor */}
-          {proof.arweaveAnchor ? (
-            <ArweaveAnchorCard anchor={proof.arweaveAnchor} />
-          ) : (
-            <div className="surface p-5">
-              <h3 className="text-sm font-semibold mb-2">Arweave Anchor</h3>
-              <p className="text-sm text-muted-foreground">
-                Arweave anchoring is optional — no transaction has been submitted for this vault entry yet.
-              </p>
-            </div>
-          )}
-
-          {/* Proof metadata footer */}
-          <div className="surface-muted p-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-muted-foreground">
-            <span>Vault: <code className="font-mono text-foreground">{proof.vaultId}</code></span>
-            <span>Agent: <code className="font-mono text-foreground">{proof.agentId}</code></span>
-            {proof.taskId && (
-              <span>Task: <code className="font-mono text-foreground">{proof.taskId}</code></span>
-            )}
-            <span>Commit: <code className="font-mono text-foreground">{proof.commitHash.slice(0, 12)}</code></span>
-            <span>
-              Proof ID: <code className="font-mono text-foreground">{proof.id}</code>
-            </span>
-            <span>
-              Generated: <span className="text-foreground">{new Date(proof.createdAt).toLocaleString()}</span>
-            </span>
-          </div>
-        </>
+      {/* About a loaded agent's evidence, so not shown while loading, on an error or for an unknown agent. */}
+      {evidence && !isLoading && !error && (
+        <p className="text-xs text-muted-foreground">
+          Not shown: signed actions and test coverage. AgentVault does not record either for an agent yet.
+        </p>
       )}
     </div>
   )
 }
 
-/** Proofs are listed under the Vault's Proofs filter, so that is where "back" goes. */
-function BackToProofs() {
+/** Agents are listed under the Vault's Evidence filter, so that is where "back" goes. */
+function BackToEvidence() {
   return (
     <Link
-      href="/vault?filter=proofs"
-      className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground print:hidden"
+      href="/vault?filter=evidence"
+      className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
     >
-      <ArrowLeft className="w-4 h-4" aria-hidden="true" />
-      Proofs
+      <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+      Evidence
     </Link>
   )
 }

@@ -1,18 +1,15 @@
 /**
- * VetKeys Integration for Threshold Key Derivation
+ * Seed-phrase encryption and secret sharing (called "VetKeys" in the CLI)
  *
- * This module provides VetKeys protocol implementation for threshold key derivation.
- * Supports Shamir's Secret Sharing (SSS) for threshold cryptography.
- *
- * Security Properties:
- * - Threshold signatures prevent single points of failure
- * - Distributed trust model
- * - Combiner-based key reconstruction
- *
- * Protocol Features:
- * - Key derivation using secret sharing
- * - Threshold signature verification
- * - Key reconstruction without revealing secrets
+ * Despite the name, this module does not use the ICP vetKD protocol and
+ * produces no threshold signatures. What it does:
+ * - encryptJSON / decryptJSON: AES-256-GCM or ChaCha20-Poly1305 with a key
+ *   derived from the seed phrase by PBKDF2.
+ * - deriveThresholdKey: splits the seed phrase into t-of-n Shamir shares
+ *   (shamir.ts) and derives a local PBKDF2 master key.
+ * - Canister helpers that store, list and delete encrypted secrets on the
+ *   agent canister and read its VetKeys status (canister/agent.mo always
+ *   reports it disabled and mock).
  *
  * Note: VetKeysClient interface is defined in types.ts.
  * This implementation class avoids the naming conflict.
@@ -333,12 +330,13 @@ export class VetKeysImplementation {
   }
 
   /**
-   * Verify encryption was created by VetKeys
+   * Check that an encrypted container is well-formed
    *
-   * Validates that the encrypted data structure is valid and properly formatted.
+   * A format check only: it does not authenticate the data or show who
+   * encrypted it. decryptJSON performs the authenticated check.
    *
-   * @param encrypted - Encrypted data to verify
-   * @returns True if the encryption structure is valid
+   * @param encrypted - Encrypted data to check
+   * @returns True if the container's fields are present and well-formed
    */
   public async verifyEncryption(encrypted: EncryptedData): Promise<boolean> {
     if (!encrypted) {
@@ -550,44 +548,12 @@ export class VetKeysImplementation {
   }
 
   /**
-   * Verify threshold signature with canister
-   *
-   * IMPORTANT: Requires VetKeys canister to be deployed and connected.
-   * Returns false if canister is not available.
-   *
-   * @param signature - Signature to verify
-   * @param message - Original message
-   * @returns True if signature is valid
-   */
-  public async verifyThresholdSignatureCanister(
-    signature: string,
-    message: string
-  ): Promise<boolean> {
-    if (!this.canisterId) {
-      debugLog('VetKeys canister not configured: cannot verify threshold signature');
-      return false;
-    }
-
-    try {
-      const { createActor } = await import('../canister/actor.js');
-      const actor = createActor(this.canisterId);
-
-      const result = await actor.verifyThresholdSignature(signature, message);
-
-      if ('ok' in result && result.ok === 'verified') {
-        return true;
-      }
-
-      return false;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      debugLog(`Failed to verify threshold signature on canister: ${errorMessage}`);
-      return false;
-    }
-  }
-
-  /**
    * Get VetKeys status from canister
+   *
+   * Without a configured canister this returns the local status (disabled,
+   * mock: nothing in AgentVault implements threshold signing). When a
+   * canister is configured but cannot be asked, it throws rather than return
+   * a status that was never read.
    *
    * @returns VetKeys status information
    */
@@ -599,7 +565,7 @@ export class VetKeysImplementation {
     if (!this.canisterId) {
       return {
         enabled: false,
-        thresholdSupported: true,
+        thresholdSupported: false,
         mode: 'mock',
       };
     }
@@ -628,11 +594,7 @@ export class VetKeysImplementation {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       debugLog(`Failed to get VetKeys status from canister: ${message}`);
-      return {
-        enabled: false,
-        thresholdSupported: true,
-        mode: 'mock',
-      };
+      throw new Error(`Could not read VetKeys status from canister ${this.canisterId}: ${message}`);
     }
   }
 }

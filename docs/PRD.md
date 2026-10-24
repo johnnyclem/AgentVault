@@ -5,11 +5,13 @@
 **Date:** January 31, 2026
 **Status:** Draft
 
+> Planning document. The threshold signatures, cryptographic multi-sig approvals and VetKeys key derivation it describes are not implemented; see [Known Limitations](https://github.com/johnnyclem/agentvault#known-limitations) in the README.
+
 ---
 
 ## 1. Executive Summary
 
-AgentVault is an open-source CLI and canister system that enables true autonomy for local AI agents. It solves the fundamental problem of agent state persistence and execution reliability by migrating from fragile local file storage to immutable, production-grade Internet Computer (ICP) canisters.
+AgentVault is an open-source CLI and canister system that enables true autonomy for local AI agents. It solves the fundamental problem of agent state persistence and execution reliability by migrating from fragile local file storage to durable, production-grade Internet Computer (ICP) canisters.
 
 Core value proposition: **Any user can fully rebuild and resume their agent on a clean OS install using only chain data and a seed phrase—eliminating browser/tab dependency, centralized KMS threats, and fragile off-chain storage.**
 

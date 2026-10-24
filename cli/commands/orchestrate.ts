@@ -1,11 +1,12 @@
 /**
  * Orchestrate command – agentvault orchestrate --claude
  *
- * Turns any AgentVault canister into a persistent orchestrator for Anthropic's
- * Claude Code (agentic coding tool).  The command spins up a temporary Claude
- * Code session, injects the current canister state + full repo conventions,
- * lets Claude Code generate/edit code, then commits the validated result back
- * to the canister as a new state snapshot.
+ * Runs a governed session of Anthropic's Claude Code (agentic coding tool).
+ * The command spins up a temporary Claude Code session with the task and the
+ * repo's conventions, lets Claude Code generate/edit code, runs `npm test`
+ * when the project has a package.json, and records the session in a local
+ * audit log. The result stays in the working tree: nothing is signed or
+ * committed to the canister.
  *
  * Usage:
  *   agentvault orchestrate --claude --task "implement video timeline with cell reuse"
@@ -68,10 +69,10 @@ export function orchestrateCmd(): Command {
     .requiredOption('-t, --task <description>', 'Task description for the coding agent')
     .option('-c, --canister-id <id>', 'Canister ID to bind the session to')
     .option('-n, --network <network>', 'ICP network: local | ic', 'local')
-    // Governance / multi-sig
+    // Governance
     .option('--dry-run', 'Preview what would happen without making any changes')
-    .option('--approve', 'Require multi-sig approval before committing the new state')
-    .option('--reviewers <list>', 'Comma-separated reviewer identities (requires --approve)')
+    .option('--approve', 'Record reviewer names in the audit log (approval gating is not implemented)')
+    .option('--reviewers <list>', 'Comma-separated reviewer names (requires --approve)')
     // Claude-specific tuning
     .option('--model <model>', 'Override the Claude model (default: claude-opus-4-6)')
     .option('--timeout <seconds>', 'Session timeout in seconds (default: 1800)', '1800')
@@ -162,10 +163,14 @@ export function orchestrateCmd(): Command {
         console.log(chalk.cyan('Polytician namespace:'), polyticianServer.polyticianNamespace);
       }
       if (options.dryRun) {
-        console.log(chalk.yellow('\n[DRY RUN] No changes will be committed.\n'));
+        console.log(chalk.yellow('\n[DRY RUN] Claude Code will not be run; the prompt it would get is shown at the end.\n'));
       }
       if (options.approve && reviewers) {
-        console.log(chalk.cyan('Reviewers:'), reviewers.join(', '));
+        console.log(
+          chalk.cyan('Reviewers:'),
+          reviewers.join(', '),
+          chalk.gray('(recorded in the audit log; approval gating is not implemented)')
+        );
       }
       console.log();
 
@@ -235,7 +240,9 @@ export function orchestrateCmd(): Command {
           ? chalk.green('passed')
           : options.dryRun
             ? chalk.gray('skipped (dry run)')
-            : chalk.red('failed');
+            : result.testsSkipped
+              ? chalk.gray('skipped (no package.json)')
+              : chalk.red('failed');
         console.log(chalk.cyan('  Tests:         '), testLabel);
 
         // Progress messages only pass through the spinner, so Polytician's
@@ -263,15 +270,6 @@ export function orchestrateCmd(): Command {
 
         if (result.auditLogId) {
           console.log(chalk.cyan('  Audit log:     '), result.auditLogId);
-        }
-
-        if (result.approvalRequestId) {
-          console.log(chalk.cyan('  Approval ID:   '), result.approvalRequestId);
-          console.log();
-          console.log(
-            chalk.yellow('Approval required before state is finalized.'),
-            chalk.gray(`Run: agentvault approve sign ${result.approvalRequestId} <signer>`)
-          );
         }
 
         const durationSecs = (result.durationMs / 1000).toFixed(1);

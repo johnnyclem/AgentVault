@@ -162,7 +162,8 @@ export function markArchiveUploading(archiveId: string): boolean {
 }
 
 /**
- * Update archive with transaction ID
+ * Record the transaction ID a node accepted. The archive stays 'pending':
+ * acceptance is not mining, and nothing here has checked the chain.
  */
 export function updateArchiveTransaction(
   archiveId: string,
@@ -188,7 +189,10 @@ export function updateArchiveTransaction(
 }
 
 /**
- * Mark archive as confirmed
+ * Mark archive as confirmed. Call this only after the gateway reports the
+ * transaction mined (ArweaveClient.getTransactionStatus returned
+ * 'confirmed'): a successful POST only means a node accepted it, and an
+ * accepted transaction can still be dropped.
  */
 export function confirmArchive(
   archiveId: string,
@@ -270,12 +274,14 @@ export function listArchives(agentName?: string): ArchiveMetadata[] {
 }
 
 /**
- * List pending archives (ready for upload)
+ * List pending archives that are ready for upload. A record that already has
+ * a transaction ID was uploaded (it stays 'pending' until someone checks it
+ * was mined), so it is left out: uploading it again would pay twice.
  */
 export function listPendingArchives(): ArchiveMetadata[] {
   try {
     const index = getIndex();
-    return index.filter((a) => a.status === 'pending');
+    return index.filter((a) => a.status === 'pending' && !a.transactionId);
   } catch (error) {
     console.error('Failed to list pending archives:', error);
     return [];
@@ -335,28 +341,54 @@ export function getArchivePath(archiveId: string): string {
 }
 
 /**
- * Get archive statistics
+ * How to describe a record's status to a person.
+ *  - 'pending': prepared locally, not uploaded (no transaction ID).
+ *  - 'submitted': a node accepted the upload and its transaction ID was
+ *    recorded. Nothing here has checked that it was mined. Earlier versions
+ *    stored 'confirmed' straight after the upload, without checking either,
+ *    so a stored 'confirmed' also reads as 'submitted'.
+ *  - 'uploading' and 'failed' as stored.
+ */
+export type ArchiveDisplayStatus = 'pending' | 'uploading' | 'submitted' | 'failed';
+
+export function archiveDisplayStatus(
+  archive: Pick<ArchiveMetadata, 'status' | 'transactionId'>,
+): ArchiveDisplayStatus {
+  if (archive.status === 'pending' || archive.status === 'confirmed') {
+    return archive.transactionId ? 'submitted' : 'pending';
+  }
+  return archive.status;
+}
+
+/**
+ * Get archive statistics, counted by archiveDisplayStatus
  */
 export function getArchiveStats(agentName?: string): {
   total: number;
-  confirmed: number;
+  submitted: number;
   pending: number;
+  uploading: number;
   failed: number;
   totalBytes: number;
 } {
   const archives = listArchives(agentName);
+  const count = (status: ArchiveDisplayStatus): number =>
+    archives.filter((a) => archiveDisplayStatus(a) === status).length;
 
   return {
     total: archives.length,
-    confirmed: archives.filter((a) => a.status === 'confirmed').length,
-    pending: archives.filter((a) => a.status === 'pending').length,
-    failed: archives.filter((a) => a.status === 'failed').length,
+    submitted: count('submitted'),
+    pending: count('pending'),
+    uploading: count('uploading'),
+    failed: count('failed'),
     totalBytes: archives.reduce((sum, a) => sum + a.sizeBytes, 0),
   };
 }
 
 /**
- * Verify archive checksum
+ * Re-hash the local payload copy and compare it with the recorded checksum.
+ * This checks the file under ~/.agentvault/archives only; it says nothing
+ * about what is stored on Arweave.
  */
 export function verifyArchive(archiveId: string): boolean {
   try {

@@ -98,6 +98,29 @@ describe('hypervault snapshot bundle', () => {
     expect(records.filter((r) => r.table === 'memories')).toHaveLength(2);
   });
 
+  it('does not report the Merkle root valid when it could not be recomputed', async () => {
+    const snapshot = await buildSnapshot(sampleRecords(), sampleManifest(), {
+      signingKeyPath: keyPath,
+      passphrase: 'correct horse battery staple',
+    });
+    // No passphrase: the encrypted entries cannot be read, so the root cannot be checked
+    const result = await verifySnapshot(snapshot);
+    expect(result.merkleRootValid).toBe(false);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('Encrypted entries present and no passphrase supplied; Merkle root not verified');
+  });
+
+  it('reports the key the signature was checked against, and rejects a different expected key', async () => {
+    const snapshot = await buildSnapshot(sampleRecords(), sampleManifest(), { signingKeyPath: keyPath });
+    const result = await verifySnapshot(snapshot);
+    expect(result.publicKey).toBe(snapshot.publicKey);
+
+    const otherKey = 'ab'.repeat(32);
+    const pinned = await verifySnapshot(snapshot, { expectedPublicKey: otherKey });
+    expect(pinned.signatureValid).toBe(false);
+    expect(pinned.valid).toBe(false);
+  });
+
   it('fails decryption with the wrong passphrase (auth tag rejects)', async () => {
     const snapshot = await buildSnapshot(sampleRecords(), sampleManifest(), {
       signingKeyPath: keyPath,

@@ -1,8 +1,9 @@
 /**
  * Security module for AgentVault
  *
- * This module provides encryption, decryption, and key management
- * using VetKeys for threshold key derivation.
+ * This module provides encryption, decryption, and key management.
+ * "VetKeys" here names seed-phrase encryption with Shamir secret sharing;
+ * it does not use the ICP vetKD protocol or produce threshold signatures.
  */
 
 export * from './types.js';
@@ -33,7 +34,7 @@ export * from './mfa-approval.js';
 // WebAuthn / Biometric fallback — P-256 device keys, Secure Enclave simulation
 export * from './webauthn.js';
 
-// ICP On-Chain Audit Log — tamper-evident on-chain event storage
+// ICP audit submission for MFA events (on-chain storage does not work yet; entries stay queued locally)
 export * from './icp-audit.js';
 
 // HashiCorp Vault integration

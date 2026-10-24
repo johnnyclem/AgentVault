@@ -6,6 +6,7 @@
 
 import type { BaseWalletProvider } from '../../src/wallet/providers/base-provider.js';
 import { createWalletProvider, getWallet, listAgentWallets } from '../../src/wallet/index.js';
+import { looksLikeChainSignature } from '../../src/wallet/chain-signature.js';
 import inquirer from 'inquirer';
 import ora from 'ora';
 import chalk from 'chalk';
@@ -174,7 +175,13 @@ export async function handleSign(agentId: string, options: { output?: string; js
       ...(txDetails.memo && { memo: txDetails.memo }),
     };
 
+    // Providers that cannot sign for their chain throw; anything that is not
+    // shaped like a chain signature is refused too, so nothing is reported
+    // signed or saved without one.
     const signedTx = await provider.signTransaction(txRequest, wallet.privateKey);
+    if (!looksLikeChainSignature(signedTx.signature)) {
+      throw new Error('the wallet provider returned no chain signature');
+    }
 
     spinner.succeed('Transaction signed');
 
