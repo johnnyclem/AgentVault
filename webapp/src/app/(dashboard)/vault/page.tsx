@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Archive, ChevronRight, ShieldCheck, Wallet } from 'lucide-react'
+import { Archive, ChevronRight, Receipt, Wallet } from 'lucide-react'
 import { useAgentList } from '@/hooks/useAgentList'
 import { useArchives } from '@/hooks/useArchives'
 import { useWallets } from '@/hooks/useWallets'
@@ -15,6 +15,7 @@ import {
   countByCategory,
   knownCount,
   parseVaultFilter,
+  sourcesFor,
   type SourceStatus,
   type VaultCategory,
   type VaultFilter,
@@ -28,7 +29,7 @@ interface Source extends SourceStatus {
   retry: () => void
 }
 
-const TILE_ICONS = { wallets: Wallet, archives: Archive, proofs: ShieldCheck } as const
+const TILE_ICONS = { wallets: Wallet, archives: Archive, evidence: Receipt } as const
 
 const LIST_FORMAT = new Intl.ListFormat('en', { type: 'conjunction' })
 
@@ -41,7 +42,7 @@ const EMPTY_COPY: Record<VaultFilter, ReactNode> = {
     </>
   ),
   archives: 'No archives yet. Archive an agent from its page to keep a copy here.',
-  proofs: 'No agents yet. Each agent you add gets a compliance proof here.',
+  evidence: 'No agents yet. Once you add one, its Arweave receipts can be checked here.',
 }
 
 export default function VaultPage() {
@@ -60,19 +61,29 @@ export default function VaultPage() {
   const sources: Record<VaultCategory, Source> = {
     wallets: { noun: 'wallets', pending: !mounted || wallets.isLoading, error: wallets.error, retry: wallets.refetch },
     archives: { noun: 'archives', pending: !mounted || archives.isLoading, error: archives.error, retry: archives.refetch },
-    proofs: { noun: 'proofs', pending: !mounted || agents.isLoading, error: agents.error, retry: agents.refetch },
+    evidence: { noun: 'agents', pending: !mounted || agents.isLoading, error: agents.error, retry: agents.refetch },
   }
 
+  const archivesPending = sources.archives.pending
+  const archivesError = sources.archives.error
   const items = useMemo(
-    () => buildVaultItems({ wallets: wallets.wallets, archives: archives.archives, agents: agents.agents }),
-    [wallets.wallets, archives.archives, agents.agents]
+    () =>
+      buildVaultItems({
+        wallets: wallets.wallets,
+        archives: archives.archives,
+        agents: agents.agents,
+        archivesStatus: { pending: archivesPending, error: archivesError },
+      }),
+    [wallets.wallets, archives.archives, agents.agents, archivesPending, archivesError]
   )
   const counts = countByCategory(items)
 
+  // The categories whose rows the filter lists, and every source those rows are built from.
   const relevant: readonly VaultCategory[] = filter === 'all' ? VAULT_CATEGORIES : [filter]
+  const dependsOn = sourcesFor(filter)
   const visible = filter === 'all' ? items : items.filter((item) => item.category === filter)
-  const pending = relevant.filter((category) => sources[category].pending)
-  const failed = relevant.filter((category) => !sources[category].pending && sources[category].error)
+  const pending = dependsOn.filter((category) => sources[category].pending)
+  const failed = dependsOn.filter((category) => !sources[category].pending && sources[category].error)
 
   const selectFilter = (id: VaultFilter) => {
     setFilter(id)
@@ -84,7 +95,7 @@ export default function VaultPage() {
       <div className="space-y-1">
         <h1 className="page-title">Vault</h1>
         <p className="page-subtitle">
-          Wallets, archives and proofs for every agent you run: Claude Code, Goose, OpenCode, OpenClaw or your own stack.
+          Wallets, archives and Arweave receipts for every agent you run: Claude Code, Goose, OpenCode, OpenClaw or your own stack.
         </p>
       </div>
 
@@ -147,7 +158,7 @@ export default function VaultPage() {
             </li>
           ))}
         </ul>
-      ) : failed.length < relevant.length ? (
+      ) : relevant.some((category) => !sources[category].error) ? (
         <p className="surface px-4 py-10 text-center text-sm text-muted-foreground">{EMPTY_COPY[filter]}</p>
       ) : null}
 

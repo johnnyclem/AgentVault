@@ -4,9 +4,12 @@
  * Provides permanent, cryptographically-signed archival of agent state to Arweave.
  *
  * Features:
- *  - Bundle creation: agent state + manifest, signed with the deployed ed25519 wallet
+ *  - Bundle creation: agent state + manifest, signed with a local ed25519 key
+ *    (~/.agentvault/arweave-signing.key unless signingKeyPath says otherwise,
+ *    created on first use; it is not derived from or bound to the agent's
+ *    wallets)
  *  - Heartbeat-triggered archival: automatically uploads on state change
- *  - Retrieval & verification: fetch bundle by ID, verify signature against wallet
+ *  - Retrieval & verification: fetch bundle by ID, verify its signature
  *
  * Bundle format: agentvault-arweave-bundle-v1
  *   { format, manifest, signature, state }
@@ -76,7 +79,7 @@ export interface ArchiveResult {
   transactionId?: string;
   /** SHA-256 hex of the archived state */
   stateHash?: string;
-  /** ed25519 public key hex of the signing wallet */
+  /** ed25519 public key hex of the signing key */
   publicKey?: string;
   error?: string;
 }
@@ -308,9 +311,14 @@ export class ArweaveArchiver {
    *     `manifest.publicKey`
    *  3. If `expectedPublicKey` is supplied, confirm it matches `manifest.publicKey`
    *
+   * Without `expectedPublicKey` a valid result only shows the bundle is
+   * consistent with itself: the key comes from the bundle's own manifest, so
+   * anyone can produce one that passes. Who signed it is only established by
+   * comparing against a key the caller already trusts.
+   *
    * @param bundle - The bundle to verify (retrieved from Arweave or local store).
-   * @param expectedPublicKey - Known wallet public key (64-char hex) to validate
-   *   the bundle was signed by the correct wallet.
+   * @param expectedPublicKey - A public key (64-char hex) the caller already
+   *   trusts, which the bundle's manifest key must equal.
    */
   async verifyBundle(
     bundle: ArweaveBundle,
@@ -403,7 +411,7 @@ export class ArweaveArchiver {
   // ── Key info ────────────────────────────────────────────────────────────────
 
   /**
-   * Return the ed25519 public key (hex) of the deployed signing wallet.
+   * Return the ed25519 public key (hex) of the local signing key.
    * Returns null if the key file does not exist yet.
    */
   async getPublicKey(): Promise<string | null> {

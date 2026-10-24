@@ -1,8 +1,8 @@
 /**
  * Google ADK (Agent Development Kit) & A2A Integration Module
  *
- * Provides full scaffolding, lifecycle management, and on-chain registration
- * for Google ADK agents within the AgentVault platform.
+ * Provides scaffolding and lifecycle management for Google ADK agents within
+ * the AgentVault platform.
  *
  * Supported agent patterns:
  *   - LoopAgent      – repeats sub-agents until a condition is met
@@ -13,8 +13,10 @@
  * Mint flow:
  *   1. Verify google-adk Python package is installed (offer install guidance)
  *   2. Generate agent scaffold (agent.py, main.py, requirements.txt, .env, README)
- *   3. Provision ICP canister (creates on-chain identity & state slot)
- *   4. Write "birthday" Arweave archive (immutable genesis snapshot ≡ git init)
+ *   3. Assign a placeholder canister ID, or record the one given (no canister
+ *      is deployed either way)
+ *   4. Write the "birthday" archive record under ~/.agentvault/archives
+ *      (local only; it is not uploaded to Arweave)
  *
  * References: Google ADK docs, A2A Protocol
  */
@@ -44,7 +46,7 @@ export interface GoogleADKMintOptions {
   /** Directory under which the agent folder will be created (default: cwd) */
   outputDir?: string;
   network?: 'local' | 'ic';
-  /** Bind to an existing canister ID instead of provisioning a new one */
+  /** Record this canister ID instead of a made-up placeholder (nothing is deployed either way) */
   canisterId?: string;
   skipBackup?: boolean;
   onProgress?: (message: string) => void;
@@ -457,7 +459,8 @@ function buildDotEnvExample(agentName: string): string {
 function buildReadme(
   agentName: string,
   agentType: GoogleADKAgentType,
-  canisterId: string
+  canisterId: string,
+  canisterIdIsPlaceholder: boolean
 ): string {
   const typeLabel: Record<GoogleADKAgentType, string> = {
     loop: 'Loop Agent',
@@ -507,7 +510,7 @@ function buildReadme(
     '├── requirements.txt  # Python dependencies',
     '├── .env.example      # Environment variable template',
     '└── .agentvault/',
-    '    └── config.json   # AgentVault on-chain configuration',
+    '    └── config.json   # AgentVault configuration',
     '```',
     '',
     '## AgentVault Configuration',
@@ -516,7 +519,9 @@ function buildReadme(
     `|----------------|-------------------------------|`,
     `| Agent Name     | \`${agentName}\`               |`,
     `| Agent Type     | \`google-adk-${agentType}\`    |`,
-    `| ICP Canister   | \`${canisterId}\`              |`,
+    canisterIdIsPlaceholder
+      ? `| ICP Canister   | \`${canisterId}\` (placeholder, not deployed) |`
+      : `| ICP Canister   | \`${canisterId}\`              |`,
     `| ADK Version    | google-adk ≥ 0.5.0            |`,
     '',
     '## A2A Compatibility',
@@ -536,6 +541,7 @@ function buildAgentVaultConfig(
   agentName: string,
   agentType: GoogleADKAgentType,
   canisterId: string,
+  canisterIdIsPlaceholder: boolean,
   birthdayTimestamp: string
 ): Record<string, unknown> {
   return {
@@ -545,6 +551,8 @@ function buildAgentVaultConfig(
     version: '1.0.0',
     createdAt: birthdayTimestamp,
     canisterId,
+    // true when mint made the ID up: no canister with it was deployed
+    canisterIdIsPlaceholder,
     network: 'local',
     a2aCompatible: true,
     adkEntryPoint: 'agent.py',
@@ -557,12 +565,18 @@ function buildAgentVaultConfig(
 // Scaffold generation
 // ---------------------------------------------------------------------------
 
+/**
+ * Write the agent's files. `canisterIdIsPlaceholder` is true when the ID was
+ * made up by provisionCanister rather than given, so the README and
+ * .agentvault/config.json say no canister with it was deployed.
+ */
 export function generateAgentScaffold(
   agentName: string,
   agentType: GoogleADKAgentType,
   baseDir: string,
   canisterId: string,
-  birthdayTimestamp: string
+  birthdayTimestamp: string,
+  canisterIdIsPlaceholder: boolean
 ): ScaffoldResult {
   const agentDir = path.join(baseDir, agentName);
   const avDir = path.join(agentDir, '.agentvault');
@@ -595,12 +609,12 @@ export function generateAgentScaffold(
 
   // README.md
   const readmePath = path.join(agentDir, 'README.md');
-  fs.writeFileSync(readmePath, buildReadme(agentName, agentType, canisterId), 'utf8');
+  fs.writeFileSync(readmePath, buildReadme(agentName, agentType, canisterId, canisterIdIsPlaceholder), 'utf8');
   files.push(path.join(agentName, 'README.md'));
 
   // .agentvault/config.json
   const configPath = path.join(avDir, 'config.json');
-  const config = buildAgentVaultConfig(agentName, agentType, canisterId, birthdayTimestamp);
+  const config = buildAgentVaultConfig(agentName, agentType, canisterId, canisterIdIsPlaceholder, birthdayTimestamp);
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
   files.push(path.join(agentName, '.agentvault', 'config.json'));
 
@@ -644,7 +658,7 @@ export function provisionCanister(
 }
 
 // ---------------------------------------------------------------------------
-// Birthday backup (genesis Arweave archive)
+// Birthday record (a local archive entry; nothing is uploaded)
 // ---------------------------------------------------------------------------
 
 export interface BirthdayBackupResult {
@@ -667,9 +681,7 @@ export function createBirthdayBackup(
     framework: 'google-adk',
     canisterId,
     birthdayTimestamp,
-    description:
-      'Genesis snapshot – the immutable origin record of this agent on AgentVault. ' +
-      'Equivalent to git init: establishes provenance and on-chain identity.',
+    description: 'Birthday record written by agentvault mint when this agent was scaffolded.',
     a2aCompatible: true,
     agentVaultVersion: '1.0.2',
   };
@@ -747,15 +759,14 @@ export async function mintGoogleADKAgent(
     );
 
     // -------------------------------------------------------------------
-    // 2. Provision canister
+    // 2. Canister ID (a placeholder unless one was given)
     // -------------------------------------------------------------------
-    emit(onProgress, `Provisioning ICP canister (network: ${network})...`);
     const canisterResult = provisionCanister(agentName, network, existingCanisterId);
 
     if (canisterResult.isExisting) {
-      emit(onProgress, `Using existing canister: ${canisterResult.canisterId}`);
+      emit(onProgress, `Using the given canister ID: ${canisterResult.canisterId}`);
     } else {
-      emit(onProgress, `Canister provisioned: ${canisterResult.canisterId}`);
+      emit(onProgress, `Placeholder canister ID: ${canisterResult.canisterId} (no canister is deployed)`);
     }
 
     // -------------------------------------------------------------------
@@ -767,17 +778,18 @@ export async function mintGoogleADKAgent(
       agentType,
       outputDir,
       canisterResult.canisterId,
-      birthdayTimestamp
+      birthdayTimestamp,
+      !canisterResult.isExisting
     );
     emit(onProgress, `Scaffold created: ${scaffold.agentDir}`);
 
     // -------------------------------------------------------------------
-    // 4. Birthday Arweave backup
+    // 4. Birthday record (local archive entry)
     // -------------------------------------------------------------------
     let birthdayArchiveId: string | undefined;
 
     if (!skipBackup) {
-      emit(onProgress, 'Creating birthday Arweave backup (genesis snapshot)...');
+      emit(onProgress, 'Writing birthday record to ~/.agentvault/archives (not uploaded to Arweave)...');
       try {
         const backup = createBirthdayBackup(
           agentName,
@@ -786,14 +798,14 @@ export async function mintGoogleADKAgent(
           birthdayTimestamp
         );
         birthdayArchiveId = backup.archiveId;
-        emit(onProgress, `Birthday backup created: ${backup.archiveId} (${backup.sizeBytes} bytes)`);
+        emit(onProgress, `Birthday record written: ${backup.archiveId} (${backup.sizeBytes} bytes)`);
       } catch (backupErr) {
         // Non-fatal – warn but continue
         const msg = backupErr instanceof Error ? backupErr.message : String(backupErr);
-        emit(onProgress, `Warning: birthday backup failed (non-fatal): ${msg}`);
+        emit(onProgress, `Warning: birthday record failed (non-fatal): ${msg}`);
       }
     } else {
-      emit(onProgress, 'Skipping birthday backup (--no-backup)');
+      emit(onProgress, 'Skipping birthday record (--no-backup)');
     }
 
     return {

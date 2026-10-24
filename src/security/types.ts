@@ -166,10 +166,14 @@ export class VetKeysClient {
    * Generates n secret shares (where threshold = t out of n)
    * Each share is encrypted and can be used to reconstruct the master key.
    *
-   * Security Properties:
-   * - Threshold signatures (need t-of-n participants to reconstruct)
-   * Privacy: No single participant learns the secret
-   * Robustness: Can tolerate up to t-1 malicious participants
+   * What it does and does not give you:
+   * - Threshold secret sharing: any t of the n shares rebuild the seed; there are
+   *   no signatures and no distributed key generation.
+   * - All shares are produced here, in one process that holds the seed, so this
+   *   protects a seed at rest once the shares are stored apart; it does not keep
+   *   the secret from whoever runs this call.
+   * - Plain Shamir shares are not verifiable: a corrupted or malicious share is
+   *   not detected and yields a wrong secret.
    *
    * @param seedPhrase - BIP39 seed phrase
    * @param options - Optional derivation options
@@ -333,13 +337,12 @@ export class VetKeysClient {
   }
 
   /**
-   * Verify that encrypted data was created by VetKeys
-   *
-   * In a real implementation, this would query the VetKeys canister.
-   * For now, this always returns true.
+   * Not implemented: nothing can show who created encrypted data. It throws
+   * rather than report data as verified without a check; decryption
+   * (VetKeysImplementation.decryptJSON) is the authenticated check.
    */
   public async verifyEncryption(_encrypted: EncryptedData): Promise<boolean> {
-    return true;
+    throw new Error('VetKeysClient.verifyEncryption is not implemented; decrypt the data to authenticate it');
   }
 
   /**

@@ -1,81 +1,31 @@
-// ── Verification / Proof types ──────────────────────────────────────────────
+// ── Evidence types ──────────────────────────────────────────────────────────
 
-export interface VetKeySignature {
-  id: string
-  actionId: string
-  actionType: string
-  actionDescription: string
-  publicKey: string
-  signature: string
-  message: string
-  signerPrincipal: string
-  timestamp: string
-  verified: boolean | null   // null = pending verification
-}
-
-export interface ArweaveAnchor {
+/*
+ * What the server knows about an agent's Arweave uploads, and nothing more.
+ * There is deliberately no verified, confirmed or block field: the server
+ * never checks whether a transaction was mined or what it holds, so any
+ * verdict is worked out in the browser against an Arweave gateway.
+ */
+export interface ArweaveReceipt {
+  archiveId: string
   txId: string
-  permalink: string
-  blockHeight: number
-  blockHash: string
-  timestamp: string
-  dataSize: number
-  contentHash: string
-  status: 'confirmed' | 'pending' | 'failed'
+  /** SHA-256, lowercase hex, of the exact bytes the server posted */
+  checksum: string
+  sizeBytes: number
+  /** ISO time the archive was recorded; null when the index holds no usable time */
+  recordedAt: string | null
+  /** The server's own bookkeeping; 'submitted' means the gateway accepted the upload, not that it was mined */
+  recordedStatus: 'submitted' | 'uploading' | 'failed'
 }
 
-export interface CoverageReport {
-  overall: number
-  lines: number
-  branches: number
-  functions: number
-  statements: number
-  threshold: number      // required minimum (e.g. 80)
-  passesThreshold: boolean
-  generatedAt: string
-  commitHash: string
-  fileCount: number
-}
-
-export interface ComplianceScore {
-  score: number          // 0-100
-  grade: 'A' | 'B' | 'C' | 'D' | 'F'
-  coverageWeight: number
-  vetKeyWeight: number
-  arweaveWeight: number
-  details: {
-    coverageContribution: number
-    vetKeyContribution: number
-    arweaveContribution: number
-  }
-  meetsStandard: boolean
-  standardThreshold: number
-}
-
-export interface ProofRecord {
-  id: string
-  vaultId: string
+export interface AgentEvidence {
   agentId: string
   agentName: string
-  taskId?: string
-  taskDescription?: string
-  commitHash: string
-  coverage: CoverageReport
-  vetKeyChain: VetKeySignature[]
-  arweaveAnchor?: ArweaveAnchor
-  compliance: ComplianceScore
-  shareToken?: string
-  createdAt: string
-  updatedAt: string
+  receipts: ArweaveReceipt[]
+  generatedAt: string
 }
 
-export interface ShareProofResult {
-  shareUrl: string
-  shareToken: string
-  expiresAt: string
-}
-
-// ── End Verification / Proof types ──────────────────────────────────────────
+// ── End Evidence types ──────────────────────────────────────────────────────
 
 export interface ApiError {
   message: string
@@ -200,7 +150,12 @@ export interface Archive {
   id: string
   /** The archived agent; absent from servers that predate it */
   agentName?: string
-  status: 'prepared' | 'uploading' | 'completed' | 'failed'
+  /**
+   * 'submitted': the gateway accepted the upload; nothing on the server checks
+   * whether it was mined. 'completed' comes only from servers that predate
+   * this label and called an accepted upload done.
+   */
+  status: 'prepared' | 'uploading' | 'submitted' | 'completed' | 'failed'
   canisterId: string
   timestamp: string
   size: bigint | number

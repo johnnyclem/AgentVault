@@ -1,9 +1,10 @@
 /**
- * Wallet Process Queue Command (Phase 5B/5D)
+ * Wallet Process Queue Command (Phase 5B)
  *
  * CLI command to process pending transactions from canister queue.
  * Part of Phase 5B: Agent-Initiated Transactions.
- * Phase 5D: VetKeys threshold signing support.
+ * Transactions that ask for a signing threshold above 1 are failed, because
+ * threshold signing is not implemented.
  */
 
 import inquirer from 'inquirer';
@@ -11,7 +12,8 @@ import ora from 'ora';
 import chalk from 'chalk';
 import type { SignedTransaction, TransactionRequest } from '../../src/wallet/types.js';
 import { createWalletProvider } from '../../src/wallet/index.js';
-import type { QueuedTransaction } from '../../src/wallet/transaction-queue.js';
+import { looksLikeChainSignature } from '../../src/wallet/chain-signature.js';
+import { readThreshold, type QueuedTransaction } from '../../src/wallet/transaction-queue.js';
 
 /**
  * Handle process-queue command
@@ -100,7 +102,7 @@ export async function handleProcessQueue(agentId: string, canisterId: string): P
 }
 
 /**
- * Process a single transaction with VetKeys threshold signing
+ * Process a single transaction: sign it with the wallet's own key and send it
  */
 async function processTransaction(
   tx: QueuedTransaction,
@@ -108,6 +110,19 @@ async function processTransaction(
   actor: any
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
   try {
+    // Threshold signing is not implemented: nothing can produce a t-of-n
+    // signature, so such a transaction is failed before any wallet key is
+    // loaded rather than recorded as signed without a signature. So is one
+    // whose threshold cannot be read.
+    const threshold = readThreshold(tx.action.threshold);
+    if (threshold === null || threshold > 1) {
+      const error = threshold === null
+        ? `Unreadable signing threshold; transaction ${tx.id} was not signed`
+        : `Threshold signing is not implemented; transaction ${tx.id} was not signed`;
+      await actor.markTransactionFailed(tx.id, error);
+      return { success: false, error };
+    }
+
     const { getWallet } = await import('../../src/wallet/wallet-manager.js');
     const wallet = getWallet(agentId, tx.action.walletId);
 
@@ -117,64 +132,30 @@ async function processTransaction(
     }
 
     const action = mapActionToRequest(tx.action);
+    // A provider that cannot sign throws; the catch below records its reason.
+    const signed = await signTransaction(wallet, action);
 
-    // Phase 5D: VetKeys threshold signing for transactions with threshold > 1
-    const threshold = tx.action.threshold ? Number(tx.action.threshold) : 1;
-
-    if (threshold > 1) {
-      console.log(chalk.yellow(`Transaction ${tx.id} requires threshold signatures (${threshold} of ${tx.action.threshold ? Number(tx.action.threshold) : 3})...`));
-
-      const { createVetKeysAdapter } = await import('../../src/wallet/vetkeys-adapter.js');
-      const vetKeys = createVetKeysAdapter({
-        threshold: threshold,
-        totalParties: 3,
-        encryptionAlgorithm: 'aes-256-gcm',
-      });
-
-      const thresholdResult = await vetKeys.initiateThresholdSignature(
-        tx.id,
-        wallet,
-        action
-      );
-
-      if (!thresholdResult.success) {
-        await actor.markTransactionFailed(tx.id, thresholdResult.error);
-        return {
-          success: false,
-          error: thresholdResult.error,
-        };
-      }
-
-      await actor.markTransactionSigned(tx.id, thresholdResult.signature || '');
-
-      console.log(chalk.green(`✓ Threshold signature completed for ${tx.id}`));
-
-      return {
-        success: true,
-      txHash: 'threshold-signed',
-      };
-    } else {
-      // Normal signing (threshold = 1)
-      const signed = await signTransaction(wallet, action);
-
-      if (!signed) {
-        await actor.markTransactionFailed(tx.id, 'Signing failed');
-        return { success: false, error: 'Signing failed' };
-      }
-
-      await actor.markTransactionSigned(tx.id, signed.signature || '');
-
-      const provider = createProvider(wallet.chain);
-
-      const txResult = await provider.sendTransaction(wallet.address, action);
-
-      await actor.markTransactionCompleted(tx.id, txResult.hash);
-
-      return {
-        success: true,
-        txHash: txResult.hash,
-      };
+    // A transaction is only recorded as signed when the provider returned
+    // something shaped like a chain signature (not missing, "0x" or a short
+    // placeholder such as an HMAC).
+    if (!looksLikeChainSignature(signed.signature)) {
+      const error = 'Signing failed: the wallet provider returned no chain signature';
+      await actor.markTransactionFailed(tx.id, error);
+      return { success: false, error };
     }
+
+    await actor.markTransactionSigned(tx.id, signed.signature);
+
+    const provider = createProvider(wallet.chain);
+
+    const txResult = await provider.sendTransaction(wallet.address, action);
+
+    await actor.markTransactionCompleted(tx.id, txResult.hash);
+
+    return {
+      success: true,
+      txHash: txResult.hash,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
 
@@ -204,29 +185,22 @@ function mapActionToRequest(action: QueuedTransaction['action']): TransactionReq
 }
 
 /**
- * Sign transaction with wallet
+ * Sign transaction with wallet. Throws when the provider cannot sign.
  */
 async function signTransaction(
   wallet: any,
   action: TransactionRequest
-): Promise<SignedTransaction | null> {
-  try {
-    const provider = createProvider(wallet.chain);
+): Promise<SignedTransaction> {
+  const provider = createProvider(wallet.chain);
 
-    const signed = await provider.signTransaction(
-      {
-        to: action.to,
-        amount: action.amount,
-        chain: action.chain,
-      },
-      wallet.privateKey
-    );
-
-    return signed;
-  } catch (error) {
-    console.error('Failed to sign transaction:', error);
-    return null;
-  }
+  return provider.signTransaction(
+    {
+      to: action.to,
+      amount: action.amount,
+      chain: action.chain,
+    },
+    wallet.privateKey
+  );
 }
 
 /**

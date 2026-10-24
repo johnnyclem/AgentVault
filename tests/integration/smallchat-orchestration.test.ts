@@ -146,7 +146,8 @@ describe('SmallChat ToolClass Hierarchy', () => {
     expect(allTools.has('queueTransaction')).toBe(true);
     expect(allTools.has('registerWallet')).toBe(true);
     expect(allTools.has('storeEncryptedSecret')).toBe(true);
-    expect(allTools.has('deriveVetKeysKey')).toBe(true);
+    // Not implemented in the canister, and it takes a plaintext seed phrase
+    expect(allTools.has('deriveVetKeysKey')).toBe(false);
   });
 
   it('resolves superclass chains correctly', () => {

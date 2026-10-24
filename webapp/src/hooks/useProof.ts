@@ -1,62 +1,42 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback } from 'react'
-import type { ProofRecord, ShareProofResult } from '@/lib/types'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { AgentEvidence, ApiError } from '@/lib/types'
 import { apiClient } from '@/lib/api-client'
 
-const POLL_INTERVAL_MS = 15_000 // 15 s – simulates canister subscription
+/**
+ * Loads an agent's Arweave receipts once. The server sends only what it
+ * recorded; each receipt is checked against the gateway by its own card.
+ */
+export function useProof(agentId: string) {
+  const [evidence, setEvidence] = useState<AgentEvidence | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<ApiError | null>(null)
+  // Only the newest request may update the page, so a slow answer for a
+  // previous agent cannot replace the current one.
+  const latestRequest = useRef(0)
 
-export function useProof(vaultId: string | undefined) {
-  const [proof, setProof] = useState<ProofRecord | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<Error | null>(null)
-  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null)
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  const fetchProof = useCallback(async () => {
-    if (!vaultId) return
+  const fetchEvidence = useCallback(async () => {
+    const request = ++latestRequest.current
     setIsLoading(true)
     setError(null)
-    try {
-      const res = await apiClient.get<ProofRecord>(`/vault/${vaultId}/proof`)
-      if (res.success && res.data) {
-        setProof(res.data)
-        setLastRefreshed(new Date())
-      } else {
-        setError(new Error(res.error?.message ?? 'Failed to fetch proof'))
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error('Unknown error'))
-    } finally {
-      setIsLoading(false)
-    }
-  }, [vaultId])
 
-  // Initial fetch + polling (simulates canister subscription push)
+    const res = await apiClient.get<AgentEvidence>(`/vault/${encodeURIComponent(agentId)}/proof`)
+    if (request !== latestRequest.current) return
+
+    const data = res.data
+    if (res.success && data && Array.isArray(data.receipts)) {
+      setEvidence(data)
+    } else {
+      setEvidence(null)
+      setError(res.error ?? { message: 'The server sent evidence this page cannot read.' })
+    }
+    setIsLoading(false)
+  }, [agentId])
+
   useEffect(() => {
-    if (!vaultId) return
+    fetchEvidence()
+  }, [fetchEvidence])
 
-    fetchProof()
-
-    intervalRef.current = setInterval(() => {
-      fetchProof()
-    }, POLL_INTERVAL_MS)
-
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current)
-    }
-  }, [vaultId, fetchProof])
-
-  const shareProof = useCallback(async (): Promise<ShareProofResult | null> => {
-    if (!vaultId) return null
-    try {
-      const res = await apiClient.post<ShareProofResult>(`/vault/${vaultId}/proof/share`, {})
-      if (res.success && res.data) return res.data
-      throw new Error(res.error?.message ?? 'Failed to generate share link')
-    } catch (err) {
-      throw err instanceof Error ? err : new Error('Unknown error')
-    }
-  }, [vaultId])
-
-  return { proof, isLoading, error, lastRefreshed, refetch: fetchProof, shareProof }
+  return { evidence, isLoading, error, refetch: fetchEvidence }
 }

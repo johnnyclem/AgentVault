@@ -2,7 +2,7 @@
 
 [HyperVault](https://github.com/johnnyclem/hypervault) is the **living, cloud-hosted mind**: per-user memories with auto-tagging and a knowledge graph, git-versioned mind history ("Git for a Mind"), pgvector semantic search, and saved artifacts, all behind `hypervault.store`.
 
-AgentVault is the **sovereign, permanent body**: ICP canisters with stable on-chain state, a git-style on-chain memory repo (ThoughtForms), ed25519-signed Arweave archival, and threshold encryption.
+AgentVault is the **sovereign, permanent body**: ICP canisters with stable on-chain state, a git-style on-chain memory repo (ThoughtForms), ed25519-signed Arweave archival, and passphrase-based AES-256-GCM encryption.
 
 The `agentvault hypervault` command group bridges them across three tiers of the same mind:
 
@@ -48,7 +48,7 @@ agentvault hypervault connect
 | `hypervault push [--dry-run]` | Push locally edited memories up as provenance-stamped mind commits. |
 | `hypervault snapshot [-o file] [--encrypt]` | Full export → `agentvault-hypervault-snapshot-v1` bundle on disk. |
 | `hypervault archive` | The sovereign archive pipeline (see below). |
-| `hypervault verify <ref>` | Verify a bundle: manifest hash, ed25519 signature, Merkle root, per-entry checksums. |
+| `hypervault verify <ref> [--public-key <hex>]` | Verify a local snapshot bundle file: ed25519 manifest signature, per-entry SHA-256 checksums, Merkle root. Without `--public-key`, the signature is checked against the key embedded in the bundle. |
 | `hypervault restore <ref> --to <local\|hypervault>` | Rebuild a project or a fresh cloud account from a bundle. |
 | `hypervault reindex` | Rebuild local vector/FTS indices from the snapshot. |
 | `hypervault recall "<query>"` | Offline hybrid (lexical + semantic) recall over local indices. |
@@ -78,9 +78,9 @@ The pipeline prints a checklist as it runs:
 2. **Bundle** — build the snapshot bundle; compute per-entry SHA-256 and a Merkle root.
 3. **Encrypt** — AES-256-GCM per entry (via the audited `CanisterEncryption`), passphrase-wrapped.
 4. **Canister commit** — replay the mind DAG onto a `memory_repo` canister (topological, idempotent). Only with `--canister-id`. The canister refuses anonymous writes, so the commits are signed with `--identity <pem>`, else `AGENTVAULT_ICP_IDENTITY_PEM_FILE`, else dfx's selected identity; with none of these, `archive --canister-id` exits before anything is archived. The principal must be the repo's owner or one it authorized (see [MemoryRepo](../memory-repo.md#who-can-write)).
-5. **Arweave upload** — signed bundle with `App-Name`, `Bundle-Format`, `HyperVault-User`, `State-Hash` tags.
-6. **Receipts** — an on-chain `archive-receipt:<tx>` commit, plus an optional POST to hypervault.
-7. **Verify** — re-fetch from Arweave and check the whole integrity chain.
+5. **Arweave upload** — signed bundle tagged `App-Name: AgentVault`, `Agent-Name`, `Bundle-Format`, `State-Hash` and `Public-Key`.
+6. **Receipts** — an on-chain `archive-receipt:<tx>` commit (only with `--canister-id`), plus an optional POST to hypervault.
+7. **Verify** — re-fetch the bundle from Arweave and check that its manifest is signed by the key this run signed with, its per-entry checksums and its Merkle root.
 
 It closes with the resurrection line:
 
@@ -103,7 +103,7 @@ npx agentvault@latest hypervault restore ar://<tx-id> --to hypervault --key hv_N
 
 - **Key handling:** `hv_` keys never touch argv persistence; `--key` is vaulted immediately and scrubbed from any persisted config. `hypervault.json` refuses to store anything that looks like a plaintext key.
 - **Encryption:** all bundle encryption uses `CanisterEncryption` (AES-256-GCM with validated auth tags). Private artifacts and conversations are **always** encrypted, regardless of `--encrypt`.
-- **Integrity chain:** content SHA-256 per entry → Merkle root in the manifest → ed25519 manifest signature → Arweave tags → on-chain receipt commit. `hypervault verify` checks every link with a CI-friendly exit code.
+- **Integrity chain:** content SHA-256 per entry → Merkle root in the manifest → ed25519 manifest signature. `hypervault verify` checks these three in a local snapshot file and exits non-zero if any of them fails; an encrypted bundle needs its passphrase to pass. Without `--public-key <hex>`, the signature is checked against the public key embedded in the bundle, so a pass shows only that the bundle is internally consistent: anyone who edits it can re-sign it with a key of their own. On such a pass the command prints the embedded key; compare it with yours, or pass `--public-key` to require a specific key. The signing key is a local file (`~/.agentvault/arweave-signing.key`), so even a pass with `--public-key` shows which key signed the bundle, not who holds it. The Arweave transaction and the `memory_repo` receipt commit (tag `archive-receipt:<tx>`) are recorded but not checked by `verify`.
 - **Provenance:** hypervault `author_kind` / `author_key_prefix` travel into revision records, canister commit tags, and the manifest — "which agent wrote this memory" survives archival.
 
 See [`docs/architecture/hypervault-integration.md`](../architecture/hypervault-integration.md) for the three-tier architecture and the normative bundle-format spec.

@@ -27,8 +27,8 @@ AgentVault's security model and architecture.
 ┌─────────────────────────────────────────────────────────────┐
 │                   Internet Computer                          │
 │  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐       │
-│  │   Canister  │   │   VetKeys   │   │   System    │       │
-│  │   (Agent)   │   │   Service   │   │   Canisters │       │
+│  │   Canister  │   │  MemoryRepo │   │   System    │       │
+│  │   (Agent)   │   │   Canister  │   │   Canisters │       │
 │  └─────────────┘   └─────────────┘   └─────────────┘       │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -88,7 +88,7 @@ AgentVault uses AES-256-GCM and ChaCha20-Poly1305 for data encryption:
 | Feature | Status | Mitigation |
 |---------|--------|------------|
 | Wallet Crypto | Basic SHA-256 | Use hardware wallets for production |
-| VetKeys | Simulated | Use ICP VetKeys canister for production |
+| VetKeys (vetKD / threshold signing) | Not implemented | Seed phrases can be split with Shamir secret sharing (`src/security/shamir.ts`) |
 | Bittensor | Requires API | Validate API responses |
 | Arweave | Requires wallet | Verify transaction confirmations |
 

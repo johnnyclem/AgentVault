@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Archive as ArchiveIcon, Cloud, Download, Trash2, CheckCircle2, Clock, XCircle, Upload, RefreshCw } from 'lucide-react'
+import { Archive as ArchiveIcon, Cloud, Download, Trash2, Clock, XCircle, Upload, RefreshCw } from 'lucide-react'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { TimeAgo } from '@/components/common/TimeAgo'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
@@ -169,7 +169,8 @@ export default function BackupsPage() {
                 {/* Wraps on phones: the canister id truncates and the icons and time keep their size. */}
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-3">
-                    {archive.status === 'completed' && <CheckCircle2 className="h-5 w-5 shrink-0 text-success" />}
+                    {/* Accepted by the gateway, not known to be mined, so no success icon. 'completed' is the same state from older servers. */}
+                    {isSubmitted(archive) && <Upload className="h-5 w-5 shrink-0 text-primary" />}
                     {archive.status === 'uploading' && <Clock className="h-5 w-5 shrink-0 text-primary" />}
                     {archive.status === 'prepared' && <Clock className="h-5 w-5 shrink-0 text-warning" />}
                     {archive.status === 'failed' && <XCircle className="h-5 w-5 shrink-0 text-destructive" />}
@@ -180,7 +181,7 @@ export default function BackupsPage() {
                     <TimeAgo timestamp={archive.timestamp} className="whitespace-nowrap" />
                     <button 
                       onClick={() => handleDownload(archive)}
-                      disabled={archive.status !== 'completed' || actionInProgress === `download-${archive.id}`}
+                      disabled={!isSubmitted(archive) || actionInProgress === `download-${archive.id}`}
                       className="p-1.5 hover:bg-muted rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {actionInProgress === `download-${archive.id}` ? <LoadingSpinner size="sm" /> : <Download className="w-4 h-4 text-muted-foreground" />}
@@ -225,4 +226,8 @@ export default function BackupsPage() {
       </div>
     </div>
   )
+}
+
+function isSubmitted(archive: Archive): boolean {
+  return archive.status === 'submitted' || archive.status === 'completed'
 }

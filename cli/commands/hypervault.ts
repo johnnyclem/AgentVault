@@ -56,7 +56,7 @@ hypervaultCmd
   ${chalk.cyan('agentvault hypervault push --dry-run')}          Push local edits as mind commits
   ${chalk.cyan('agentvault hypervault snapshot -o bundle')}      Full export → bundle on disk
   ${chalk.cyan('agentvault hypervault archive --all --encrypt --network ic --arweave')}
-  ${chalk.cyan('agentvault hypervault verify <ref>')}            Verify a bundle / tx / commit
+  ${chalk.cyan('agentvault hypervault verify <ref>')}            Verify a snapshot bundle file
   ${chalk.cyan('agentvault hypervault restore ar://<tx> --to local')}
   ${chalk.cyan('agentvault hypervault recall "<query>"')}        Offline hybrid recall
 `),
@@ -152,7 +152,7 @@ hypervaultCmd
       if (status.local.lastSync) console.log(chalk.gray(`    last sync ${status.local.lastSync}`));
 
       console.log(chalk.cyan('  Cold (Arweave):'));
-      console.log(chalk.gray(`    ${status.arweave?.lastTx ? `✓ ${status.arweave.lastTx}` : '— never archived'}`));
+      console.log(chalk.gray(`    ${status.arweave?.lastTx ? `last upload ${status.arweave.lastTx} (recorded locally; not checked on Arweave)` : '— never archived'}`));
       console.log();
     } catch (error) {
       spinner.fail(chalk.red(errMsg(error)));
@@ -399,7 +399,7 @@ hypervaultCmd
       if (result.arweaveTx) {
         console.log(chalk.gray(`  Arweave: ${result.arweaveTx}`));
         console.log(chalk.gray(`  Receipts: ${result.receiptOnChain ? 'on-chain ✓' : '—'}${result.receiptPosted ? ' cloud ✓' : ''}`));
-        console.log(chalk.gray(`  Verified: ${result.verified ? '✓' : '✗'}`));
+        console.log(chalk.gray(`  Re-fetched and verified against this run's signing key: ${result.verified ? '✓' : '✗'}`));
         console.log(chalk.bold('\n✔ Archived. Resurrect anywhere with:'));
         console.log(chalk.cyan(`  npx agentvault@latest hypervault restore ar://${result.arweaveTx} --to local`));
       }
@@ -420,16 +420,27 @@ hypervaultCmd
 
 hypervaultCmd
   .command('verify')
-  .description('Verify a snapshot bundle: manifest hash, ed25519 signature, Merkle root, per-entry checksums')
+  .description('Verify a snapshot bundle file: ed25519 manifest signature, per-entry checksums, Merkle root')
   .argument('<ref>', 'Snapshot bundle file path')
   .option('--passphrase <phrase>', 'Passphrase for encrypted bundles (prefer the env var)')
-  .action(async (ref: string, options: { passphrase?: string }) => {
+  .option('--public-key <hex>', 'ed25519 public key (hex) the bundle must be signed by; without it the key embedded in the bundle is used')
+  .action(async (ref: string, options: { passphrase?: string; publicKey?: string }) => {
     const spinner = ora('Verifying...').start();
     try {
       const passphrase = options.passphrase ?? process.env.HYPERVAULT_SNAPSHOT_PASSPHRASE;
-      const result = await verifySnapshotFile(ref, { passphrase });
-      if (result.valid) {
-        spinner.succeed(chalk.green('Bundle verified — signature, checksums, and Merkle root all pass'));
+      const expectedPublicKey = options.publicKey?.trim().toLowerCase();
+      if (expectedPublicKey !== undefined && !/^[0-9a-f]{64}$/.test(expectedPublicKey)) {
+        throw new Error('--public-key must be a 32-byte ed25519 public key in hex (64 characters)');
+      }
+      const result = await verifySnapshotFile(ref, { passphrase, expectedPublicKey });
+      if (result.valid && expectedPublicKey) {
+        spinner.succeed(chalk.green(`Bundle verified — signed by the expected key ${expectedPublicKey}; checksums and Merkle root pass`));
+      } else if (result.valid) {
+        // The signature was checked against the key embedded in the bundle,
+        // which anyone who edits the bundle can replace with their own.
+        spinner.succeed(chalk.green('Bundle is self-consistent — signature, checksums and Merkle root pass'));
+        console.log(chalk.yellow(`  Signed by key ${result.publicKey}, taken from the bundle itself: this does not show who signed it.`));
+        console.log(chalk.yellow('  Compare that key with your signing key, or pass --public-key <hex>.'));
       } else {
         spinner.fail(chalk.red('Verification FAILED'));
         console.log(chalk.gray(`  signature ${result.signatureValid ? '✓' : '✗'} · checksums ${result.checksumsValid ? '✓' : '✗'} · merkle ${result.merkleRootValid ? '✓' : '✗'}`));
@@ -461,7 +472,14 @@ hypervaultCmd
       const passphrase = options.passphrase ?? process.env.HYPERVAULT_SNAPSHOT_PASSPHRASE;
       const client = to === 'hypervault' ? await clientFromProject({ key: options.key, apiUrl: options.apiUrl }) : undefined;
       const result = await restoreHyperVault({ ref, to, passphrase, client });
-      spinner.succeed(chalk.green(`Restored ${result.records} records (verify ${result.verify.valid ? '✓' : 'partial'})`));
+      if (result.verify.valid) {
+        spinner.succeed(chalk.green(`Restored ${result.records} records (bundle self-consistent ✓)`));
+      } else {
+        // Restore already required the signature and checksums; what failed is
+        // the Merkle root (for example encrypted entries without a passphrase).
+        spinner.warn(chalk.yellow(`Restored ${result.records} records, but the bundle's Merkle root was not verified`));
+      }
+      console.log(chalk.gray(`  Signed by key ${result.verify.publicKey}, taken from the bundle itself: compare it with your signing key.`));
       if (result.memoriesWritten !== undefined) console.log(chalk.gray(`  ${result.memoriesWritten} memories written to .agentvault/memories/`));
       if (result.importedToHypervault !== undefined) console.log(chalk.gray(`  ${result.importedToHypervault} records imported to hypervault`));
     } catch (error) {

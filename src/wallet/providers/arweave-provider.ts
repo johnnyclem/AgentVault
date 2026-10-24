@@ -5,7 +5,6 @@
  * Supports balance checks using public gateway APIs.
  */
 
-import { createHash, createHmac } from 'node:crypto';
 import type {
   Balance,
   Transaction,
@@ -60,20 +59,15 @@ export class ArweaveProvider extends BaseWalletProvider {
     throw new Error('Sending Arweave transactions is not supported by this wallet provider yet');
   }
 
+  /**
+   * Not implemented: this provider has no Arweave transaction signer, so it
+   * throws rather than return something that is not a chain signature.
+   */
   async signTransaction(
-    tx: any,
-    privateKey: string
+    _tx: any,
+    _privateKey: string
   ): Promise<SignedTransaction> {
-    const payload = JSON.stringify(tx);
-    const signature = createHmac('sha256', privateKey).update(payload).digest('hex');
-    const txHash = createHash('sha256').update(signature).digest('hex');
-
-    return {
-      txHash,
-      signedTx: payload,
-      signature,
-      request: tx as TransactionRequest,
-    };
+    throw new Error('Signing Arweave transactions is not implemented by this wallet provider');
   }
 
   async getTransactionHistory(_address: string): Promise<Transaction[]> {

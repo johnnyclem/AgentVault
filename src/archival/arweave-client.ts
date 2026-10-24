@@ -5,12 +5,76 @@
  * Supports uploading data, retrieving transactions, and checking status.
  */
 
+import type Arweave from 'arweave';
+
+type ArweaveTransaction = Awaited<ReturnType<Arweave['createTransaction']>>;
+type ArweaveUploader = Awaited<ReturnType<Arweave['transactions']['getUploader']>>;
+
 export interface ArweaveConfig {
   host?: string;
   port?: number;
   protocol?: 'http' | 'https';
+  /**
+   * Handed to arweave-js, which (as of 1.15) stores it but applies it to no
+   * request. Uploads are bounded by `uploadLimits` instead.
+   */
   timeout?: number;
   logging?: boolean;
+  uploadLimits?: UploadLimits;
+}
+
+/**
+ * Bounds on one upload. Left to itself arweave-js waits about 40 s before
+ * each retry of a failed chunk and gives up only after 100 failures in a row,
+ * which can hold a caller (such as a web request) for close to an hour.
+ */
+export interface UploadLimits {
+  /**
+   * Longest an upload may run, from asking the gateway for an anchor to the
+   * last chunk, before it is reported failed. Default 60 000 ms.
+   */
+  deadlineMs?: number;
+  /** Failed chunk posts allowed in a row before the upload is reported failed. Default 3. */
+  maxChunkRetries?: number;
+  /** Wait before re-posting a failed chunk. Default 2 000 ms. */
+  retryDelayMs?: number;
+}
+
+const DEFAULT_UPLOAD_LIMITS: Required<UploadLimits> = {
+  deadlineMs: 60_000,
+  maxChunkRetries: 3,
+  retryDelayMs: 2_000,
+};
+
+class UploadDeadlineExceeded extends Error {}
+
+/**
+ * Start `work` and settle with it, or reject with UploadDeadlineExceeded once
+ * `deadline` (epoch ms) passes; past the deadline, `work` is not started.
+ * arweave-js takes no abort signal, so a request already in flight is not
+ * cancelled; the caller just stops waiting for it and sends nothing more.
+ */
+async function beforeDeadline<T>(start: () => Promise<T>, deadline: number): Promise<T> {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) {
+    throw new UploadDeadlineExceeded();
+  }
+
+  const work = start();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new UploadDeadlineExceeded()), remaining);
+  });
+
+  try {
+    return await Promise.race([work, expired]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export interface UploadOptions {
@@ -39,7 +103,8 @@ export interface UploadResult {
 export type JWKInterface = Record<string, any>;
 
 export class ArweaveClient {
-  private config: Required<ArweaveConfig>;
+  private config: Required<Omit<ArweaveConfig, 'uploadLimits'>>;
+  private uploadLimits: Required<UploadLimits>;
   private client: any = null;
 
   constructor(config: ArweaveConfig = {}) {
@@ -50,6 +115,12 @@ export class ArweaveClient {
       timeout: config.timeout || 20000,
       logging: config.logging || false,
     };
+    const limits = config.uploadLimits ?? {};
+    this.uploadLimits = {
+      deadlineMs: limits.deadlineMs ?? DEFAULT_UPLOAD_LIMITS.deadlineMs,
+      maxChunkRetries: limits.maxChunkRetries ?? DEFAULT_UPLOAD_LIMITS.maxChunkRetries,
+      retryDelayMs: limits.retryDelayMs ?? DEFAULT_UPLOAD_LIMITS.retryDelayMs,
+    };
   }
 
   /**
@@ -57,33 +128,26 @@ export class ArweaveClient {
    */
   private async getClient(): Promise<any> {
     if (!this.client) {
-      try {
-        const Arweave = await this.importArweave();
-        this.client = new Arweave({
-          host: this.config.host,
-          port: this.config.port,
-          protocol: this.config.protocol,
-          timeout: this.config.timeout,
-          logging: this.config.logging,
-        });
-      } catch (_error) {
-        throw new Error(
-          'arweave is required for ArweaveClient. Install with: npm install arweave',
-        );
-      }
+      const ArweaveLibrary = await this.importArweave();
+      this.client = new ArweaveLibrary({
+        host: this.config.host,
+        port: this.config.port,
+        protocol: this.config.protocol,
+        timeout: this.config.timeout,
+        logging: this.config.logging,
+      });
     }
     return this.client;
   }
 
   /**
-   * Dynamically import arweave (optional dependency)
-   * Uses standard ESM dynamic import instead of new Function() for security
+   * Load the arweave library on first use, so commands that never talk to
+   * Arweave do not pay for loading it.
    */
-  private async importArweave(): Promise<any> {
+  private async importArweave(): Promise<typeof Arweave> {
     try {
       // SECURITY: Use standard ESM dynamic import instead of new Function()
       // This avoids code execution patterns that can bypass CSP (SEC-4)
-      // @ts-expect-error - arweave is an optional dependency, may not be installed
       const arweaveModule = await import('arweave');
       return arweaveModule.default;
     } catch (_error) {
@@ -94,21 +158,25 @@ export class ArweaveClient {
   }
 
   /**
-   * Upload data to Arweave
+   * Upload data to Arweave. Success means a node accepted the transaction
+   * and every chunk, not that it was mined. The upload is bounded by
+   * `uploadLimits`: past the deadline, or after too many failed chunk posts in
+   * a row, it stops sending and reports failure.
    */
   async uploadData(
     data: string | Buffer,
     jwk: JWKInterface,
     options: UploadOptions = {},
   ): Promise<UploadResult> {
+    const { deadlineMs, maxChunkRetries, retryDelayMs } = this.uploadLimits;
+    const deadline = Date.now() + deadlineMs;
+    let transactionId: string | undefined;
+
     try {
       const client = await this.getClient();
-      const transaction = await client.createTransaction(
-        {
-          data: typeof data === 'string' ? data : data.toString('base64'),
-        },
-        jwk,
-      );
+      // A string goes up as its UTF-8 bytes and a Buffer as its own bytes, so
+      // what lands on Arweave is exactly what the caller hashed and sized.
+      const transaction = await beforeDeadline<ArweaveTransaction>(() => client.createTransaction({ data }, jwk), deadline);
 
       if (options.tags) {
         for (const [key, value] of Object.entries(options.tags)) {
@@ -116,22 +184,52 @@ export class ArweaveClient {
         }
       }
 
-      await client.transactions.sign(transaction, jwk);
+      await beforeDeadline(() => client.transactions.sign(transaction, jwk), deadline);
+      transactionId = transaction.id;
 
-      const response = await client.transactions.post(transaction);
+      // Driven here rather than through transactions.post, which retries
+      // failed chunks on arweave-js's own schedule with no overall limit. The
+      // first uploadChunk posts the transaction (with its data when it fits
+      // in one chunk) and throws if the node rejects it.
+      const uploader: ArweaveUploader = await client.transactions.getUploader(transaction);
+      let failedInARow = 0;
 
-      if (response.status === 200 || response.status === 202) {
-        return {
-          success: true,
-          transactionId: transaction.id,
-        };
-      } else {
+      while (!uploader.isComplete) {
+        await beforeDeadline(() => uploader.uploadChunk(), deadline);
+
+        if (uploader.lastResponseError === '') {
+          failedInARow = 0;
+          continue;
+        }
+
+        failedInARow += 1;
+        if (failedInARow > maxChunkRetries) {
+          return {
+            success: false,
+            error:
+              `Upload failed: a chunk was rejected ${failedInARow} times in a row ` +
+              `(${uploader.lastResponseStatus}: ${uploader.lastResponseError}); ` +
+              `transaction ${transactionId} was posted without all of its data`,
+          };
+        }
+
+        // arweave-js waits about 40 s before retrying a chunk whose last post
+        // failed; clearing the error skips that wait, so the retry runs after
+        // this shorter one, which the deadline still bounds.
+        uploader.lastResponseError = '';
+        await sleep(Math.min(retryDelayMs, Math.max(0, deadline - Date.now())));
+      }
+
+      return { success: true, transactionId };
+    } catch (error) {
+      if (error instanceof UploadDeadlineExceeded) {
         return {
           success: false,
-          error: `Upload failed with status ${response.status}`,
+          error:
+            `Upload did not complete within ${deadlineMs / 1000}s` +
+            (transactionId ? ` (transaction ${transactionId} may or may not have been accepted)` : ''),
         };
       }
-    } catch (error) {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -162,10 +260,12 @@ export class ArweaveClient {
   async getTransactionData(transactionId: string): Promise<string | null> {
     try {
       const client = await this.getClient();
-      const data = await client.transactions.getData(transactionId, {
+      // Without `string: true` arweave hands back a Uint8Array, whose
+      // toString() is a comma-separated list of byte values, not the text.
+      return await client.transactions.getData(transactionId, {
         decode: true,
+        string: true,
       });
-      return data.toString();
     } catch (error) {
       console.error(`Failed to fetch transaction ${transactionId}:`, error);
       return null;
@@ -173,24 +273,30 @@ export class ArweaveClient {
   }
 
   /**
-   * Get transaction status
+   * Get transaction status from the gateway's /tx/{id}/status: 200 means
+   * mined, 202 means accepted but not yet mined, 404 means the gateway does
+   * not know the transaction (never seen, or dropped from the mempool).
    */
   async getTransactionStatus(
     transactionId: string,
   ): Promise<'pending' | 'confirmed' | 'not_found' | 'error'> {
     try {
       const client = await this.getClient();
-      const status = await client.transactions.getStatus(transactionId);
+      const { status, confirmed } = await client.transactions.getStatus(transactionId);
 
-      if (!status) {
-        return 'not_found';
-      }
-
-      if (status.confirmed && status.confirmed.number_of_confirmations > 0) {
+      if (status === 200 && confirmed && confirmed.number_of_confirmations > 0) {
         return 'confirmed';
       }
 
-      return 'pending';
+      if (status === 202) {
+        return 'pending';
+      }
+
+      if (status === 404) {
+        return 'not_found';
+      }
+
+      return 'error';
     } catch (error) {
       console.error(`Failed to check status for ${transactionId}:`, error);
       return 'error';

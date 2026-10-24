@@ -11,7 +11,7 @@
  *   ├── WalletTools             (register, deregister, list, update status)
  *   │   └── TransactionTools    (queue, sign, complete, fail, retry, schedule)
  *   ├── SecretTools             (store, get, list, delete encrypted secrets)
- *   └── VetKeysTools            (init shares, derive key, verify sig)
+ *   └── VetKeysTools            (share registry, status; verify sig is not implemented)
  */
 
 // ---------------------------------------------------------------------------
@@ -419,6 +419,8 @@ export const SECRET_TOOLS: ToolClass = {
   ],
 };
 
+// deriveVetKeysKey is deliberately not exposed: the canister does not
+// implement it, and its first argument is a plaintext seed phrase.
 export const VETKEYS_TOOLS: ToolClass = {
   name: 'VetKeysTools',
   superclass: 'BaseTools',
@@ -426,7 +428,7 @@ export const VETKEYS_TOOLS: ToolClass = {
     {
       selector: 'initializeThresholdShares',
       candidMethod: 'initializeThresholdShares',
-      description: 'Register BLS threshold share public commitments for VetKeys',
+      description: 'Store BLS share commitment strings after length checks only (does not enable threshold signing)',
       category: 'vetkeys',
       riskLevel: 'critical',
       requiresMfa: true,
@@ -450,32 +452,20 @@ export const VETKEYS_TOOLS: ToolClass = {
       },
     },
     {
-      selector: 'deriveVetKeysKey',
-      candidMethod: 'deriveVetKeysKey',
-      description: 'Derive a threshold key for a given path and share index',
-      category: 'vetkeys',
-      riskLevel: 'high',
-      requiresMfa: true,
-      parameters: {
-        derivationPath: { type: 'string', required: true, description: 'Key derivation path' },
-        shareIndex: { type: 'number', required: true, description: 'Share participant index' },
-      },
-    },
-    {
       selector: 'verifyThresholdSignature',
       candidMethod: 'verifyThresholdSignature',
-      description: 'Verify a threshold signature against the registered shares',
+      description: 'Not implemented: always returns an error and never reports a signature as verified',
       category: 'vetkeys',
       riskLevel: 'low',
       parameters: {
-        message: { type: 'string', required: true, description: 'Signed message' },
+        transactionId: { type: 'string', required: true, description: 'Transaction ID' },
         signature: { type: 'string', required: true, description: 'Threshold signature (hex)' },
       },
     },
     {
       selector: 'getVetKeysStatus',
       candidMethod: 'getVetKeysStatus',
-      description: 'Query VetKeys initialization status and mode',
+      description: 'Query VetKeys status (the canister always reports it disabled, mode mock)',
       category: 'vetkeys',
       riskLevel: 'low',
       parameters: {},
@@ -483,7 +473,7 @@ export const VETKEYS_TOOLS: ToolClass = {
     {
       selector: 'getShareHealthStatus',
       candidMethod: 'getShareHealthStatus',
-      description: 'Query BLS threshold share health reports',
+      description: 'Query the share registry and its last length check (never reports a share healthy)',
       category: 'vetkeys',
       riskLevel: 'low',
       parameters: {},

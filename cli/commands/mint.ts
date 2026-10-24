@@ -1,10 +1,10 @@
 /**
  * Mint command – agentvault mint agent <name> --google-adk-<type>
  *
- * Scaffolds a new Google ADK agent, immediately provisions an ICP canister,
- * and creates the agent's first Arweave backup (the "birthday" snapshot).
- * This gives every agent an immutable on-chain genesis record from birth –
- * the equivalent of running `git init` but for sovereign AI agents.
+ * Scaffolds a new Google ADK agent and writes its "birthday" archive record.
+ * Nothing goes on chain: no canister is deployed (the agent gets a placeholder
+ * canister ID, or the one passed with --canister-id), and the birthday record
+ * is stored under ~/.agentvault/archives without being uploaded to Arweave.
  *
  * Supported agent types:
  *   --google-adk-loop-agent       LoopAgent       (iterative refinement)
@@ -44,7 +44,8 @@ interface MintAgentOptions {
   network?: 'local' | 'ic';
   canisterId?: string;
   outputDir?: string;
-  noBackup?: boolean;
+  /** Commander turns --no-backup into `backup: false` (it is true otherwise). */
+  backup?: boolean;
   yes?: boolean;
 }
 
@@ -90,7 +91,7 @@ function buildAgentSubcommand(): Command {
   const agentCmd = new Command('agent');
 
   agentCmd
-    .description('Scaffold a new Google ADK agent with on-chain canister and birthday backup')
+    .description('Scaffold a new Google ADK agent and write a local birthday record (no canister is deployed)')
     .argument('<name>', 'Agent name (lowercase alphanumeric with hyphens)')
     // ADK agent type flags
     .option('--google-adk-loop-agent', 'Scaffold a LoopAgent (iterative refinement)')
@@ -99,9 +100,9 @@ function buildAgentSubcommand(): Command {
     .option('--google-adk-parallel-agent', 'Scaffold a ParallelAgent (concurrent workers)')
     // Infrastructure options
     .option('-n, --network <network>', 'ICP network: local | ic', 'local')
-    .option('-c, --canister-id <id>', 'Bind to an existing canister ID (skips provisioning)')
+    .option('-c, --canister-id <id>', 'Record an existing canister ID instead of a placeholder')
     .option('-o, --output-dir <path>', 'Directory to create the agent in (default: cwd)')
-    .option('--no-backup', 'Skip the Arweave birthday backup')
+    .option('--no-backup', 'Skip the local birthday record')
     .option('-y, --yes', 'Skip confirmation prompt')
     .action(async (name: string, options: MintAgentOptions) => {
       // ----------------------------------------------------------------
@@ -168,8 +169,8 @@ function buildAgentSubcommand(): Command {
       if (options.canisterId) {
         console.log(chalk.cyan('Canister:    '), options.canisterId);
       }
-      if (options.noBackup) {
-        console.log(chalk.yellow('Birthday backup: skipped (--no-backup)'));
+      if (options.backup === false) {
+        console.log(chalk.yellow('Birthday record: skipped (--no-backup)'));
       }
       console.log();
 
@@ -210,7 +211,7 @@ function buildAgentSubcommand(): Command {
           {
             type: 'confirm',
             name: 'confirmed',
-            message: `Mint agent '${name}' (${ADK_TYPE_LABELS[agentType]}) and provision canister?`,
+            message: `Mint agent '${name}' (${ADK_TYPE_LABELS[agentType]})?`,
             default: true,
           },
         ]);
@@ -237,7 +238,7 @@ function buildAgentSubcommand(): Command {
         outputDir,
         network,
         canisterId: options.canisterId,
-        skipBackup: options.noBackup,
+        skipBackup: options.backup === false,
         onProgress,
       });
 
@@ -263,13 +264,16 @@ function buildAgentSubcommand(): Command {
 
       if (result.canisterId) {
         console.log(chalk.cyan('  Canister:    '), result.canisterId);
+        if (!options.canisterId) {
+          console.log(chalk.gray('               (placeholder ID – no canister was deployed)'));
+        }
       }
 
       if (result.birthdayArchiveId) {
         console.log(chalk.cyan('  Archive ID:  '), result.birthdayArchiveId);
         console.log(
           chalk.gray('               ') +
-            chalk.gray('(Arweave genesis snapshot – permanent on-chain record)')
+            chalk.gray('(stored in ~/.agentvault/archives – not uploaded to Arweave)')
         );
       }
 
@@ -308,7 +312,7 @@ export function mintCmd(): Command {
 
   command
     .description(
-      'Mint a new agent with on-chain canister and genesis Arweave backup'
+      'Scaffold a new agent and write a local birthday record (no canister is deployed)'
     )
     .action(() => {
       console.log(chalk.yellow('Please specify a subcommand: agent'));
@@ -337,8 +341,8 @@ export function mintCmd(): Command {
       console.log('');
       console.log(chalk.gray('Options:'));
       console.log(chalk.gray('  -n, --network <local|ic>   ICP network (default: local)'));
-      console.log(chalk.gray('  -c, --canister-id <id>     Bind to existing canister'));
-      console.log(chalk.gray('      --no-backup            Skip Arweave birthday backup'));
+      console.log(chalk.gray('  -c, --canister-id <id>     Record an existing canister ID'));
+      console.log(chalk.gray('      --no-backup            Skip the local birthday record'));
       console.log(chalk.gray('  -y, --yes                  Skip confirmation prompt'));
     });
 

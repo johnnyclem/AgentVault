@@ -22,7 +22,7 @@ This document evaluates integrating [AgentVault](https://github.com/johnnyclem/a
 | **Purpose** | On-chain AI agent deployment & management | OS-level sandbox for LLM coding agents |
 | **Runtime** | Agents run in ICP WASM canisters | Agents run locally, wrapped by `sandbox-exec` |
 | **Platform** | Cross-platform (Node.js 18+) | macOS only |
-| **Security model** | VetKeys, multi-sig, TOTP, WebAuthn, scoped secrets, ICP audit log | Deny-first kernel sandbox, layered `.sb` profiles |
+| **Security model** | Shamir secret sharing, local approval quorums, TOTP, WebAuthn, scoped secrets | Deny-first kernel sandbox, layered `.sb` profiles |
 | **API surface** | TypeScript library + CLI | Shell script wrapper, no programmatic API |
 | **Backup** | Local JSON/encrypted, cloud sync (GDrive/iCloud/Dropbox/OneDrive), Arweave | None (plain config files) |
 | **Deny-first scope** | Software-level secret access (`agentvault safehouse` CLI) | OS-level filesystem/process/device access |
@@ -33,7 +33,7 @@ This document evaluates integrating [AgentVault](https://github.com/johnnyclem/a
 
 The two tools operate at fundamentally different layers:
 
-- **AgentVault** packages, deploys, and manages agents that execute **on-chain** in ICP canisters. Its security concerns are cryptographic (VetKeys, multi-sig), network-level (canister access control), and operational (monitoring, health checks).
+- **AgentVault** packages, deploys, and manages agents that execute **on-chain** in ICP canisters. Its security concerns are cryptographic (encryption, secret sharing), network-level (canister access control), and operational (monitoring, health checks).
 
 - **Agent Safehouse** restricts what a **local macOS process** can access at the kernel level. It cannot reach into an ICP canister or affect on-chain execution.
 
@@ -77,8 +77,8 @@ These are small text files, but losing custom profiles means re-engineering secu
 AgentVault's backup infrastructure provides:
 
 1. **Cloud sync** (`agentvault cloud-backup`): Auto-detects iCloud Drive, Google Drive, Dropbox, OneDrive; copies files with SHA-256 manifest; verify & restore
-2. **Local encrypted backup** (`agentvault backup`): AES-256-GCM encryption, ed25519-signed key envelopes, Merkle root integrity verification
-3. **Arweave archival** (`agentvault archive`): Permanent decentralized storage
+2. **Local encrypted backup** (`agentvault backup`): AES-256-GCM encryption; the `--full` format records a SHA-256 Merkle root and an ed25519-signed key envelope, but no command verifies or restores that format yet
+3. **Arweave archival**: the dashboard's Archive flow uploads a deployment receipt to Arweave; `agentvault archive` manages local archive records only
 
 ### 3.3 Current Limitation
 

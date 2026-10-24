@@ -198,7 +198,7 @@ agentvault/
 │   ├── packaging/    # WASM compilation
 │   ├── canister/     # Actor bindings
 │   ├── wallet/       # Multi-chain wallets
-│   ├── security/     # VetKeys, multisig
+│   ├── security/     # Encryption, secret sharing, approvals
 │   ├── monitoring/   # Health, metrics
 │   ├── backup/       # Backup system
 │   ├── archival/     # Arweave client

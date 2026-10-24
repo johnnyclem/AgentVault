@@ -60,7 +60,7 @@ TypeScript library providing:
 - **Packaging** (`src/packaging/`): WASM compilation and optimization
 - **Canister** (`src/canister/`): Actor bindings, encryption, state management
 - **Wallet** (`src/wallet/`): Multi-chain wallet providers
-- **Security** (`src/security/`): VetKeys, multisig, encryption
+- **Security** (`src/security/`): encryption, Shamir secret sharing, TOTP, local approval tracking
 - **Monitoring** (`src/monitoring/`): Health checks, metrics, alerting
 - **Backup** (`src/backup/`): Backup creation, restoration
 - **Archival** (`src/archival/`): Arweave integration
@@ -174,8 +174,8 @@ Next.js application:
 ┌──────────────────────────────────────────────────────────┐
 │                    ICP Network                            │
 │  ┌────────────┐  ┌────────────┐  ┌────────────┐         │
-│  │ Canister   │  │ System     │  │ VetKeys    │         │
-│  │ (Sandboxed)│  │ Canisters  │  │ Service    │         │
+│  │ Canister   │  │ System     │  │ MemoryRepo │         │
+│  │ (Sandboxed)│  │ Canisters  │  │ Canister   │         │
 │  └────────────┘  └────────────┘  └────────────┘         │
 └──────────────────────────────────────────────────────────┘
                          │

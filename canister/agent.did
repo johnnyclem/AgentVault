@@ -81,7 +81,7 @@ type EncryptedSecret = record {
   createdAt  : int;
 };
 
-// ─── BLS Threshold Share Types (Production VetKeys) ──────────────────────────
+// ─── BLS Threshold Share Types (registry only, never verified) ───────────────
 
 /// Public commitment record for one BLS12-381 key share.
 /// Private share scalars are never stored on-chain.
@@ -94,11 +94,13 @@ type ThresholdShareCommitment = record {
   commitment : text;
 };
 
-/// Per-share health status from the heartbeat integrity check.
+/// Per-share result of the heartbeat format (length) check. healthy is always
+/// false: nothing verifies a share, so none is ever reported healthy.
 type ShareHealthStatus = record {
   index   : nat;
   healthy : bool;
-  /// "ok" | "missing_pubkey" | "pubkey_too_short" | "commitment_too_short"
+  /// "not_checked" | "format_ok_unverified" | "missing_pubkey" |
+  /// "pubkey_too_short" | "commitment_too_short"
   reason  : text;
 };
 
@@ -181,20 +183,24 @@ service : {
   listEncryptedSecrets     : ()                -> (vec EncryptedSecret) query;
   deleteEncryptedSecret    : (text)            -> (variant { ok : text; err : text });
 
-  // Production threshold signature verification (checks registry + signature length).
+  // Not implemented: always returns err. No threshold signature is ever reported verified.
   verifyThresholdSignature : (text, text)      -> (variant { ok : text; err : text }) query;
+  // Not implemented: always returns err and ignores its arguments. Do not send a
+  // seed phrase (the first argument) to it.
   deriveVetKeysKey         : (text, nat)       -> (variant { ok : text; err : text });
 
-  // Returns #production once initializeThresholdShares has been called.
+  // Always { enabled = false; thresholdSupported = false; mode = mock }: the canister
+  // has no vetKD or threshold signing. `production` stays so the interface is unchanged.
   getVetKeysStatus         : () -> (record {
     enabled : bool; thresholdSupported : bool;
     mode    : variant { mock : null; production : null };
   }) query;
 
-  // ── Production VetKeys: BLS Threshold Share Registration ─────────────────
+  // ── BLS Threshold Share Registration ─────────────────────────────────────
   //
   // Call after bootstrap() to register public BLS share commitments.
   // Private share scalars MUST NOT be included — they remain off-chain.
+  // Stored after length checks only; this does not enable threshold signing.
 
   initializeThresholdShares : (
     masterPublicKey  : text,
@@ -205,7 +211,8 @@ service : {
     totalParties     : nat
   ) -> (variant { ok : text; err : text });
 
-  // Returns share health reports produced by the heartbeat integrity check.
+  // Returns the share registry and the last heartbeat format (length) check.
+  // allHealthy and every report's healthy are always false.
   getShareHealthStatus : () -> (record {
     initialized     : bool;
     threshold       : nat;

@@ -182,7 +182,8 @@ Subcommands:
   export                  Export wallet
   import                  Import wallet
   delete                  Delete wallet
-  sign                    Sign transaction
+  sign                    Sign a transfer (ckETH, Solana, Polkadot; not
+                          implemented for ICP or Arweave)
   transfer                Transfer tokens
 
 Options:
@@ -512,45 +513,60 @@ Examples:
 
 ### archive
 
-Archive to Arweave.
+Manage the local archive records kept in `~/.agentvault/archives`
+(experimental). This command uploads nothing to Arweave; the web dashboard's
+Archive flow is what uploads a deployment receipt.
 
 ```bash
-agentvault archive [command] [options]
+agentvault archive <command> [options]
 
 Subcommands:
-  upload                  Upload to Arweave
-  download                Download from Arweave
-  status                  Check archive status
-  list                    List archives
-  estimate                Estimate cost
+  prepare <agent-name> <version>   Create a local archive record (not uploaded)
+  list [--agent <name>] [--status <status>]
+                                   List archive records; status is pending,
+                                   uploading, submitted or failed
+  stats [--agent <name>]           Count records by status
+  delete <archive-id>              Delete a local archive record
+  verify <archive-id>              Check the local copy against its recorded
+                                   SHA-256 (Arweave is not checked)
 
 Examples:
-  agentvault archive upload ./backup.json
-  agentvault archive status <tx-id>
-  agentvault archive estimate --size 1048576
+  agentvault archive prepare my-agent 1.0.0
+  agentvault archive list --status submitted
+  agentvault archive verify <archive-id>
 ```
+
+"Submitted" means a node accepted the upload and its transaction ID was
+recorded; this command does not check whether it was mined.
 
 ### approve
 
-Multi-signature approvals.
+Approval requests with a signer quorum, tracked locally in
+`~/.agentvault/approvals` (experimental). Signer names are not authenticated,
+an approval is not a cryptographic signature, and no deploy, upgrade or
+transfer waits for one.
 
 ```bash
-agentvault approve [command] [options]
+agentvault approve <command> [options]
 
 Subcommands:
-  create                  Create approval request
-  list                    List pending approvals
-  sign                    Sign approval request
-  status                  Check approval status
-
-Options:
-  --request-id <id>       Request ID
-  --signer <id>           Signer ID
+  create <type> <agent-name> <description>
+                                   Create a request (type: deploy, upgrade,
+                                   transfer, config_change, rollback)
+  list [--agent <name>] [--status <status>]
+                                   List requests
+  sign <request-id> <signer>       Record an approval by <signer>
+  reject <request-id> <signer>     Reject a request
+  pending <signer>                 List pending requests for a signer
+  delete <request-id>              Delete a request
+  cleanup                          Mark pending requests past their timeout as expired
+  mfa <command>                    Optional TOTP and device checks with a local
+                                   audit log; sign does not require them
 
 Examples:
-  agentvault approve create --request "Deploy to production"
-  agentvault approve list
-  agentvault approve sign --request-id req-123
+  agentvault approve create deploy my-agent "Deploy v1.2" --policy majority --signers 3
+  agentvault approve list --status pending
+  agentvault approve sign <request-id> alice
 ```
 
 ### profile

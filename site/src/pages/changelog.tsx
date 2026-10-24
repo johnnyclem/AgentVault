@@ -9,13 +9,13 @@ const releaseFeatures = [
   'Production-grade agent packaging, deployment, and lifecycle operations.',
   '37-command CLI surface for automation, diagnostics, and maintenance.',
   'Multi-chain wallet operations for ICP, Ethereum, Solana, and Polkadot.',
-  'Security controls with multi-signature approvals and encrypted backups.',
+  'Security controls with locally tracked approval quorums and encrypted backups.',
   'Monitoring, promotion, rollback, and archival workflows for reliability.',
 ];
 
 const knownLimitations = [
   'Wallet cryptography currently emphasizes transport security over full hardware-backed key custody.',
-  'VetKeys threshold signatures are represented in simulation mode for v1.0 workflows.',
+  'VetKeys threshold signatures are not implemented.',
   'Bittensor inference integrations require external API credentials.',
   'Arweave archival requires operator wallet setup and funding.',
 ];

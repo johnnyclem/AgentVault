@@ -147,7 +147,7 @@ repoCmd
       console.log(chalk.gray('\n  ─'.repeat(40)));
       console.log(
         chalk.gray(
-          `  To verify on-chain: set AGENTVAULT_CANISTER_ID and run with --source icp\n` +
+          `  On-chain storage of these entries does not work yet (see: agentvault repo flush-queue)\n` +
           `  AuditTokens are HMAC-SHA256 over (nonce:requestId:branchId:timestamp)\n` +
           `  bound to the branch TOTP secret — forgery requires the secret.`,
         ),
@@ -192,7 +192,7 @@ repoCmd
         `  ICP queue:      ${chalk.yellow(`${queueDepth} entries pending — run: agentvault repo flush-queue`)}`,
       );
     } else {
-      console.log(`  ICP queue:      ${chalk.green('empty (all entries submitted)')}`);
+      console.log(`  ICP queue:      ${chalk.gray('empty')}`);
     }
   });
 
@@ -210,13 +210,18 @@ repoCmd
 
     const spinner = ora(`Flushing ${depth} queued ICP audit entries…`).start();
     try {
-      const flushed = await flushIcpAuditQueue();
+      const { flushed, lastError } = await flushIcpAuditQueue();
       const remaining = getIcpQueueDepth();
 
       if (flushed > 0) {
         spinner.succeed(chalk.green(`Flushed ${flushed} entry(ies) to ICP.`));
       } else {
-        spinner.warn(chalk.yellow('No entries flushed — ICP may still be unreachable.'));
+        spinner.warn(chalk.yellow(`No entries flushed: ${lastError ?? 'unknown error'}`));
+      }
+      if (lastError) {
+        console.log(
+          chalk.gray('  On-chain submission does not work yet: the canister has no storeMfaAuditEntry method.'),
+        );
       }
 
       if (remaining > 0) {

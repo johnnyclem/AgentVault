@@ -43,15 +43,15 @@ const PlatformCapabilities: FeatureItem[] = [
     id: 'A1',
     title: 'Multi-chain wallets',
     description:
-      'Operate ICP, Ethereum, Solana, and Polkadot assets from a single CLI, with encrypted local key custody.',
+      'Keep ICP, Ethereum, Solana, and Polkadot wallets in one CLI, with encrypted local key custody. Ethereum, Solana and Polkadot transfers can be signed; ICP signing is not implemented yet.',
     destination: '/docs/user/wallets',
     action: 'Explore wallets',
   },
   {
     id: 'A2',
-    title: 'Security by default',
+    title: 'Security controls',
     description:
-      'Multi-signature approvals, MFA gating, and canister-level hardening are built in, not bolted on.',
+      'Approval requests with a signer quorum and an optional TOTP check, both tracked locally (they do not block deploys and are not cryptographic multisig), plus canister write guards: authorized principals, freeze and kill switches.',
     destination: '/docs/security/overview',
     action: 'Review security',
   },

@@ -153,7 +153,8 @@ export type CanisterQueuedTransaction = {
     action: CanisterTransactionAction;
     parameters: [string, string][];
     priority: CanisterTransactionPriority;
-    threshold?: number;
+    /** Candid `opt nat`: [] (no threshold) or [n] */
+    threshold: [] | [bigint];
   };
   status: CanisterTransactionStatus;
   result?: string;
@@ -253,7 +254,8 @@ export interface _SERVICE {
       action: CanisterTransactionAction;
       parameters: [string, string][];
       priority: CanisterTransactionPriority;
-      threshold?: number;
+      /** Candid `opt nat`: [] (no threshold) or [n] */
+      threshold: [] | [bigint];
     };
   }) => Promise<OperationResult>;
   getQueuedTransactions: () => Promise<CanisterQueuedTransaction[]>;
@@ -272,7 +274,12 @@ export interface _SERVICE {
   getEncryptedSecret: (arg_0: string) => Promise<[CanisterEncryptedSecret] | []>;
   listEncryptedSecrets: () => Promise<CanisterEncryptedSecret[]>;
   deleteEncryptedSecret: (arg_0: string) => Promise<OperationResult>;
+  /** Not implemented in the canister: always returns err. */
   verifyThresholdSignature: (arg_0: string, arg_1: string) => Promise<OperationResult>;
+  /**
+   * Not implemented in the canister: always returns err and ignores its
+   * arguments. Nothing in AgentVault calls it; never send it a seed phrase.
+   */
   deriveVetKeysKey: (arg_0: string, arg_1: number) => Promise<OperationResult>;
   getVetKeysStatus: () => Promise<CanisterVetKeysStatus>;
 

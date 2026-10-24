@@ -33,14 +33,14 @@ import {
 const approveCmd = new Command('approve');
 
 approveCmd
-  .description('[Experimental] Manage multi-signature approval workflows')
+  .description('[Experimental] Approval requests with a signer quorum (tracked locally; not cryptographic multisig)')
   .action(async () => {
     console.log(chalk.yellow('[Experimental] This feature is under active development and may change.'));
     console.log(chalk.yellow('Please specify a subcommand: create, list, sign, reject, delete, or cleanup'));
     console.log(chalk.gray(`\nExamples:
   ${chalk.cyan('agentvault approve create deploy <agent-name> "Description"')}${chalk.gray('  Create approval request')}
   ${chalk.cyan('agentvault approve list')}${chalk.gray('                     List all requests')}
-  ${chalk.cyan('agentvault approve sign <request-id>')}${chalk.gray('             Sign a request')}
+  ${chalk.cyan('agentvault approve sign <request-id> <signer>')}${chalk.gray('    Record an approval (signer names are not authenticated)')}
   ${chalk.cyan('agentvault approve reject <request-id>')}${chalk.gray('          Reject a request')}
   ${chalk.cyan('agentvault approve pending <signer>')}${chalk.gray('          Show pending requests')}`));
   });
@@ -143,19 +143,19 @@ approveCmd
 
 approveCmd
   .command('sign')
-  .description('Sign an approval request')
+  .description('Record an approval from a signer (local and unauthenticated: no key is involved)')
   .argument('<request-id>', 'Request ID to sign')
   .argument('<signer>', 'Signer name')
   .option('--comment <text>', 'Comment on signature')
   .action(async (requestId, signer, options) => {
-    const spinner = ora(`Signing request ${requestId}...`).start();
+    const spinner = ora(`Recording approval for ${requestId}...`).start();
 
     try {
       const success = signApprovalRequest(requestId, signer, options.comment);
 
       if (success) {
         const approved = isApproved(requestId);
-        spinner.succeed(chalk.green(`Request signed by ${signer}`));
+        spinner.succeed(chalk.green(`Approval recorded for ${signer} (local, unauthenticated)`));
         if (approved) {
           console.log(chalk.green('\n✓ Request is now approved!'));
         } else {
@@ -165,11 +165,11 @@ approveCmd
           }
         }
       } else {
-        spinner.fail(chalk.red('Failed to sign request'));
+        spinner.fail(chalk.red('Failed to record approval'));
         process.exit(1);
       }
     } catch (error) {
-      spinner.fail(chalk.red('Failed to sign request'));
+      spinner.fail(chalk.red('Failed to record approval'));
       const message = error instanceof Error ? error.message : 'Unknown error';
       console.error(chalk.red(message));
       process.exit(1);
@@ -373,10 +373,10 @@ mfaCmd
 
       if (result.ok) {
         spinner.succeed(chalk.green('Approval verified'));
-        console.log(chalk.bold('\n  Audit token (forward to ICP canister):'));
+        console.log(chalk.bold('\n  Audit token (kept locally; it is not submitted on-chain):'));
         console.log(`  ${chalk.cyan(result.auditToken)}`);
         console.log(
-          chalk.gray('\n  Run: agentvault approve sign <request-id> <signer> to complete the multi-sig flow.'),
+          chalk.gray('\n  Run: agentvault approve sign <request-id> <signer> to record approvals until the quorum is met.'),
         );
       } else {
         spinner.fail(chalk.red(`Verification failed: ${result.reason}`));
@@ -549,10 +549,11 @@ mfaCmd
 mfaCmd
   .command('biometric-setup')
   .description(
-    'Enrol this device\'s biometric key (P-256 / WebAuthn).\n' +
-    'Generates a device-bound ECDSA keypair stored in ~/.agentvault/mfa/.\n' +
-    'The private key is AES-256-GCM encrypted and never leaves this machine.\n' +
-    'In a browser this maps to navigator.credentials.create() with Face ID / fingerprint.',
+    'Enrol a device key for approvals (P-256, WebAuthn-shaped).\n' +
+    'Generates an ECDSA keypair stored in ~/.agentvault/mfa/. The private key is\n' +
+    'AES-256-GCM encrypted with a key derived from this machine\'s fingerprint, so\n' +
+    'it stays on this machine but is not protected by Face ID, a fingerprint or any\n' +
+    'other biometric check.',
   )
   .option(
     '--fingerprint <hex>',
@@ -589,9 +590,10 @@ mfaCmd
 mfaCmd
   .command('biometric-verify')
   .description(
-    'Approve a pending request using the device biometric key instead of TOTP.\n' +
-    'Signs the challenge hash from issueChallenge() with the enrolled P-256 key.\n' +
-    'Use this when your TOTP app is unavailable (lost phone, etc.).',
+    'Approve a pending request with the enrolled device key instead of TOTP.\n' +
+    'Signs the challenge hash from issueChallenge() with the P-256 key stored on\n' +
+    'this machine. No biometric prompt is involved: anyone who can run this CLI\n' +
+    'as you can produce the signature.',
   )
   .argument('<request-id>', 'Approval request ID')
   .argument('<nonce>', 'Nonce from the challenge (integer)')
@@ -599,7 +601,7 @@ mfaCmd
   .option('--challenge-hash <hex>', 'SHA-256 challenge hash (from: agentvault approve mfa challenge)')
   .option('--fingerprint <hex>', 'Override device fingerprint')
   .action(async (requestId, nonceStr, options) => {
-    const spinner = ora('Signing with biometric key…').start();
+    const spinner = ora('Signing with the enrolled device key…').start();
     try {
       const nonce = parseInt(nonceStr, 10);
       if (isNaN(nonce)) {
@@ -641,15 +643,15 @@ mfaCmd
       });
 
       if (result.ok) {
-        spinner.succeed(chalk.green('Biometric approval verified'));
-        console.log(chalk.bold('\n  Audit token (forward to ICP canister):'));
+        spinner.succeed(chalk.green('Approval verified with the device key on this machine (no biometric prompt)'));
+        console.log(chalk.bold('\n  Audit token (kept locally; it is not submitted on-chain):'));
         console.log(`  ${chalk.cyan(result.auditToken)}`);
         console.log(chalk.bold('\n  Assertion (credential + signature):'));
         console.log(chalk.gray(`  credentialId:  ${assertion.credentialId}`));
         console.log(chalk.gray(`  signCounter:   ${assertion.signCounter}`));
         console.log(chalk.gray(`  signatureB64:  ${assertion.signatureB64.slice(0, 32)}…`));
         console.log(
-          chalk.gray('\n  Run: agentvault approve sign <request-id> <signer> to complete the multi-sig flow.'),
+          chalk.gray('\n  Run: agentvault approve sign <request-id> <signer> to record approvals until the quorum is met.'),
         );
       } else {
         spinner.fail(chalk.red(`Biometric verification failed: ${result.reason}`));

@@ -8,13 +8,24 @@ import {
   deleteArchive,
   verifyArchive,
   getArchiveStats,
+  archiveDisplayStatus,
+  type ArchiveDisplayStatus,
   type ManagerArchiveResult as ArchiveResult,
 } from '../../src/archival/index.js';
+
+// A submitted archive was accepted by a node; this command never checks
+// whether it was mined, so it says so rather than calling it confirmed.
+const STATUS_TEXT: Record<ArchiveDisplayStatus, string> = {
+  pending: chalk.yellow('pending (not uploaded)'),
+  uploading: chalk.blue('uploading'),
+  submitted: chalk.gray('submitted (not checked on Arweave)'),
+  failed: chalk.red('failed'),
+};
 
 const archiveCmd = new Command('archive');
 
 archiveCmd
-  .description('[Experimental] Archive agent data to permanent storage (Arweave)')
+  .description('[Experimental] Manage the archive records kept in ~/.agentvault/archives')
   .action(async () => {
     console.log(chalk.yellow('[Experimental] This feature is under active development and may change.'));
     console.log(chalk.yellow('Please specify a subcommand: prepare, list, delete, verify, or stats'));
@@ -23,7 +34,7 @@ archiveCmd
   ${chalk.cyan('agentvault archive list')}${chalk.gray('                 List all archives')}
   ${chalk.cyan('agentvault archive stats <agent-name>')}${chalk.gray('     Get archive statistics')}
   ${chalk.cyan('agentvault archive delete <archive-id>')}${chalk.gray('      Delete an archive')}
-  ${chalk.cyan('agentvault archive verify <archive-id>')}${chalk.gray('       Verify archive integrity')}`));
+  ${chalk.cyan('agentvault archive verify <archive-id>')}${chalk.gray('       Check the local copy against its checksum')}`));
   });
 
 archiveCmd
@@ -94,7 +105,7 @@ archiveCmd
   .command('list')
   .description('List all archives')
   .option('--agent <name>', 'Filter by agent name')
-  .option('--status <status>', 'Filter by status (pending, uploading, confirmed, failed)')
+  .option('--status <status>', 'Filter by status (pending, uploading, submitted, failed)')
   .action(async (options) => {
     const spinner = ora('Loading archives...').start();
 
@@ -110,20 +121,15 @@ archiveCmd
 
       let filtered = archives;
       if (options.status) {
-        filtered = archives.filter((a) => a.status === options.status);
+        filtered = archives.filter((a) => archiveDisplayStatus(a) === options.status);
       }
 
       for (const archive of filtered) {
-        const statusColor = {
-          pending: chalk.yellow,
-          uploading: chalk.blue,
-          confirmed: chalk.green,
-          failed: chalk.red,
-        }[archive.status] || chalk.gray;
+        const status = archiveDisplayStatus(archive);
 
         console.log(`\n${chalk.bold(archive.id)}`);
         console.log(`  Agent: ${archive.agentName}`);
-        console.log(`  Status: ${statusColor(archive.status)}`);
+        console.log(`  Status: ${STATUS_TEXT[status] ?? chalk.gray(String(status))}`);
         console.log(`  Size: ${archive.sizeBytes} bytes`);
         console.log(`  Timestamp: ${archive.timestamp.toLocaleString()}`);
         if (archive.transactionId) {
@@ -148,8 +154,9 @@ archiveCmd
 
       console.log(chalk.bold('\nArchive Statistics:'));
       console.log(`  Total archives: ${stats.total}`);
-      console.log(`  Confirmed: ${chalk.green(stats.confirmed)}`);
-      console.log(`  Pending: ${chalk.yellow(stats.pending)}`);
+      console.log(`  Submitted (not checked on Arweave): ${chalk.gray(stats.submitted)}`);
+      console.log(`  Pending (not uploaded): ${chalk.yellow(stats.pending)}`);
+      console.log(`  Uploading: ${chalk.blue(stats.uploading)}`);
       console.log(`  Failed: ${chalk.red(stats.failed)}`);
       console.log(`  Total size: ${(stats.totalBytes / 1024 / 1024).toFixed(2)} MB`);
     } catch (error) {
@@ -186,10 +193,10 @@ archiveCmd
 
 archiveCmd
   .command('verify')
-  .description('Verify archive integrity')
-  .argument('<archive-id>', 'Archive ID to verify')
+  .description('Check the local archive copy against its recorded checksum (Arweave is not checked)')
+  .argument('<archive-id>', 'Archive ID to check')
   .action(async (archiveId) => {
-    const spinner = ora(`Verifying archive ${archiveId}...`).start();
+    const spinner = ora(`Checking the local copy of ${archiveId}...`).start();
 
     try {
       const archive = getArchive(archiveId);
@@ -202,14 +209,17 @@ archiveCmd
       const isValid = verifyArchive(archiveId);
 
       if (isValid) {
-        spinner.succeed(chalk.green(`Archive verified: ${archiveId}`));
+        spinner.succeed(chalk.green(`Local copy matches recorded checksum: ${archiveId} (Arweave not checked)`));
         console.log(chalk.gray(`Checksum: ${archive.checksum}`));
+        if (archive.transactionId) {
+          console.log(chalk.gray(`Arweave tx ${archive.transactionId}: not checked by this command`));
+        }
       } else {
-        spinner.fail(chalk.red('Archive verification failed'));
+        spinner.fail(chalk.red('Local copy is missing or does not match its recorded checksum'));
         process.exit(1);
       }
     } catch (error) {
-      spinner.fail(chalk.red('Failed to verify archive'));
+      spinner.fail(chalk.red('Failed to check archive'));
       const message = error instanceof Error ? error.message : 'Unknown error';
       console.error(chalk.red(message));
       process.exit(1);

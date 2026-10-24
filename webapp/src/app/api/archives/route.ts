@@ -6,7 +6,7 @@ import { listAllArchiveRecords } from '@/lib/server/archive-workflow'
 interface ArchiveRecordResponse {
   id: string
   agentName: string
-  status: 'prepared' | 'uploading' | 'completed' | 'failed'
+  status: 'prepared' | 'uploading' | 'submitted' | 'failed'
   canisterId: string
   timestamp: string
   size: number
@@ -29,7 +29,7 @@ export async function GET(
       return {
         id: record.id,
         agentName: record.agentName,
-        status: toArchiveStatus(record.status),
+        status: toArchiveStatus(record),
         canisterId,
         timestamp: new Date(record.timestamp).toISOString(),
         size: record.sizeBytes,
@@ -99,20 +99,21 @@ export async function DELETE(
   }
 }
 
-function toArchiveStatus(status: ArchiveMetadata['status']): ArchiveRecordResponse['status'] {
-  if (status === 'pending') {
-    return 'prepared'
+/*
+ * Nothing on the server checks whether an upload was mined, so an archive
+ * with a transaction id is only ever 'submitted'. Records written before this
+ * say 'confirmed' for the same thing: the gateway accepted the upload.
+ */
+function toArchiveStatus(record: ArchiveMetadata): ArchiveRecordResponse['status'] {
+  if (record.status === 'confirmed') {
+    return 'submitted'
   }
 
-  if (status === 'confirmed') {
-    return 'completed'
+  if (record.status === 'pending') {
+    return record.transactionId ? 'submitted' : 'prepared'
   }
 
-  if (status === 'failed') {
-    return 'failed'
-  }
-
-  return status
+  return record.status
 }
 
 function toCost(tags: Record<string, string>): number | undefined {

@@ -247,8 +247,9 @@ path first. For an encrypted backup, delete both the `.zip.enc` file and its
   and networks) into the local sync folder of Google Drive, iCloud Drive,
   Dropbox or OneDrive, or into a folder you choose. Run
   `agentvault cloud-backup --help` for its commands.
-- `agentvault archive` (experimental) prepares and tracks Arweave archives.
-  Run `agentvault archive --help` for its commands.
+- `agentvault archive` (experimental) manages the local archive records in
+  `~/.agentvault/archives`; it uploads nothing to Arweave. Run
+  `agentvault archive --help` for its commands.
 
 ## Next steps
 

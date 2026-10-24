@@ -286,7 +286,7 @@ git commit -m "Add shrinkwrap for dependency lock"
 - ✅ Web dashboard for agent management
 - ✅ Batched canister operations
 - ✅ Arweave archival integration
-- ✅ Multi-sig approval workflows
+- ✅ Approval requests with a signer quorum (tracked locally, not cryptographic multisig)
 - ✅ Real-time monitoring and metrics
 
 ## Breaking Changes

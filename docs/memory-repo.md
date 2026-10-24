@@ -1,6 +1,6 @@
 # MemoryRepo
 
-MemoryRepo is a git-style version-controlled memory system built as an ICP canister. It gives agents persistent, branching, auditable memory — anchored by a genesis commit from a `soul.md` document.
+MemoryRepo is a git-style version-controlled memory system built as an ICP canister. It gives agents persistent, branching memory with a full commit history — anchored by a genesis commit from a `soul.md` document.
 
 ## Architecture
 

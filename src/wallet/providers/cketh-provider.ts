@@ -206,7 +206,10 @@ export class CkEthProvider extends BaseWalletProvider {
   }
 
   /**
-   * Sign transaction
+   * Sign a transaction with the wallet's secp256k1 key.
+   *
+   * Returns the transaction's real ECDSA signature (anyone can recover the
+   * signer's address from it) and the signed transaction's hash.
    */
   async signTransaction(
     tx: any,
@@ -214,18 +217,44 @@ export class CkEthProvider extends BaseWalletProvider {
   ): Promise<SignedTransaction> {
     try {
       const wallet = new ethers.Wallet(privateKey);
-      const signedTxSerialized = await wallet.signTransaction(tx);
+      const signedTxSerialized = await wallet.signTransaction(this.toEthersTransaction(tx));
+      const signed = ethers.Transaction.from(signedTxSerialized);
+      if (!signed.signature || !signed.hash) {
+        throw new Error('the signed transaction carries no signature');
+      }
 
       return {
-        txHash: tx.hash || '0x0',
+        txHash: signed.hash,
         signedTx: signedTxSerialized,
-        signature: '0x',
+        signature: signed.signature.serialized,
         request: tx,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       throw new Error(`Failed to sign transaction: ${message}`);
     }
+  }
+
+  /**
+   * Map a TransactionRequest (`amount` in ETH, as the CLI builds it) to the
+   * fields ethers signs. ethers ignores keys it does not know, so an unmapped
+   * `amount` would be dropped and the signed transaction would send 0 ETH.
+   * An ethers transaction (with `value`, as sendTransaction builds it) is
+   * passed through unchanged.
+   */
+  private toEthersTransaction(tx: any): ethers.TransactionRequest {
+    if (tx.value !== undefined || tx.amount === undefined) {
+      return tx;
+    }
+
+    return {
+      to: tx.to,
+      value: ethers.parseEther(String(tx.amount)),
+      chainId: this.chainId,
+      ...(tx.nonce !== undefined && { nonce: tx.nonce }),
+      ...(tx.gasPrice && { gasPrice: BigInt(tx.gasPrice) }),
+      ...(tx.gasLimit && { gasLimit: BigInt(tx.gasLimit) }),
+    };
   }
 
   /**

@@ -176,30 +176,48 @@ const all = await listWallets(agentId);
 
 ## src/security/
 
-Security primitives and VetKeys.
+Security primitives: encryption, secret sharing, TOTP and approval tracking.
+The package root does not export this module, so the examples below import it
+from a checkout of this repository.
 
 ### vetkeys.ts
 
-Threshold key derivation.
+Splits a seed phrase into t-of-n Shamir shares and derives a local key from
+it. The module is named after VetKeys, but the ICP vetKD integration is not
+wired yet.
 
 ```typescript
-import { VetKeysClient, deriveThresholdKey } from 'agentvault';
+import { VetKeysClient } from './src/security/index.js';
 
-const client = new VetKeysClient(actor);
-const key = await deriveThresholdKey(seedPhrase, 3, 2);
+const client = new VetKeysClient({ threshold: 2, totalParties: 3 });
+const derived = await client.deriveThresholdKey(seedPhrase);
+// derived.shares: 3 Shamir shares of the seed phrase, any 2 rebuild it
+// derived.key: a PBKDF2 key derived locally from the seed phrase
 ```
 
 ### multisig.ts
 
-Multi-signature approvals.
+Approval requests with a signer quorum (tracked locally; not cryptographic
+multisig).
 
 ```typescript
-import { MultisigManager } from 'agentvault';
+import {
+  createApprovalRequest,
+  signApprovalRequest,
+  isApproved,
+} from './src/security/multisig.js';
 
-const multisig = new MultisigManager();
-await multisig.createRequest('deploy', params);
-await multisig.signRequest(requestId, signer);
+const request = createApprovalRequest('deploy', 'my-agent', 'Deploy v1.2', 'alice', {
+  policy: 'majority',
+  allowedSigners: ['alice', 'bob', 'carol'],
+});
+signApprovalRequest(request.id, 'bob'); // records the name; no key is involved
+isApproved(request.id); // false until a second approval is recorded
 ```
+
+`allowedSigners` only sets the quorum size: `signApprovalRequest` accepts any
+signer name. Nothing else in AgentVault reads an approval, so no deploy waits
+for one.
 
 ---
 
@@ -333,8 +351,8 @@ export const exampleCommand = new Command('example')
 | `tokens.ts` | `tokens` | Token balances |
 | `identity.ts` | `identity` | ICP identity |
 | `inference.ts` | `inference` | AI inference |
-| `archive.ts` | `archive` | Arweave archival |
-| `approve.ts` | `approve` | Multisig approvals |
+| `archive.ts` | `archive` | Local archive records |
+| `approve.ts` | `approve` | Approval quorums (tracked locally) |
 | `profile.ts` | `profile` | Performance profiling |
 | `trace.ts` | `trace` | Execution traces |
 | `rebuild.ts` | `rebuild` | Rebuild from state |

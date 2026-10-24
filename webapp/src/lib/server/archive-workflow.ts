@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 
@@ -21,7 +22,6 @@ import {
   prepareArchive,
   getArchivePath,
   updateArchiveTransaction,
-  confirmArchive,
   failArchive,
   getArchiveData,
   markArchiveUploading,
@@ -421,18 +421,33 @@ function buildReceiptOptions(profile: ArchiveProfile, input: ArchiveDetectResult
   }
 }
 
-function pickWalletMetadata(wallet: WalletData | null): Record<string, unknown> {
-  if (!wallet) {
-    return {}
+/**
+ * What the public receipt says about one artifact: its kind, file name, size
+ * and SHA-256, never its path or contents. sha256 and bytes are null for a
+ * directory, and for the token (credential) file, whose digest is withheld:
+ * a hash of a short secret published for good invites guessing it.
+ */
+interface ArtifactDigest {
+  kind: ArchiveAssetKind
+  basename: string
+  sha256: string | null
+  bytes: number | null
+}
+
+async function digestArtifact(kind: ArchiveAssetKind, filePath: string): Promise<ArtifactDigest> {
+  const basename = path.basename(filePath)
+  const stats = await fs.promises.stat(filePath)
+  if (kind === 'token' || !stats.isFile()) {
+    return { kind, basename, sha256: null, bytes: null }
   }
 
-  return {
-    id: wallet.id,
-    chain: wallet.chain,
-    address: wallet.address,
-    method: wallet.creationMethod,
-    updatedAt: wallet.updatedAt,
+  const hash = createHash('sha256')
+  let bytes = 0
+  for await (const chunk of fs.createReadStream(filePath)) {
+    hash.update(chunk as Buffer)
+    bytes += (chunk as Buffer).length
   }
+  return { kind, basename, sha256: hash.digest('hex'), bytes }
 }
 
 export async function runArchiveWorkflow(input: ArchiveRunInput): Promise<{
@@ -471,6 +486,27 @@ export async function runArchiveWorkflow(input: ArchiveRunInput): Promise<{
         code: 'MISSING_ARCHIVE_PATHS',
         message: 'Required archive artifact paths are missing. Provide config, skill, token, soul, and memory locations.',
         missing: detection.missing,
+      },
+    }
+  }
+
+  // Hashed before anything is deployed, so an unreadable artifact stops the
+  // run early instead of after a canister is already up.
+  let artifacts: ArtifactDigest[]
+  try {
+    const kinds: ArchiveAssetKind[] = ['config', 'skill', 'token', 'soul', 'memory']
+    artifacts = await Promise.all(
+      kinds.flatMap((kind) => {
+        const filePath = detection.requiredPaths[kind]
+        return filePath ? [digestArtifact(kind, filePath)] : []
+      })
+    )
+  } catch (error) {
+    return {
+      success: false,
+      error: {
+        code: 'ARTIFACT_READ_FAILED',
+        message: error instanceof Error ? error.message : 'Could not read an archive artifact',
       },
     }
   }
@@ -580,25 +616,20 @@ export async function runArchiveWorkflow(input: ArchiveRunInput): Promise<{
   }
 
   const receiptPaths = buildReceiptOptions(profile, detection, deployment)
+  const deployedAt = new Date().toISOString()
 
+  // This payload is posted to Arweave, where anyone can read it and it can
+  // never be removed. It names the agent, its canister and network, and
+  // digests the artifacts; local paths, wallet details, the backup and
+  // canister state stay on this machine.
   const archivePayload = {
+    format: 'agentvault-deployment-receipt-v1',
     agentId: agent.id,
     agentName: agent.name,
-    sourcePath: detection.sourcePath,
-    profile,
     canisterId,
-    packagePath: packageResult.wasmPath,
-    artifactPaths: receiptPaths,
-    backup,
-    wallets: {
-      icp: pickWalletMetadata(icpWallet),
-      arweave: pickWalletMetadata(arweaveWallet),
-    },
-    deployedAt: new Date().toISOString(),
-    deployTool: deployment.deployTool,
-    warnings: deployment.warnings,
-    projectRoot: resolveProjectRoot(detection.sourcePath),
-    canister: deployment.canister,
+    network,
+    createdAt: deployedAt,
+    artifacts,
   }
 
   const archiveVersion = packageResult.config.version ?? agentNameVersion(agent)
@@ -682,8 +713,11 @@ export async function runArchiveWorkflow(input: ArchiveRunInput): Promise<{
       }
     }
 
+    // The record stays pending with its transaction ID: the node accepting
+    // the POST does not mean the transaction was mined, and it can still be
+    // dropped. Whether it was mined is for a check against the gateway, which
+    // the evidence page runs in the browser.
     updateArchiveTransaction(archiveId, uploaded.transactionId)
-    confirmArchive(archiveId)
     arweaveResult.transactionId = uploaded.transactionId
     arweaveResult.explorerUrl = formatArweaveUrl(uploaded.transactionId)
   } catch (error) {
@@ -710,7 +744,7 @@ export async function runArchiveWorkflow(input: ArchiveRunInput): Promise<{
       artifactPaths: receiptPaths,
       sourcePath: detection.sourcePath,
       profile,
-      deployedAt: archivePayload.deployedAt,
+      deployedAt,
       arweave: arweaveResult,
     },
   }

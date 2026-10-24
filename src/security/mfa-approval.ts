@@ -37,12 +37,12 @@
  *     The operator must call unlockBranch() with a fresh TOTP code to resume.
  *     Replying YES via TOTP to the anomaly ping registers the device as trusted.
  *
- *  6. Audit log (local + ICP)
+ *  6. Audit log (local; on-chain submission does not work yet)
  *     Every event (setup, challenge, approve, reject, anomaly, lock) is appended to
- *     ~/.agentvault/mfa/audit-<branchId>.yaml for local forensics AND submitted
- *     asynchronously to the ICP canister for tamper-evident on-chain storage.
- *     The verifyMfaApproval() return value includes an auditToken
- *     (HMAC over the approval payload) suitable for on-chain verification.
+ *     ~/.agentvault/mfa/audit-<branchId>.yaml for local forensics and handed to
+ *     icp-audit.ts, which cannot store it on-chain yet (see that file) and keeps
+ *     it in a local retry queue. The verifyMfaApproval() return value includes an
+ *     auditToken (HMAC over the approval payload, keyed with the TOTP secret).
  */
 
 import fs from 'node:fs';
@@ -156,7 +156,7 @@ export type MfaAuditEventType =
   | 'branch-locked'
   | 'branch-unlocked';
 
-/** One entry in the immutable audit log.  Suitable for forwarding to the ICP canister. */
+/** One entry in the local (append-only by convention, not tamper-evident) MFA audit log. */
 export interface MfaAuditEntry {
   id: string;
   requestId: string;

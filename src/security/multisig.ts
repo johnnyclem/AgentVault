@@ -1,16 +1,15 @@
 /**
  * Multi-Signature Approval Workflows
  *
- * Manages local approval workflows requiring multiple signatures.
+ * Manages local approval workflows that need approvals from several signers.
  * This is a LOCAL approval tracking system, not cryptographic multisig.
- *
- * IMPORTANT: For production blockchain multisig, use:
- * - ICP canister-based threshold signatures (VetKeys)
- * - The canister multisig module for on-chain verification
+ * There is no cryptographic or on-chain multisig in AgentVault; signer names
+ * are not authenticated, and an approval's audit token is a SHA-256 of the
+ * request id, signer name, time and description, made with no key.
  *
  * This module provides:
  * - Approval request tracking
- * - Signature collection and counting
+ * - Approval collection and counting
  * - Policy-based approval thresholds
  * - Audit trail for approvals
  */
@@ -47,7 +46,7 @@ export interface ApprovalRequest {
  * Approval signature (NOT cryptographic - for audit trail only)
  *
  * This represents an approval action, not a cryptographic signature.
- * For cryptographic multisig, use the VetKeys canister integration.
+ * AgentVault has no cryptographic multisig.
  */
 export interface ApprovalSignature {
   signer: string;

@@ -927,10 +927,10 @@ async function handleVetKeys(): Promise<void> {
       name: 'operation',
       message: 'Select VetKeys operation:',
       choices: [
-        { name: 'status', value: 'Get VetKeys status' },
-        { name: 'list', value: 'List encrypted secrets' },
-        { name: 'get', value: 'Get encrypted secret' },
-        { name: 'delete', value: 'Delete encrypted secret' },
+        { name: 'Get VetKeys status', value: 'status' },
+        { name: 'List encrypted secrets', value: 'list' },
+        { name: 'Get encrypted secret', value: 'get' },
+        { name: 'Delete encrypted secret', value: 'delete' },
       ],
     },
   ]);
@@ -1103,10 +1103,10 @@ async function handleQueue(agentId: string): Promise<void> {
       name: 'operation',
       message: 'Select queue operation:',
       choices: [
-        { name: 'list', value: 'List all transactions' },
-        { name: 'pending', value: 'List pending transactions' },
-        { name: 'stats', value: 'Get queue statistics' },
-        { name: 'clear', value: 'Clear completed transactions' },
+        { name: 'List all transactions', value: 'list' },
+        { name: 'List pending transactions', value: 'pending' },
+        { name: 'Get queue statistics', value: 'stats' },
+        { name: 'Clear completed transactions', value: 'clear' },
       ],
     },
   ]);

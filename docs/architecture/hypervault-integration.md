@@ -88,7 +88,7 @@ conversations.ndjson   — optional (--include-conversations), always encrypted
 
 ### Integrity chain
 
-content SHA-256 per entry → Merkle root in manifest → ed25519 signature over the canonical (alphabetically-keyed) manifest, using `~/.agentvault/arweave-signing.key`. This mirrors `ArweaveArchiver.verifyBundle` semantics, so verification is uniform across the archive stack.
+content SHA-256 per entry → Merkle root in manifest → ed25519 signature over the canonical manifest (top-level keys sorted alphabetically; nested objects keep their insertion order), using `~/.agentvault/arweave-signing.key`. This mirrors `ArweaveArchiver.verifyBundle` semantics, so verification is uniform across the archive stack.
 
 ### Encryption
 

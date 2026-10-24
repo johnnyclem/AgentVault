@@ -27,17 +27,15 @@ agentvault wallet create
 
 ### Hardware Wallet
 
-Connect hardware wallet (Ledger, etc.):
+Generate a wallet's key on a Ledger device (or in an Intel SGX enclave):
 
 ```bash
-# Connect hardware wallet
-agentvault wallet connect --hardware
-
-# Features:
-# - Private key never leaves device
-# - Transaction signing on device
-# - Firmware updates required
+# The private key stays on the device; AgentVault stores the public key and address
+agentvault wallet create --chain cketh --agent-id my-agent --hsm ledger
 ```
+
+`wallet sign` does not use the device yet. It needs a private key on disk, so
+it cannot sign for a hardware wallet.
 
 ## Creating Wallets
 
@@ -86,16 +84,18 @@ agentvault wallet balance <wallet-id>
 
 ### Sign Transaction
 
-Sign a transaction with wallet:
+Sign a transfer with one of an agent's wallets:
 
 ```bash
-# Sign transaction
-agentvault wallet sign <wallet-id> --transaction <tx-payload>
-
-# Options:
-# --hardware     - Use hardware wallet
-# --broadcast   - Broadcast after signing
+# Interactive: pick a wallet, then enter the recipient and amount
+agentvault wallet sign --agent-id <agent-id>
 ```
+
+`wallet sign` signs ckETH, Solana and Polkadot transfers with the wallet's own
+key, prints the signed transaction and offers to save it under
+`.agentvault/signed-txs/` in the current folder. It does not broadcast it.
+Signing is not implemented for ICP and Arweave wallets: for those the command
+fails and saves nothing.
 
 ### Transaction History
 
@@ -168,18 +168,19 @@ agentvault wallet multi-send --input transfers.json
 
 ### Process Queue
 
-View and process pending transaction queue:
+Process the transactions an agent's canister has queued:
 
 ```bash
-# View queue
-agentvault wallet queue
-
-# Process queue
-agentvault wallet queue --process
-
-# Clear failed transactions
-agentvault wallet queue --clear-failed
+# Prompts for the canister ID
+agentvault wallet process-queue --agent-id <agent-id>
 ```
+
+The command is meant to sign each pending transaction with the wallet's own
+key, record the signature on the canister and then send it. It refuses a
+transaction that asks for a signing threshold above 1, because threshold
+signing is not implemented. Today it calls the canister without a signing
+identity, and the canister refuses anonymous writes, so recording fails and
+nothing is sent.
 
 ## Cross-Chain Operations
 
@@ -298,15 +299,10 @@ agentvault wallet disconnect --hardware
 
 ### Multi-Signature Wallets
 
-Configure multi-sig for enhanced security:
-
-```bash
-# Create multi-sig wallet
-agentvault wallet create --multisig --signers 3 --threshold 2
-
-# Sign transaction
-agentvault wallet sign <wallet-id> --multisig --signers-required 2
-```
+Multi-signature wallets are not supported. For changes that need sign-off
+from several people, `agentvault approve` tracks approval requests and a
+signer quorum locally. It is not cryptographic multisig: signer names are not
+authenticated, and no transfer waits for an approval.
 
 ### Derivation Paths
 
