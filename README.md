@@ -177,11 +177,9 @@ archived too, in stenographer's native JSONL, so
 adapter.
 
 ```bash
-agentvault total-recall init --transcript append
-agentvault mcp serve --total-recall ./.agentvault/total-recall   # register in each MCP client
-agentvault total-recall import chatgpt conversations.json        # what the export does give you
-agentvault total-recall log --since 0 && agentvault total-recall verify
-agentvault total-recall stenographer --run                       # GraphRAG over the transcript
+agentvault total-recall onboard     # guided: archive, ChatGPT history, assistants, and a check that it all works
+agentvault total-recall status      # what the archive holds
+agentvault total-recall verify      # re-check the hash chains
 ```
 
 See [`docs/guides/total-recall.md`](docs/guides/total-recall.md).
