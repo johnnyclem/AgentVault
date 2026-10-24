@@ -70,7 +70,12 @@ export default function EvidencePage({ params }: { params: Promise<{ id: string 
       {/* About a loaded agent's evidence, so not shown while loading, on an error or for an unknown agent. */}
       {evidence && !isLoading && !error && (
         <p className="text-xs text-muted-foreground">
-          Not shown: signed actions and test coverage. AgentVault does not record either for an agent yet.
+          Not shown: test coverage, which AgentVault does not record. The memory writes this server signs are not tied to
+          any one agent, so they are listed for the whole deployment under{' '}
+          <Link href="/vault/memory-writes" className="font-medium text-foreground underline-offset-4 hover:underline">
+            Signed memory writes
+          </Link>
+          .
         </p>
       )}
     </div>

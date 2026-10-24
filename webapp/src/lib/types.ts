@@ -25,6 +25,11 @@ export interface AgentEvidence {
   generatedAt: string
 }
 
+// A signed memory_repo write receipt. The server-side capture code owns the
+// shape, so it is re-exported here rather than copied; type-only, so nothing
+// from src/canister reaches the browser bundle.
+export type { IcpWriteReceipt } from '@/canister/memory-repo-receipts-types'
+
 // ── End Evidence types ──────────────────────────────────────────────────────
 
 export interface ApiError {

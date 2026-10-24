@@ -4,6 +4,7 @@ import {
   createMemoryRepoAgent,
   explainMemoryRepoWriteError,
   memoryRepoErrorText,
+  type OperationResult,
   type _SERVICE,
 } from '@/canister/memory-repo-actor'
 import {
@@ -11,6 +12,8 @@ import {
   SERVER_IDENTITY_GUIDANCE,
   type SigningIdentity,
 } from '@/canister/identity'
+import { callWithReceipt, recordCalls, type ReceiptContext, type ReceiptedCall } from '@/canister/memory-repo-receipts'
+import { appendIcpWriteReceipt } from '@/lib/server/memory-write-receipts'
 import { polyticianClientError } from '@/lib/server/polytician-client'
 
 /**
@@ -22,8 +25,17 @@ import { polyticianClientError } from '@/lib/server/polytician-client'
  * client reads (polyticianClientError).
  */
 export interface SignedActor {
+  /** For queries; writes go through commitToBranch and createBranchFrom below */
   actor: _SERVICE
   signer: SigningIdentity
+  /**
+   * actor.commitToBranch, with a receipt kept when the canister replies {ok}.
+   * Same result and same errors as the plain call: capture never fails,
+   * retries or changes the write.
+   */
+  commitToBranch(kind: 'commit' | 'tombstone', branch: string, message: string, diff: string, tags: string[]): Promise<OperationResult>
+  /** actor.createBranchFrom, with a receipt kept the same way */
+  createBranchFrom(name: string, base: string): Promise<OperationResult>
 }
 
 const WRITE_ERROR_STATUS = {
@@ -33,6 +45,13 @@ const WRITE_ERROR_STATUS = {
   REPO_KILLED: 423,
   MEMORY_REPO_OUTDATED: 502,
 } as const
+
+/**
+ * How long a write's response waits for its receipt to be stored. A stuck
+ * disk must not hold up the answer to a write that has already happened;
+ * the append goes on after this and logs its own failure.
+ */
+const RECEIPT_STORE_WAIT_MS = 1_000
 
 /** Key files already warned about, so a too-open key is logged once, not on every request. */
 const warnedKeyFiles = new Set<string>()
@@ -70,8 +89,56 @@ export async function signedMemoryRepoActor(): Promise<SignedActor | NextRespons
   }
 
   const host = process.env.ICP_LOCAL_URL || 'https://ic0.app'
-  const agent = await createMemoryRepoAgent(host, signer.identity)
-  return { actor: createMemoryRepoActor(canisterId, agent), signer }
+  // The recorder signs exactly as the server's identity does, keeping a copy
+  // of each signed call for its receipt
+  const recorder = recordCalls(signer.identity)
+  const agent = await createMemoryRepoAgent(host, recorder.identity)
+  const context: ReceiptContext = { agent, canisterId, recorder }
+  return {
+    actor: createMemoryRepoActor(canisterId, agent),
+    signer,
+    commitToBranch: (kind, branch, message, diff, tags) =>
+      writeWithReceipt(context, { kind, args: [branch, message, diff, tags] }),
+    createBranchFrom: (name, base) => writeWithReceipt(context, { kind: 'branch', args: [name, base] }),
+  }
+}
+
+/**
+ * Makes the write, then stores its receipt if one was built, waiting at most
+ * RECEIPT_STORE_WAIT_MS for it. A receipt that could not be built or stored
+ * is logged and the write's result returned as it is: the write has
+ * happened, and the caller must see it as it is. Logs name the kind, branch,
+ * request id and result only, never the message, diff or argument, which
+ * hold memory content.
+ */
+async function writeWithReceipt(context: ReceiptContext, call: ReceiptedCall): Promise<OperationResult> {
+  const { result, receipt, captureError } = await callWithReceipt(context, call)
+  const branch = call.args[0]
+  if (receipt) {
+    const about = `for ${call.kind} on branch ${branch} (request ${receipt.id}, result ${receipt.result.ok})`
+    const settled = (async () => {
+      try {
+        await appendIcpWriteReceipt(receipt)
+      } catch (error) {
+        console.error(`memory_repo write receipt not stored ${about}: ${error instanceof Error ? error.message : String(error)}`)
+      }
+      return true
+    })()
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const waited = new Promise<false>((resolve) => {
+      timer = setTimeout(() => resolve(false), RECEIPT_STORE_WAIT_MS)
+    })
+    try {
+      if (!(await Promise.race([settled, waited]))) {
+        console.error(`memory_repo write receipt still being stored ${about} after ${RECEIPT_STORE_WAIT_MS} ms; answering the write without it`)
+      }
+    } finally {
+      clearTimeout(timer)
+    }
+  } else if (captureError) {
+    console.error(`memory_repo write receipt not captured for ${call.kind} on branch ${branch}: ${captureError}`)
+  }
+  return result
 }
 
 /**

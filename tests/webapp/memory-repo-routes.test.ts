@@ -13,9 +13,12 @@
  *
  * The routes run as they are; only their `@/` imports are mapped (the
  * webapp's tsconfig aliases) and createMemoryRepoActor is wrapped to hand
- * back a fake canister while recording the agent the route built. Webapp
- * modules are imported through variables so the root typecheck, which does
- * not know the webapp's aliases, does not follow them.
+ * back a fake canister while recording the agent the route built. Writes
+ * reach that fake canister through callWithReceipt, stubbed to make the
+ * plain call and capture nothing; receipt capture has its own tests
+ * (receipts-routes.test.ts). Webapp modules are imported through variables
+ * so the root typecheck, which does not know the webapp's aliases, does not
+ * follow them.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -63,6 +66,14 @@ vi.mock('@/lib/server/auth', async () => await import(/* @vite-ignore */ `${WEBA
 vi.mock('@/lib/server/polytician-client', async () => await import(/* @vite-ignore */ `${WEBAPP}/lib/server/polytician-client`));
 vi.mock('@/canister/identity', async () => await import('../../src/canister/identity.js'));
 vi.mock('@/canister/memory-repo-branch-state', async () => await import('../../src/canister/memory-repo-branch-state.js'));
+vi.mock('@/lib/server/memory-write-receipts', async () => await import(/* @vite-ignore */ `${WEBAPP}/lib/server/memory-write-receipts`));
+vi.mock('@/canister/memory-repo-receipts', async () => ({
+  ...(await import('../../src/canister/memory-repo-receipts.js')),
+  callWithReceipt: async (_context: unknown, call: { kind: string; args: unknown[] }) => {
+    const write = canister.actor[call.kind === 'branch' ? 'createBranchFrom' : 'commitToBranch'] as (...args: unknown[]) => Promise<unknown>;
+    return { result: await write(...call.args), receipt: null, captureError: null };
+  },
+}));
 vi.mock('@/canister/memory-repo-actor', async () => {
   const actual = await import('../../src/canister/memory-repo-actor.js');
   return {
