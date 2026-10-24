@@ -29,6 +29,7 @@ export {
 export { notifyEvent, hasSinks, isLoopbackUrl, eventPayload, type DeliveryResult, type NotifyOptions } from './notify.js';
 export {
   importChatGptConversations,
+  importChatGptConversationsAsync,
   chatGptConversationMessages,
   importMemoryList,
   parseMemoryList,
@@ -42,3 +43,31 @@ export {
   TOTAL_RECALL_TOOL_PREFIX,
   type TotalRecallToolOptions,
 } from './mcp-tools.js';
+export {
+  HOME_VOLUME_DIR,
+  DEFAULT_SERVER_NAME,
+  CHATGPT_MEMORY_EXPORT_PROMPT,
+  CLAUDE_INGEST_PROMPT,
+  expandHome,
+  resolveVolumeDir,
+  locateChatGptExport,
+  clientTargets,
+  buildServerEntry,
+  mergeMcpServer,
+  writeClientConfig,
+  selfTest,
+  applyPlan,
+  type McpServerEntry,
+  type ClientId,
+  type ClientTarget,
+  type ConfigAction,
+  type WriteConfigResult,
+  type SelfTestResult,
+  type SelfTestStep,
+  type OnboardPlan,
+  type OnboardDeps,
+  type OnboardReporter,
+  type OnboardResult,
+  type OnboardStep,
+} from './onboard.js';
+export { renderCard, wrapText, prettyPath, shortenMiddle, stripAnsi, visibleWidth } from './onboard-ui.js';
