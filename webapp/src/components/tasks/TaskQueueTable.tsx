@@ -75,10 +75,10 @@ export function TaskQueueTable({ tasks, emptyMessage = 'No tasks found', isLoadi
           </div>
           <div className="text-sm text-muted-foreground mb-2">{task.message}</div>
           <div className="flex items-center gap-4">
-            <div className="flex-1 h-1.5 bg-muted rounded-full">
+            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
               <div
-                className="h-full bg-primary rounded-full transition-all"
-                style={{ width: `${task.progress}%` }}
+                className="h-full origin-left bg-primary transition-transform"
+                style={{ transform: `scaleX(${task.progress / 100})` }}
               />
             </div>
             <span className="text-xs text-muted-foreground w-10 text-right">{task.progress}%</span>

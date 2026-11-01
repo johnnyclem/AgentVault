@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { Select } from '@/components/common/Select'
 import type { AgentConfig } from '@/lib/types'
 
 interface AgentConfigFormProps {
@@ -28,73 +29,77 @@ export function AgentConfigForm({ config, onSave, onCancel }: AgentConfigFormPro
     onSave(newConfig)
   }
 
+  const input =
+    'h-9 w-full rounded-lg border bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring'
+  const label = 'mb-1.5 block text-sm font-medium'
+
   return (
-    <form onSubmit={handleSubmit} className="surface space-y-5 p-6">
+    <form onSubmit={handleSubmit} className="surface space-y-6 p-6">
       <div>
-        <label className="block text-sm font-medium mb-1.5">
-          Entry Point
+        <label htmlFor="config-entry" className={label}>
+          Entry point
         </label>
         <input
+          id="config-entry"
           type="text"
           value={entry}
           onChange={(e) => setEntry(e.target.value)}
-          className="w-full px-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+          className={`${input} font-mono`}
           placeholder="src/index.ts"
         />
       </div>
 
       <div>
-        <label className="block text-sm font-medium mb-1.5">
+        <label htmlFor="config-memory" className={label}>
           Memory (MB)
         </label>
         <input
+          id="config-memory"
           type="number"
           min="128"
           max="8192"
           step="128"
           value={memory}
           onChange={(e) => setMemory(parseInt(e.target.value))}
-          className="w-full px-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+          className={`${input} tabular-nums`}
         />
       </div>
 
       <div>
-        <label className="block text-sm font-medium mb-1.5">
+        <label htmlFor="config-compute" className={label}>
           Compute
         </label>
-        <select
-          value={compute}
-          onChange={(e) => setCompute(e.target.value)}
-          className="w-full px-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-        >
+        <Select id="config-compute" value={compute} onChange={(e) => setCompute(e.target.value)}>
           <option value="low">Low</option>
           <option value="medium">Medium</option>
           <option value="high">High</option>
-        </select>
+        </Select>
       </div>
 
       <div>
-        <label className="block text-sm font-medium mb-1.5">
+        <label htmlFor="config-cycles" className={label}>
           Cycles (optional)
         </label>
         <input
+          id="config-cycles"
           type="text"
           value={cycles}
           onChange={(e) => setCycles(e.target.value)}
-          className="w-full px-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+          className={`${input} font-mono`}
           placeholder="1000000000000"
         />
       </div>
 
       <div>
-        <label className="block text-sm font-medium mb-1.5">
-          Routing Canisters (optional, comma-separated)
+        <label htmlFor="config-routing" className={label}>
+          Routing canisters (optional, comma-separated)
         </label>
         <input
+          id="config-routing"
           type="text"
           value={routing}
           onChange={(e) => setRouting(e.target.value)}
-          className="w-full px-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+          className={`${input} font-mono`}
           placeholder="rrkah-fqaaa-aaaaa-aaaaq-cai, be2us-64aaa-aaaaa-qaaca-cai"
         />
       </div>
@@ -102,14 +107,14 @@ export function AgentConfigForm({ config, onSave, onCancel }: AgentConfigFormPro
       <div className="flex items-center gap-3">
         <button
           type="submit"
-          className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+          className="h-9 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
         >
-          Save Configuration
+          Save configuration
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="px-4 py-2 text-sm font-medium border bg-card rounded-lg hover:bg-muted transition-colors"
+          className="h-9 rounded-lg border bg-card px-4 text-sm font-medium transition-colors hover:bg-muted"
         >
           Cancel
         </button>

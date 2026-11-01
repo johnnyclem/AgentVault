@@ -5,18 +5,18 @@ import Link from 'next/link'
 import {
   ArrowLeft,
   AlertCircle,
-  Activity,
   Archive,
   CircleAlert,
   KeyRound,
   Loader2,
   Play,
-  RefreshCw,
   Settings,
   StopCircle,
   Upload,
   XCircle,
 } from 'lucide-react'
+import { Dialog } from '@/components/common/Dialog'
+import { Select } from '@/components/common/Select'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { useCanisterStatus } from '@/hooks/useCanisterStatus'
 import { useDeployments } from '@/hooks/useDeployments'
@@ -24,7 +24,7 @@ import { useAgent } from '@/hooks/useAgent'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { apiClient } from '@/lib/api-client'
 import { describeArchiveOutcome, evidenceHref } from '@/lib/proof/archive-outcome'
-import { formatBytes, formatCycles, formatTimestamp } from '@/lib/utils'
+import { cn, formatBytes, formatCycles, formatTimestamp } from '@/lib/utils'
 
 type ArchiveProfile = 'claude-code' | 'openclaw' | 'goose' | 'opencode' | 'other'
 type ArtifactKind = 'config' | 'skill' | 'token' | 'soul' | 'memory'
@@ -94,12 +94,26 @@ const PROFILE_OPTIONS: ProfileOption[] = [
   { value: 'other', label: 'Other' },
 ]
 
+// The hint names the files that usually hold each artifact; the input's own
+// placeholder stays generic so the two never say the same thing.
 const ARTIFACT_FIELDS: Array<{ key: ArtifactKind; label: string; hint: string }> = [
-  { key: 'config', label: 'Config', hint: 'agent.json, agent.yaml, package.json, ...' },
-  { key: 'skill', label: 'Skill', hint: 'skills.json, tool list, ...' },
-  { key: 'token', label: 'Token', hint: 'token.json, credentials, env file...' },
-  { key: 'soul', label: 'Soul', hint: 'soul.json, state.json...' },
-  { key: 'memory', label: 'Memory', hint: 'memory.json, context.json...' },
+  { key: 'config', label: 'Config', hint: 'Usually agent.json, agent.yaml or package.json' },
+  { key: 'skill', label: 'Skill', hint: 'Usually skills.json or a tool list' },
+  { key: 'token', label: 'Token', hint: 'Usually token.json, credentials or an env file' },
+  { key: 'soul', label: 'Soul', hint: 'Usually soul.json or state.json' },
+  { key: 'memory', label: 'Memory', hint: 'Usually memory.json or context.json' },
+]
+
+// One look for every text field in the archive wizard: 36px high, 10px radius, visible focus ring.
+const FIELD =
+  'h-9 w-full rounded-lg border bg-background px-3 text-sm placeholder:font-sans placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring'
+
+const ARCHIVE_STEPS: Array<{ id: ArchiveStep; label: string }> = [
+  { id: 'profile', label: 'Profile' },
+  { id: 'artifacts', label: 'Files' },
+  { id: 'wallets', label: 'Wallets' },
+  { id: 'review', label: 'Review' },
+  { id: 'receipt', label: 'Receipt' },
 ]
 
 const emptyArtifactPaths: ArtifactPaths = {
@@ -442,12 +456,16 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
   if (agentError || !agent) {
     return (
       <div className="page">
-        <div className="flex items-center gap-4">
-          <Link href="/agents" className="text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="w-6 h-6" />
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <Link
+            href="/agents"
+            aria-label="Back to agents"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           </Link>
           <div>
-            <h1 className="page-title">Agent Not Found</h1>
+            <h1 className="page-title">Agent not found</h1>
             <p className="page-subtitle">
               {agentError?.message || 'The requested agent could not be found.'}
             </p>
@@ -462,49 +480,55 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
   return (
     <div className="page">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <Link href="/agents" className="text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="w-6 h-6" />
+        <div className="flex min-w-0 items-start gap-4">
+          <Link
+            href="/agents"
+            aria-label="Back to agents"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           </Link>
-          <div>
-            <h1 className="page-title">{agent.name}</h1>
-            <p className="page-subtitle">
-              ID: {agent.id}
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <h1 className="page-title">{agent.name}</h1>
+              <StatusBadge status={agent.status} />
+            </div>
+            <p className="page-subtitle mt-1">
+              ID <span className="tag ml-1" title={agent.id}>{agent.id}</span>
             </p>
           </div>
-          <StatusBadge status={agent.status} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={openArchiveModal}
-            className="flex items-center gap-2 px-3.5 py-2 text-sm font-medium border bg-card rounded-lg hover:bg-muted transition-colors"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium border bg-card rounded-lg hover:bg-muted transition-colors"
           >
-            <Archive className="w-4 h-4" />
+            <Archive className="h-4 w-4" aria-hidden="true" />
             Archive My Agent
           </button>
           <button
             onClick={handleDeploy}
             disabled={isDeploying}
-            className="flex items-center gap-2 px-3.5 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
           >
-            {isDeploying ? <LoadingSpinner size="sm" /> : <Play className="w-4 h-4" />}
+            {isDeploying ? <LoadingSpinner size="sm" /> : <Play className="h-4 w-4" aria-hidden="true" />}
             {agent.status === 'active' ? '1-Click Redeploy' : '1-Click Deploy'}
           </button>
           {agent.status === 'active' && (
             <button
               onClick={handleStop}
               disabled={isDeploying}
-              className="flex items-center gap-2 px-3.5 py-2 text-sm font-medium border border-destructive/30 text-destructive rounded-lg hover:bg-destructive/10 disabled:opacity-50 transition-colors"
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium border border-destructive/30 text-destructive rounded-lg hover:bg-destructive/10 disabled:opacity-50 transition-colors"
             >
-              {isDeploying ? <LoadingSpinner size="sm" /> : <StopCircle className="w-4 h-4" />}
+              {isDeploying ? <LoadingSpinner size="sm" /> : <StopCircle className="h-4 w-4" aria-hidden="true" />}
               Stop
             </button>
           )}
           <Link
             href={`/agents/${agent.id}/config`}
-            className="flex items-center gap-2 px-3.5 py-2 text-sm font-medium border bg-card rounded-lg hover:bg-muted transition-colors"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium border bg-card rounded-lg hover:bg-muted transition-colors"
           >
-            <Settings className="w-4 h-4" />
+            <Settings className="h-4 w-4" aria-hidden="true" />
             Configure
           </Link>
         </div>
@@ -522,37 +546,35 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
         </div>
       )}
 
+      {/* min-w-0: a full 63-character principal must shrink inside its column, not widen the grid. */}
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <Activity className="w-5 h-5" />
-            Status
-          </h2>
+        <div className="flex min-w-0 flex-col gap-4">
+          <h2 className="text-base font-medium">Status</h2>
           {canisterLoading ? (
             <LoadingSpinner />
           ) : canisterError ? (
             <p className="text-destructive">Failed to load canister status</p>
           ) : canister ? (
-            <div className="surface p-4 space-y-2 text-sm">
-              <p className="flex justify-between">
-                <span className="text-muted-foreground">Canister ID:</span>
-                <span className="font-mono">{canister.id}</span>
+            <div className="surface flex-1 space-y-2 p-4 text-sm">
+              <p className="kv">
+                <span className="text-muted-foreground">Canister ID</span>
+                <span className="tag" title={canister.id}>{canister.id}</span>
               </p>
-              <p className="flex justify-between">
-                <span className="text-muted-foreground">Status:</span>
+              <p className="kv">
+                <span className="text-muted-foreground">Status</span>
                 <StatusBadge status={canister.status} />
               </p>
-              <p className="flex justify-between">
-                <span className="text-muted-foreground">Cycles:</span>
-                <span>{formatCycles(canister.cycles)}</span>
+              <p className="kv">
+                <span className="text-muted-foreground">Cycles</span>
+                <span className="tabular-nums">{formatCycles(canister.cycles)}</span>
               </p>
-              <p className="flex justify-between">
-                <span className="text-muted-foreground">Memory:</span>
-                <span>{formatBytes(canister.memory)}</span>
+              <p className="kv">
+                <span className="text-muted-foreground">Memory</span>
+                <span className="tabular-nums">{formatBytes(canister.memory)}</span>
               </p>
-              <p className="flex justify-between">
-                <span className="text-muted-foreground">Controller:</span>
-                <span className="font-mono">{canister.controller.slice(0, 8)}...</span>
+              <p className="kv">
+                <span className="text-muted-foreground">Controller</span>
+                <span className="tag" title={canister.controller}>{canister.controller}</span>
               </p>
             </div>
           ) : (
@@ -560,60 +582,59 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
           )}
         </div>
 
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <RefreshCw className="w-5 h-5" />
-            Metrics
-          </h2>
-          <div className="surface p-4 space-y-2 text-sm">
-            <p className="flex justify-between">
-              <span className="text-muted-foreground">Requests:</span>
-              <span>{agent.metrics?.requests.toLocaleString() ?? 'N/A'}</span>
+        <div className="flex min-w-0 flex-col gap-4">
+          <h2 className="text-base font-medium">Metrics</h2>
+          <div className="surface flex-1 space-y-2 p-4 text-sm">
+            <p className="kv">
+              <span className="text-muted-foreground">Requests</span>
+              <span className="tabular-nums">{agent.metrics?.requests.toLocaleString() ?? 'N/A'}</span>
             </p>
-            <p className="flex justify-between">
-              <span className="text-muted-foreground">Errors:</span>
-              <span className="text-destructive">{agent.metrics?.errors ?? 'N/A'}</span>
+            <p className="kv">
+              <span className="text-muted-foreground">Errors</span>
+              <span className={agent.metrics?.errors ? 'tabular-nums text-destructive' : 'tabular-nums'}>
+                {agent.metrics?.errors ?? 'N/A'}
+              </span>
             </p>
-            <p className="flex justify-between">
-              <span className="text-muted-foreground">Avg Latency:</span>
-              <span>{agent.metrics?.avgLatency ? `${agent.metrics.avgLatency}ms` : 'N/A'}</span>
+            <p className="kv">
+              <span className="text-muted-foreground">Avg latency</span>
+              <span className="tabular-nums">{agent.metrics?.avgLatency ? `${agent.metrics.avgLatency}ms` : 'N/A'}</span>
             </p>
-            <p className="flex justify-between">
-              <span className="text-muted-foreground">Uptime:</span>
-              <span>{agent.metrics?.uptime ? `${agent.metrics.uptime}%` : 'N/A'}</span>
+            <p className="kv">
+              <span className="text-muted-foreground">Uptime</span>
+              <span className="tabular-nums">{agent.metrics?.uptime ? `${agent.metrics.uptime}%` : 'N/A'}</span>
             </p>
           </div>
         </div>
       </div>
 
       <div className="space-y-4">
-        <h2 className="text-lg font-semibold">Configuration</h2>
+        <h2 className="text-base font-medium">Configuration</h2>
         <div className="surface p-4 space-y-2 text-sm">
-          <p className="flex justify-between">
-            <span className="text-muted-foreground">Entry Point:</span>
-            <span className="font-mono">{agent.config.entry}</span>
+          <p className="kv">
+            <span className="text-muted-foreground">Entry point</span>
+            <span className="tag" title={agent.config.entry}>{agent.config.entry}</span>
           </p>
-          <p className="flex justify-between">
-            <span className="text-muted-foreground">Memory:</span>
-            <span>{agent.config.memory} MB</span>
+          <p className="kv">
+            <span className="text-muted-foreground">Memory</span>
+            <span className="tabular-nums">{agent.config.memory} MB</span>
           </p>
-          <p className="flex justify-between">
-            <span className="text-muted-foreground">Compute:</span>
+          <p className="kv">
+            <span className="text-muted-foreground">Compute</span>
             <span>{agent.config.compute}</span>
           </p>
-          <p className="flex justify-between">
-            <span className="text-muted-foreground">Created:</span>
+          <p className="kv">
+            <span className="text-muted-foreground">Created</span>
             <span>{formatTimestamp(agent.createdAt)}</span>
           </p>
-          <p className="flex justify-between">
-            <span className="text-muted-foreground">Updated:</span>
+          <p className="kv">
+            <span className="text-muted-foreground">Updated</span>
             <span>{formatTimestamp(agent.updatedAt)}</span>
           </p>
         </div>
       </div>
 
       <div className="space-y-4">
-        <h2 className="text-lg font-semibold">Recent Deployments</h2>
+        <h2 className="text-base font-medium">Recent deployments</h2>
         {deploymentsLoading ? (
           <LoadingSpinner />
         ) : deployments.length === 0 ? (
@@ -621,16 +642,16 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
         ) : (
           <div className="surface divide-y">
             {deployments.slice(0, 5).map((deployment) => (
-              <div key={deployment.id} className="p-4 flex items-center justify-between">
+              <div key={deployment.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 p-4">
                 <div>
                   <StatusBadge status={deployment.status} />
-                  <span className="ml-2 text-sm text-muted-foreground">{formatTimestamp(deployment.createdAt)}</span>
+                  <span className="ml-2 whitespace-nowrap text-sm text-muted-foreground">{formatTimestamp(deployment.createdAt)}</span>
                   {deployment.error && (
                     <p className="mt-1 text-xs text-destructive">{deployment.error}</p>
                   )}
                 </div>
                 {deployment.canisterId && (
-                  <span className="font-mono text-sm">{deployment.canisterId.slice(0, 8)}...</span>
+                  <span className="tag" title={deployment.canisterId}>{deployment.canisterId}</span>
                 )}
               </div>
             ))}
@@ -639,506 +660,519 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
       </div>
 
       {/* !mt-0: as a child of .page the overlay would inherit space-y's 24px
-          top margin, leaving an undimmed, clickable strip over the header. */}
+          top margin, leaving an undimmed, clickable strip over the header.
+          Escape closes it unless the archive is running. */}
       {isArchiveModalOpen && (
-        <div className="fixed inset-0 !mt-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="w-full max-w-3xl rounded-xl border bg-popover text-popover-foreground shadow-xl">
-            <div className="flex items-center justify-between border-b px-5 py-4">
-              <h3 className="text-lg font-semibold">Archive My Agent</h3>
-              <button
-                onClick={closeArchiveModal}
-                className="text-muted-foreground hover:text-foreground"
-                disabled={archiveLoading}
-              >
-                <XCircle className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="max-h-[85vh] overflow-auto p-5 space-y-5">
-              <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span className={`rounded-full px-2 py-1 ${archiveStep === 'profile' ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground'}`}>
-                  1. Profile
-                </span>
-                <span className={`rounded-full px-2 py-1 ${archiveStep === 'artifacts' ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground'}`}>
-                  2. Files
-                </span>
-                <span className={`rounded-full px-2 py-1 ${archiveStep === 'wallets' ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground'}`}>
-                  3. Wallets
-                </span>
-                <span className={`rounded-full px-2 py-1 ${archiveStep === 'review' ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground'}`}>
-                  4. Review
-                </span>
-                <span className={`rounded-full px-2 py-1 ${archiveStep === 'receipt' ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground'}`}>
-                  5. Receipt
-                </span>
+        <Dialog
+          labelledBy="archive-title"
+          onClose={archiveLoading ? undefined : closeArchiveModal}
+          className="!mt-0"
+          panelClassName="max-w-3xl"
+        >
+          <div className="flex items-center justify-between border-b px-5 py-4">
+            <h3 id="archive-title" className="text-lg font-medium">Archive My Agent</h3>
+            <button
+              type="button"
+              onClick={closeArchiveModal}
+              aria-label="Close"
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+              disabled={archiveLoading}
+            >
+              <XCircle className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
+          <div className="max-h-[85vh] space-y-5 overflow-auto p-5">
+            <ol className="flex flex-wrap items-center gap-2 text-sm" aria-label="Steps">
+              {ARCHIVE_STEPS.map(({ id, label }, index) => (
+                <li
+                  key={id}
+                  aria-current={archiveStep === id ? 'step' : undefined}
+                  className={cn(
+                    'rounded-md px-2 py-1',
+                    archiveStep === id ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground'
+                  )}
+                >
+                  {index + 1}. {label}
+                </li>
+              ))}
+            </ol>
+
+            {archiveError && (
+              <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                {archiveError}
               </div>
+            )}
 
-              {archiveError && (
-                <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive flex items-start gap-2">
-                  <CircleAlert className="w-4 h-4 mt-0.5" />
-                  {archiveError}
-                </div>
-              )}
+            {detectionError && archiveStep === 'artifacts' && (
+              <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                {detectionError}
+              </div>
+            )}
 
-              {detectionError && archiveStep === 'artifacts' && (
-                <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 mt-0.5" />
-                  {detectionError}
-                </div>
-              )}
-
-              {archiveStep === 'profile' && (
-                <div className="space-y-4">
-                  <p className="text-sm text-muted-foreground">
-                    Pick your agent type and optional source path. We’ll try to auto-detect all archive artifacts.
-                  </p>
-                  <div>
-                    <label className="block text-sm font-medium mb-1.5">Agent Profile</label>
-                    <select
-                      value={archiveProfile}
-                      onChange={(e) => setArchiveProfile(e.target.value as ArchiveProfile)}
-                      className="w-full border bg-background px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-                    >
-                      {PROFILE_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1.5">
-                      Source Path (optional)
-                    </label>
-                    <input
-                      type="text"
-                      value={archiveSourcePath}
-                      onChange={(event) => setArchiveSourcePath(event.target.value)}
-                      className="w-full border bg-background px-3 py-2 rounded-md font-mono focus:outline-none focus:ring-2 focus:ring-ring"
-                      placeholder="Leave blank to auto-detect from agent profile"
-                    />
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Example: /Users/me/projects/my-agent
-                    </p>
-                  </div>
-                  <button
-                    onClick={handleDetect}
-                    disabled={isDetecting}
-                    className="w-full bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+            {archiveStep === 'profile' && (
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Pick your agent type and optional source path. We’ll try to auto-detect all archive artifacts.
+                </p>
+                <div>
+                  <label htmlFor="archive-profile" className="mb-1.5 block text-sm font-medium">Agent profile</label>
+                  <Select
+                    id="archive-profile"
+                    value={archiveProfile}
+                    onChange={(e) => setArchiveProfile(e.target.value as ArchiveProfile)}
                   >
-                    {isDetecting ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Detecting Files
-                      </span>
-                    ) : (
-                      'Detect Archives'
-                    )}
-                  </button>
+                    {PROFILE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div>
+                  <label htmlFor="archive-source" className="mb-1.5 block text-sm font-medium">
+                    Source path (optional)
+                  </label>
+                  <input
+                    id="archive-source"
+                    type="text"
+                    value={archiveSourcePath}
+                    onChange={(event) => setArchiveSourcePath(event.target.value)}
+                    className={cn(FIELD, 'font-mono')}
+                    placeholder="Auto-detect from the profile"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Example: /Users/me/projects/my-agent
+                  </p>
+                </div>
+                <button
+                  onClick={handleDetect}
+                  disabled={isDetecting}
+                  className="h-9 w-full rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {isDetecting ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <Loader2 className="h-4 w-4 motion-safe:animate-spin" aria-hidden="true" />
+                      Detecting files
+                    </span>
+                  ) : (
+                    'Detect archives'
+                  )}
+                </button>
 
+                <button
+                  onClick={() => setArchiveStep('artifacts')}
+                  className="h-9 w-full rounded-lg border px-4 text-sm font-medium transition-colors hover:bg-muted"
+                >
+                  Continue manually
+                </button>
+              </div>
+            )}
+
+            {archiveStep === 'artifacts' && (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h4 className="font-medium">Artifact locations</h4>
+                  <button
+                    onClick={() => setArchiveStep('profile')}
+                    className="text-sm text-primary hover:underline"
+                  >
+                    Back
+                  </button>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {detection?.autoDetected
+                    ? 'We found some paths automatically. Confirm or edit each required path.'
+                    : 'Automatic detection was not possible. Enter each required location manually.'}
+                </p>
+                <input
+                  type="text"
+                  aria-label="Source path"
+                  value={detection?.sourcePath || archiveSourcePath || ''}
+                  onChange={(event) => setArchiveSourcePath(event.target.value)}
+                  className={cn(FIELD, 'font-mono')}
+                  placeholder="Path to your agent project"
+                />
+                {requiredKinds.map((kind) => {
+                  const field = ARTIFACT_FIELDS.find((entry) => entry.key === kind)
+                  if (!field) {
+                    return null
+                  }
+                  const value = artifactPaths[kind]
+                  return (
+                    <div key={kind}>
+                      <label htmlFor={`artifact-${kind}`} className="mb-1.5 block text-sm font-medium">
+                        {field.label}
+                      </label>
+                      <input
+                        id={`artifact-${kind}`}
+                        type="text"
+                        value={value}
+                        onChange={(event) => updateArtifactPath(kind, event.target.value)}
+                        aria-describedby={`artifact-${kind}-hint`}
+                        className={cn(FIELD, 'font-mono')}
+                        placeholder="Path to the file"
+                      />
+                      <p id={`artifact-${kind}-hint`} className="mt-1 text-xs text-muted-foreground">{field.hint}</p>
+                    </div>
+                  )
+                })}
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setArchiveStep('profile')}
+                    className="h-9 rounded-lg border px-4 text-sm font-medium transition-colors hover:bg-muted"
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={() => {
+                      void openWalletStep()
+                    }}
+                    disabled={!canAdvanceToWallets}
+                    className="h-9 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    Continue to wallets
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {archiveStep === 'wallets' && (
+              <div className="space-y-5">
+                <div className="flex justify-between">
+                  <h4 className="font-medium">Connect or select wallets</h4>
                   <button
                     onClick={() => setArchiveStep('artifacts')}
-                    className="w-full rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
+                    className="text-sm text-primary hover:underline"
                   >
-                    Continue Manually
+                    Back
                   </button>
                 </div>
-              )}
+                <p className="text-sm text-muted-foreground">
+                  Archive flow requires one ICP wallet and one Arweave wallet. Create a new one if missing.
+                </p>
 
-              {archiveStep === 'artifacts' && (
-                <div className="space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h4 className="font-medium">Artifact Locations</h4>
-                    <button
-                      onClick={() => setArchiveStep('profile')}
-                      className="text-sm text-primary hover:underline"
-                    >
-                      Back
-                    </button>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    {detection?.autoDetected
-                      ? 'We found some paths automatically. Confirm or edit each required path.'
-                      : 'Automatic detection was not possible. Enter each required location manually.'}
-                  </p>
-                  <input
-                    type="text"
-                    value={detection?.sourcePath || archiveSourcePath || ''}
-                    onChange={(event) => setArchiveSourcePath(event.target.value)}
-                    className="w-full border bg-background px-3 py-2 rounded-md font-mono focus:outline-none focus:ring-2 focus:ring-ring"
-                    placeholder="Source path to your agent project"
-                  />
-                  {requiredKinds.map((kind) => {
-                    const field = ARTIFACT_FIELDS.find((entry) => entry.key === kind)
-                    if (!field) {
-                      return null
-                    }
-                    const value = artifactPaths[kind]
-                    return (
-                      <div key={kind}>
-                        <label className="block text-sm font-medium mb-1.5">
-                          {field.label}
-                        </label>
-                        <input
-                          type="text"
-                          value={value}
-                          onChange={(event) => updateArtifactPath(kind, event.target.value)}
-                          className="w-full border bg-background px-3 py-2 rounded-md font-mono focus:outline-none focus:ring-2 focus:ring-ring"
-                          placeholder={field.hint}
-                        />
-                        <p className="text-xs text-muted-foreground mt-1">{field.hint}</p>
-                      </div>
-                    )
-                  })}
-                  <div className="flex gap-2 justify-end">
-                    <button
-                      onClick={() => setArchiveStep('profile')}
-                      className="px-4 py-2 text-sm font-medium border rounded-lg hover:bg-muted transition-colors"
-                    >
-                      Back
-                    </button>
-                    <button
-                      onClick={() => {
-                        void openWalletStep()
-                      }}
-                      disabled={!canAdvanceToWallets}
-                      className="px-4 py-2 text-sm font-medium rounded-lg bg-primary text-primary-foreground disabled:opacity-50 hover:bg-primary/90 transition-colors"
-                    >
-                      Continue to Wallets
-                    </button>
-                  </div>
-                </div>
-              )}
+                <div className="rounded-lg border p-4">
+                  <h5 className="mb-3 flex items-center gap-2 font-medium">
+                    <KeyRound className="h-4 w-4" aria-hidden="true" />
+                    ICP wallet
+                  </h5>
+                  {walletError && <div className="mb-3 text-sm text-destructive">{walletError}</div>}
 
-              {archiveStep === 'wallets' && (
-                <div className="space-y-5">
-                  <div className="flex justify-between">
-                    <h4 className="font-medium">Connect / Select Wallets</h4>
-                    <button
-                      onClick={() => setArchiveStep('artifacts')}
-                      className="text-sm text-primary hover:underline"
-                    >
-                      Back
-                    </button>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Archive flow requires one ICP wallet and one Arweave wallet. Create a new one if missing.
-                  </p>
-
-                  <div className="border rounded-lg p-4">
-                    <div className="flex items-start gap-2 mb-3">
-                      <h5 className="font-semibold flex items-center gap-2">
-                        <KeyRound className="w-4 h-4" />
-                        ICP Wallet
-                      </h5>
+                  {isFetchingWallets ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 motion-safe:animate-spin" aria-hidden="true" />
+                      Loading existing wallets…
                     </div>
-                    {walletError && <div className="text-sm text-destructive">{walletError}</div>}
+                  ) : icpWallets.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No existing ICP wallets found.</p>
+                  ) : (
+                    <Select
+                      aria-label="ICP wallet"
+                      value={selectedIcpWalletId}
+                      onChange={(event) => setSelectedIcpWalletId(event.target.value)}
+                      wrapperClassName="mb-2"
+                    >
+                      {icpWallets.map((wallet) => (
+                        <option key={wallet.id} value={wallet.id}>
+                          {wallet.address.slice(0, 10)}… {wallet.id}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
 
-                    {isFetchingWallets ? (
-                      <div className="text-sm text-muted-foreground flex items-center gap-2">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Loading existing wallets...
-                      </div>
-                    ) : icpWallets.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No existing ICP wallets found.</p>
-                    ) : (
-                      <select
-                        value={selectedIcpWalletId}
-                        onChange={(event) => setSelectedIcpWalletId(event.target.value)}
-                        className="mb-2 w-full border bg-background px-3 py-2 rounded-md"
-                      >
-                        {icpWallets.map((wallet) => (
-                          <option key={wallet.id} value={wallet.id}>
-                            {wallet.address.slice(0, 10)}... {wallet.id}
-                          </option>
-                        ))}
-                      </select>
-                    )}
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Select
+                      aria-label="How to add the ICP wallet"
+                      value={icpWalletMethod}
+                      onChange={(event) => setIcpWalletMethod(event.target.value as WalletMethod)}
+                    >
+                      <option value="generate">Generate</option>
+                      <option value="import-seed">Import from seed</option>
+                      <option value="import-private-key">Import private key</option>
+                    </Select>
 
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <select
-                        value={icpWalletMethod}
-                        onChange={(event) => setIcpWalletMethod(event.target.value as WalletMethod)}
-                        className="border bg-background px-3 py-2 rounded-md"
-                      >
-                        <option value="generate">Generate</option>
-                        <option value="import-seed">Import from seed</option>
-                        <option value="import-private-key">Import private key</option>
-                      </select>
-
-                      {icpWalletMethod === 'import-seed' && (
-                        <input
-                          type="text"
-                          value={icpSeedPhrase}
-                          onChange={(event) => setIcpSeedPhrase(event.target.value)}
-                          className="sm:col-span-2 border bg-background px-3 py-2 rounded-md"
-                          placeholder="Seed phrase"
-                        />
-                      )}
-
-                      {icpWalletMethod === 'import-private-key' && (
-                        <input
-                          type="text"
-                          value={icpPrivateKey}
-                          onChange={(event) => setIcpPrivateKey(event.target.value)}
-                          className="sm:col-span-2 border bg-background px-3 py-2 rounded-md"
-                          placeholder="Private key"
-                        />
-                      )}
-
+                    {icpWalletMethod === 'import-seed' && (
                       <input
                         type="text"
-                        value={icpDerivationPath}
-                        onChange={(event) => setIcpDerivationPath(event.target.value)}
-                        className="sm:col-span-2 border bg-background px-3 py-2 rounded-md"
-                        placeholder="Derivation path (optional)"
+                        aria-label="ICP seed phrase"
+                        value={icpSeedPhrase}
+                        onChange={(event) => setIcpSeedPhrase(event.target.value)}
+                        className={cn(FIELD, 'sm:col-span-2')}
+                        placeholder="Seed phrase"
                       />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => void createWallet('icp')}
-                      disabled={isCreatingWallet === 'icp'}
-                      className="mt-3 w-full border border-primary/40 text-primary rounded-lg px-4 py-2 text-sm font-medium hover:bg-primary/10 disabled:opacity-50"
-                    >
-                      {isCreatingWallet === 'icp' ? (
-                        <span className="flex items-center justify-center gap-2">
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Creating...
-                        </span>
-                      ) : (
-                        'Create / Import ICP Wallet'
-                      )}
-                    </button>
-                  </div>
-
-                  <div className="border rounded-lg p-4">
-                    <h5 className="font-semibold flex items-center gap-2 mb-3">
-                      <KeyRound className="w-4 h-4" />
-                      Arweave Wallet
-                    </h5>
-
-                    {isFetchingWallets ? (
-                      <div className="text-sm text-muted-foreground flex items-center gap-2">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Loading existing wallets...
-                      </div>
-                    ) : arweaveWallets.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No existing Arweave wallets found.</p>
-                    ) : (
-                      <select
-                        value={selectedArweaveWalletId}
-                        onChange={(event) => setSelectedArweaveWalletId(event.target.value)}
-                        className="mb-2 w-full border bg-background px-3 py-2 rounded-md"
-                      >
-                        {arweaveWallets.map((wallet) => (
-                          <option key={wallet.id} value={wallet.id}>
-                            {wallet.address.slice(0, 10)}... {wallet.id}
-                          </option>
-                        ))}
-                      </select>
                     )}
 
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <select
-                        value={arweaveWalletMethod}
-                        onChange={(event) => setArweaveWalletMethod(event.target.value as WalletMethod)}
-                        className="border bg-background px-3 py-2 rounded-md"
-                      >
-                        <option value="generate">Generate</option>
-                        <option value="import-seed">Import from seed</option>
-                        <option value="import-private-key">Import private key</option>
-                      </select>
-
-                      {arweaveWalletMethod === 'import-seed' && (
-                        <input
-                          type="text"
-                          value={arweaveSeedPhrase}
-                          onChange={(event) => setArweaveSeedPhrase(event.target.value)}
-                          className="sm:col-span-2 border bg-background px-3 py-2 rounded-md"
-                          placeholder="Seed phrase"
-                        />
-                      )}
-
-                      {arweaveWalletMethod === 'import-private-key' && (
-                        <input
-                          type="text"
-                          value={arweavePrivateKey}
-                          onChange={(event) => setArweavePrivateKey(event.target.value)}
-                          className="sm:col-span-2 border bg-background px-3 py-2 rounded-md"
-                          placeholder="Private key"
-                        />
-                      )}
-
+                    {icpWalletMethod === 'import-private-key' && (
                       <input
                         type="text"
-                        value={arweaveDerivationPath}
-                        onChange={(event) => setArweaveDerivationPath(event.target.value)}
-                        className="sm:col-span-2 border bg-background px-3 py-2 rounded-md"
-                        placeholder="Derivation path (optional)"
+                        aria-label="ICP private key"
+                        value={icpPrivateKey}
+                        onChange={(event) => setIcpPrivateKey(event.target.value)}
+                        className={cn(FIELD, 'sm:col-span-2')}
+                        placeholder="Private key"
                       />
-
-                      <label className="sm:col-span-2">
-                        <span className="text-xs text-muted-foreground">
-                          Arweave JWK (required if selected wallet does not have one)
-                        </span>
-                        <textarea
-                          value={arweaveJwk}
-                          onChange={(event) => setArweaveJwk(event.target.value)}
-                          className="mt-1 w-full border bg-background rounded-md px-3 py-2 font-mono text-sm"
-                          rows={4}
-                          placeholder='{ "kty":"RSA", "n":"...", "e":"..." }'
-                        />
-                      </label>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => void createWallet('arweave')}
-                      disabled={isCreatingWallet === 'arweave'}
-                      className="mt-3 w-full border border-primary/40 text-primary rounded-lg px-4 py-2 text-sm font-medium hover:bg-primary/10 disabled:opacity-50"
-                    >
-                      {isCreatingWallet === 'arweave' ? (
-                        <span className="flex items-center justify-center gap-2">
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Creating...
-                        </span>
-                      ) : (
-                        'Create / Import Arweave Wallet'
-                      )}
-                    </button>
-                  </div>
-
-                  <div className="flex gap-2 justify-end">
-                    <button
-                      onClick={() => setArchiveStep('artifacts')}
-                      className="px-4 py-2 text-sm font-medium border rounded-lg hover:bg-muted transition-colors"
-                    >
-                      Back
-                    </button>
-                    <button
-                      onClick={() => setArchiveStep('review')}
-                      disabled={!canRunArchive}
-                      className="px-4 py-2 text-sm font-medium rounded-lg bg-primary text-primary-foreground disabled:opacity-50 hover:bg-primary/90 transition-colors"
-                    >
-                      Review and Run
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {archiveStep === 'review' && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-medium">Review Archive Settings</h4>
-                    <button
-                      onClick={() => setArchiveStep('wallets')}
-                      className="text-sm text-primary hover:underline"
-                    >
-                      Back
-                    </button>
-                  </div>
-                  <div className="grid gap-3 text-sm sm:grid-cols-2">
-                    <p><span className="text-muted-foreground">Profile:</span> {archiveProfile}</p>
-                    <p><span className="text-muted-foreground">Source:</span> {archiveSourcePath || detection?.sourcePath || 'Unknown'}</p>
-                    {requiredKinds.map((kind) => (
-                      <p key={kind} className="truncate">
-                        <span className="text-muted-foreground capitalize">{kind}:</span> {trimArtifactValues[kind]}
-                      </p>
-                    ))}
-                    <p><span className="text-muted-foreground">ICP Wallet:</span> {selectedIcpWallet?.address || 'Not selected'}</p>
-                    <p><span className="text-muted-foreground">Arweave Wallet:</span> {selectedArweaveWallet?.address || 'Not selected'}</p>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Running this publishes a deployment receipt to Arweave, publicly and permanently: the agent&apos;s
-                    id and name, its canister id and network, and each artifact&apos;s file name, size and SHA-256. No file
-                    contents or local paths are included, and the upload shows the address of the paying Arweave wallet.
-                  </p>
-                  <div className="flex gap-2 justify-end">
-                    <button
-                      onClick={runArchive}
-                      disabled={!canSubmitArchive || archiveLoading}
-                      className="px-4 py-2 text-sm font-medium rounded-lg bg-primary text-primary-foreground disabled:opacity-50 hover:bg-primary/90 transition-colors"
-                    >
-                      {archiveLoading ? (
-                        <span className="flex items-center gap-2">
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Backing up...
-                        </span>
-                      ) : (
-                        'Run Archive'
-                      )}
-                    </button>
-                    <button
-                      onClick={() => setArchiveStep('wallets')}
-                      className="px-4 py-2 text-sm font-medium rounded-lg border hover:bg-muted transition-colors"
-                    >
-                      Back
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {archiveStep === 'receipt' && archiveReceipt && archiveOutcome && (
-                <div className="space-y-4">
-                  {/* The run ends when the gateway accepts the upload, before it is mined, so no success icon. */}
-                  <div className="text-center">
-                    {archiveOutcome.submitted ? (
-                      <Upload className="w-10 h-10 text-muted-foreground mx-auto mb-2" aria-hidden="true" />
-                    ) : (
-                      <CircleAlert className="w-10 h-10 text-warning mx-auto mb-2" aria-hidden="true" />
                     )}
-                    <p className="font-semibold">{archiveOutcome.title}</p>
-                    <p className="text-sm text-muted-foreground mt-1">{archiveOutcome.detail}</p>
+
+                    <input
+                      type="text"
+                      aria-label="ICP derivation path"
+                      value={icpDerivationPath}
+                      onChange={(event) => setIcpDerivationPath(event.target.value)}
+                      className={cn(FIELD, 'sm:col-span-2')}
+                      placeholder="Derivation path (optional)"
+                    />
                   </div>
-                  <div className="grid gap-2 text-sm">
-                    <p><span className="text-muted-foreground">Archive ID:</span> {archiveReceipt.archiveId}</p>
-                    <p><span className="text-muted-foreground">Canister:</span> {archiveReceipt.canisterId}</p>
-                    <p><span className="text-muted-foreground">Deployed:</span> {archiveReceipt.deployedAt}</p>
-                    <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => void createWallet('icp')}
+                    disabled={isCreatingWallet === 'icp'}
+                    className="mt-3 h-9 w-full rounded-lg border border-primary/40 px-4 text-sm font-medium text-primary transition-colors hover:bg-primary/10 disabled:opacity-50"
+                  >
+                    {isCreatingWallet === 'icp' ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <Loader2 className="h-4 w-4 motion-safe:animate-spin" aria-hidden="true" />
+                        Creating…
+                      </span>
+                    ) : (
+                      'Create or import ICP wallet'
+                    )}
+                  </button>
+                </div>
+
+                <div className="rounded-lg border p-4">
+                  <h5 className="mb-3 flex items-center gap-2 font-medium">
+                    <KeyRound className="h-4 w-4" aria-hidden="true" />
+                    Arweave wallet
+                  </h5>
+
+                  {isFetchingWallets ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 motion-safe:animate-spin" aria-hidden="true" />
+                      Loading existing wallets…
+                    </div>
+                  ) : arweaveWallets.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No existing Arweave wallets found.</p>
+                  ) : (
+                    <Select
+                      aria-label="Arweave wallet"
+                      value={selectedArweaveWalletId}
+                      onChange={(event) => setSelectedArweaveWalletId(event.target.value)}
+                      wrapperClassName="mb-2"
+                    >
+                      {arweaveWallets.map((wallet) => (
+                        <option key={wallet.id} value={wallet.id}>
+                          {wallet.address.slice(0, 10)}… {wallet.id}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Select
+                      aria-label="How to add the Arweave wallet"
+                      value={arweaveWalletMethod}
+                      onChange={(event) => setArweaveWalletMethod(event.target.value as WalletMethod)}
+                    >
+                      <option value="generate">Generate</option>
+                      <option value="import-seed">Import from seed</option>
+                      <option value="import-private-key">Import private key</option>
+                    </Select>
+
+                    {arweaveWalletMethod === 'import-seed' && (
+                      <input
+                        type="text"
+                        aria-label="Arweave seed phrase"
+                        value={arweaveSeedPhrase}
+                        onChange={(event) => setArweaveSeedPhrase(event.target.value)}
+                        className={cn(FIELD, 'sm:col-span-2')}
+                        placeholder="Seed phrase"
+                      />
+                    )}
+
+                    {arweaveWalletMethod === 'import-private-key' && (
+                      <input
+                        type="text"
+                        aria-label="Arweave private key"
+                        value={arweavePrivateKey}
+                        onChange={(event) => setArweavePrivateKey(event.target.value)}
+                        className={cn(FIELD, 'sm:col-span-2')}
+                        placeholder="Private key"
+                      />
+                    )}
+
+                    <input
+                      type="text"
+                      aria-label="Arweave derivation path"
+                      value={arweaveDerivationPath}
+                      onChange={(event) => setArweaveDerivationPath(event.target.value)}
+                      className={cn(FIELD, 'sm:col-span-2')}
+                      placeholder="Derivation path (optional)"
+                    />
+
+                    <label className="sm:col-span-2">
+                      <span className="text-xs text-muted-foreground">
+                        Arweave JWK (required if selected wallet does not have one)
+                      </span>
+                      <textarea
+                        value={arweaveJwk}
+                        onChange={(event) => setArweaveJwk(event.target.value)}
+                        className="mt-1 w-full rounded-lg border bg-background px-3 py-2 font-mono text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                        rows={4}
+                        placeholder='{ "kty": "RSA", "n": "…", "e": "…" }'
+                      />
+                    </label>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void createWallet('arweave')}
+                    disabled={isCreatingWallet === 'arweave'}
+                    className="mt-3 h-9 w-full rounded-lg border border-primary/40 px-4 text-sm font-medium text-primary transition-colors hover:bg-primary/10 disabled:opacity-50"
+                  >
+                    {isCreatingWallet === 'arweave' ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <Loader2 className="h-4 w-4 motion-safe:animate-spin" aria-hidden="true" />
+                        Creating…
+                      </span>
+                    ) : (
+                      'Create or import Arweave wallet'
+                    )}
+                  </button>
+                </div>
+
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setArchiveStep('artifacts')}
+                    className="h-9 rounded-lg border px-4 text-sm font-medium transition-colors hover:bg-muted"
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={() => setArchiveStep('review')}
+                    disabled={!canRunArchive}
+                    className="h-9 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    Review and run
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {archiveStep === 'review' && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-medium">Review archive settings</h4>
+                  <button
+                    onClick={() => setArchiveStep('wallets')}
+                    className="text-sm text-primary hover:underline"
+                  >
+                    Back
+                  </button>
+                </div>
+                <div className="grid gap-3 text-sm sm:grid-cols-2">
+                  <p><span className="text-muted-foreground">Profile:</span> {archiveProfile}</p>
+                  <p><span className="text-muted-foreground">Source:</span> {archiveSourcePath || detection?.sourcePath || 'Unknown'}</p>
+                  {requiredKinds.map((kind) => (
+                    <p key={kind} className="truncate">
+                      <span className="capitalize text-muted-foreground">{kind}:</span> {trimArtifactValues[kind]}
+                    </p>
+                  ))}
+                  <p><span className="text-muted-foreground">ICP wallet:</span> {selectedIcpWallet?.address || 'Not selected'}</p>
+                  <p><span className="text-muted-foreground">Arweave wallet:</span> {selectedArweaveWallet?.address || 'Not selected'}</p>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Running this publishes a deployment receipt to Arweave, publicly and permanently: the agent&apos;s
+                  id and name, its canister id and network, and each artifact&apos;s file name, size and SHA-256. No file
+                  contents or local paths are included, and the upload shows the address of the paying Arweave wallet.
+                </p>
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={runArchive}
+                    disabled={!canSubmitArchive || archiveLoading}
+                    className="h-9 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    {archiveLoading ? (
+                      <span className="flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 motion-safe:animate-spin" aria-hidden="true" />
+                        Backing up…
+                      </span>
+                    ) : (
+                      'Run archive'
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setArchiveStep('wallets')}
+                    className="h-9 rounded-lg border px-4 text-sm font-medium transition-colors hover:bg-muted"
+                  >
+                    Back
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {archiveStep === 'receipt' && archiveReceipt && archiveOutcome && (
+              <div className="space-y-4">
+                {/* The run ends when the gateway accepts the upload, before it is mined, so no success icon. */}
+                <div className="text-center">
+                  {archiveOutcome.submitted ? (
+                    <Upload className="mx-auto mb-2 h-8 w-8 text-muted-foreground" aria-hidden="true" />
+                  ) : (
+                    <CircleAlert className="mx-auto mb-2 h-8 w-8 text-warning" aria-hidden="true" />
+                  )}
+                  <p className="font-medium">{archiveOutcome.title}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{archiveOutcome.detail}</p>
+                </div>
+                <div className="grid gap-2 text-sm">
+                  <p><span className="text-muted-foreground">Archive ID:</span> {archiveReceipt.archiveId}</p>
+                  <p><span className="text-muted-foreground">Canister:</span> {archiveReceipt.canisterId}</p>
+                  <p><span className="text-muted-foreground">Deployed:</span> {archiveReceipt.deployedAt}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <a
+                      href={archiveReceipt.canisterExplorerUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="chip"
+                    >
+                      View canister
+                    </a>
+                    {archiveReceipt.arweave?.explorerUrl ? (
                       <a
-                        href={archiveReceipt.canisterExplorerUrl}
+                        href={archiveReceipt.arweave.explorerUrl}
                         target="_blank"
                         rel="noreferrer"
                         className="chip"
                       >
-                        View Canister
+                        View Arweave receipt
                       </a>
-                      {archiveReceipt.arweave?.explorerUrl ? (
-                        <a
-                          href={archiveReceipt.arweave.explorerUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="chip"
-                        >
-                          View Arweave Receipt
-                        </a>
-                      ) : null}
-                      {archiveOutcome.submitted ? (
-                        <Link href={evidenceHref(agent.id)} className="chip">
-                          Check it on the Evidence page
-                        </Link>
-                      ) : null}
-                      <a
-                        href={`/archives#${archiveReceipt.archiveId}`}
-                        target="_blank"
-                        className="chip"
-                      >
-                        Archive Record
-                      </a>
-                    </div>
-                    {archiveReceipt.arweave?.skippedReason ? (
-                      <p className="text-xs text-warning">{archiveReceipt.arweave.skippedReason}</p>
                     ) : null}
+                    {archiveOutcome.submitted ? (
+                      <Link href={evidenceHref(agent.id)} className="chip">
+                        Check it on the Evidence page
+                      </Link>
+                    ) : null}
+                    <a
+                      href={`/archives#${archiveReceipt.archiveId}`}
+                      target="_blank"
+                      className="chip"
+                    >
+                      Archive record
+                    </a>
                   </div>
-                  <button
-                    onClick={closeArchiveModal}
-                    className="w-full rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 transition-colors"
-                  >
-                    Close
-                  </button>
+                  {archiveReceipt.arweave?.skippedReason ? (
+                    <p className="text-xs text-warning">{archiveReceipt.arweave.skippedReason}</p>
+                  ) : null}
                 </div>
-              )}
-            </div>
+                <button
+                  onClick={closeArchiveModal}
+                  className="h-9 w-full rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                >
+                  Close
+                </button>
+              </div>
+            )}
           </div>
-        </div>
+        </Dialog>
       )}
     </div>
   )

@@ -25,16 +25,16 @@ export function WalletOverview({ wallets, onConnectWallet }: WalletOverviewProps
         <div className="surface p-6">
           <div className="flex items-center gap-2 mb-4">
             <WalletIcon className="w-8 h-8 text-muted-foreground" />
-            <span className="font-semibold">Total Balance</span>
+            <span className="font-medium">Total balance</span>
           </div>
-          <p className="text-3xl font-bold">{formatCycles(totalCycles)}</p>
+          <p className="text-3xl font-medium">{formatCycles(totalCycles)}</p>
           <p className="text-sm text-muted-foreground">Across all wallets</p>
         </div>
 
         <div className="surface p-6">
           <div className="flex items-center gap-2 mb-4">
             <Check className="w-8 h-8 text-success" />
-            <span className="font-semibold">Connected Wallets</span>
+            <span className="font-medium">Connected wallets</span>
           </div>
           <p className="text-sm text-muted-foreground">{wallets.length} active connections</p>
         </div>
@@ -42,7 +42,7 @@ export function WalletOverview({ wallets, onConnectWallet }: WalletOverviewProps
         <div className="surface p-6">
           <div className="flex items-center gap-2 mb-4">
             <WalletIcon className="w-8 h-8 text-warning" />
-            <span className="font-semibold">Status</span>
+            <span className="font-medium">Status</span>
           </div>
           <p className="text-sm text-muted-foreground">All systems operational</p>
         </div>
@@ -75,7 +75,7 @@ export function BalanceCard({ wallet, onSend, onReceive }: BalanceCardProps) {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <WalletIcon className="w-8 h-8 text-muted-foreground" />
-          <span className="font-semibold capitalize">{wallet.type} Wallet</span>
+          <span className="font-medium capitalize">{wallet.type} wallet</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs px-2 py-1 bg-success/15 text-success rounded-md">
@@ -92,7 +92,7 @@ export function BalanceCard({ wallet, onSend, onReceive }: BalanceCardProps) {
       </div>
 
       <div className="mb-4">
-        <p className="text-3xl font-bold">{formatCycles(wallet.balance)}</p>
+        <p className="text-3xl font-medium">{formatCycles(wallet.balance)}</p>
         <p className="text-sm text-muted-foreground">Balance</p>
       </div>
 

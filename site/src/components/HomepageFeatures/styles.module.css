@@ -1,90 +1,79 @@
 .featuresSection {
-  padding: 1rem 0 3.5rem;
+  padding-top: 96px;
 }
 
-.blockHeader {
-  text-align: center;
-  margin-bottom: 1.4rem;
-}
-
-.blockLabel {
-  margin: 0;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--ifm-color-primary);
-}
-
-.blockTitle {
-  margin-top: 0.5rem;
-  margin-bottom: 1.4rem;
-  font-size: clamp(1.3rem, 2.9vw, 1.7rem);
-  letter-spacing: -0.015em;
-}
-
-.featureGrid,
-.protocolGrid {
+.steps,
+.capabilities {
   display: grid;
-  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.featureGrid {
+.steps {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-bottom: 2.6rem;
+  gap: 24px 40px;
 }
 
-.protocolGrid {
+.capabilities {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 64px;
 }
 
-.featureCard {
-  border: 1px solid var(--av-border);
-  border-radius: var(--av-radius-md);
-  background: var(--av-bg);
-  padding: 1.4rem;
-  box-shadow: var(--av-shadow-sm);
-  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+.step {
+  padding-top: 24px;
+  border-top: 1px solid var(--av-border-strong);
 }
 
-.featureCard:hover {
-  transform: translate3d(0, -3px, 0);
-  border-color: var(--av-border-strong);
-  box-shadow: var(--av-shadow-md);
+.stepId {
+  margin: 0 0 12px;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.75rem;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+  color: var(--av-text-3);
 }
 
-.cardId {
-  margin: 0 0 0.6rem;
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: var(--av-text-faint);
+.capability {
+  padding: 24px 0 32px;
+  border-top: 1px solid var(--av-border-strong);
 }
 
-.cardTitle {
-  margin-bottom: 0.6rem;
-  font-size: clamp(1rem, 1.8vw, 1.15rem);
+.platformHead {
+  margin-top: 96px;
 }
 
-.cardBody {
-  margin: 0 0 1rem;
-  color: var(--av-text-muted);
-  line-height: 1.65;
+.itemTitle {
+  margin: 0 0 8px;
+  font-size: 1.25rem;
+  font-weight: 500;
+  line-height: 28px;
 }
 
-.cardAction {
-  display: inline-block;
-  font-size: 0.88rem;
-  font-weight: 600;
-  color: var(--ifm-color-primary);
-  text-decoration: none;
-  transition: transform 120ms ease;
-}
-
-.cardAction:hover {
-  transform: translate3d(3px, 0, 0);
+.itemBody {
+  margin: 0 0 16px;
+  font-size: 0.9375rem;
+  line-height: 24px;
+  color: var(--av-text-2);
 }
 
 @media (max-width: 996px) {
-  .featureGrid,
-  .protocolGrid {
-    grid-template-columns: 1fr;
+  .steps {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+  }
+
+  .capabilities {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .featuresSection {
+    padding-top: 64px;
+  }
+
+  .platformHead {
+    margin-top: 64px;
   }
 }

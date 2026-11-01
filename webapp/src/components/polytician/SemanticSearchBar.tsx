@@ -161,8 +161,8 @@ export function SemanticSearchBar({
                     </div>
                     <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden">
                       <div
-                        className="h-full bg-primary rounded-full transition-all"
-                        style={{ width: `${result.score * 100}%` }}
+                        className="h-full origin-left bg-primary transition-transform"
+                        style={{ transform: `scaleX(${result.score})` }}
                       />
                     </div>
                   </div>

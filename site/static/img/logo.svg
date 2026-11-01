@@ -1,16 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
   <title id="title">AgentVault Logo</title>
-  <desc id="desc">AV monogram</desc>
-  <defs>
-    <linearGradient id="mark" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#4f46e5" />
-      <stop offset="100%" stop-color="#818cf8" />
-    </linearGradient>
-  </defs>
+  <desc id="desc">AV monogram on a blue square</desc>
 
-  <rect width="128" height="128" rx="24" fill="url(#mark)" />
+  <rect width="128" height="128" rx="24" fill="#2563eb" />
 
-  <path d="M33 90L50 38H60L77 90H66L62 78H48L44 90Z" fill="#ffffff" />
-  <path d="M51 68H59L55 53Z" fill="#4338ca" />
-  <path d="M79 38H96L87 90H72L66 62H77L82 80L86 56H79Z" fill="#ffffff" />
+  <path d="M24 94L45 34H53L74 94H64.5L59.5 79H38.5L33.5 94Z" fill="#ffffff" />
+  <path d="M41.5 71H56.5L49 49Z" fill="#2563eb" />
+  <path d="M70 34H80L90 70L100 34H110L95 94H85Z" fill="#ffffff" transform="translate(-6 0)" />
 </svg>

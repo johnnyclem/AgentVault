@@ -6,9 +6,10 @@ import { Archive, ExternalLink, RefreshCw, Trash2 } from 'lucide-react'
 import { useArchives } from '@/hooks/useArchives'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
+import { ErrorNotice } from '@/components/common/ErrorNotice'
 import { apiClient } from '@/lib/api-client'
 import type { Archive as ArchiveModel } from '@/lib/types'
-import { formatBytes, formatTimestamp, truncatePrincipal } from '@/lib/utils'
+import { formatBytes, formatCycles, formatTimestamp, truncatePrincipal } from '@/lib/utils'
 
 export default function ArchivesPage() {
   const { archives, isLoading, error, refetch } = useArchives()
@@ -52,17 +53,14 @@ export default function ArchivesPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="page-title">Archives</h1>
-          <p className="page-subtitle">Manage secure backups, on-chain records, and Arweave receipts</p>
+          <p className="page-subtitle">Backups, on-chain records and Arweave receipts</p>
         </div>
         <div className="flex items-center gap-3">
-          <p className="text-sm text-muted-foreground">
-            Total {archives.length} • {totalSize}
+          <p className="text-sm tabular-nums text-muted-foreground">
+            {archives.length} {archives.length === 1 ? 'archive' : 'archives'} · {totalSize}
           </p>
-          <button
-            onClick={() => refetch()}
-            className="chip px-3 py-1.5 text-sm"
-          >
-            <RefreshCw className="h-4 w-4" />
+          <button type="button" onClick={() => refetch()} className="chip">
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
             Refresh
           </button>
         </div>
@@ -73,19 +71,17 @@ export default function ArchivesPage() {
           <LoadingSpinner size="lg" />
         </div>
       ) : error ? (
-        <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-6 text-sm text-destructive">
-          {error.message}
-        </div>
+        <ErrorNotice title="Couldn't load archives." message={error.message} onRetry={refetch} />
       ) : !canShow ? (
         <div className="surface p-10 text-center">
-          <Archive className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
+          <Archive className="mx-auto mb-3 h-8 w-8 text-muted-foreground" aria-hidden="true" />
           <p className="font-medium">No archives yet</p>
           <p className="text-sm text-muted-foreground">Run an archive workflow from an agent to create your first backup.</p>
           <Link
             href="/agents"
-            className="mt-4 inline-flex rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            className="mt-4 inline-flex h-9 items-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
-            Manage Agents
+            Manage agents
           </Link>
         </div>
       ) : (
@@ -94,14 +90,16 @@ export default function ArchivesPage() {
             <div
               key={archive.id}
               id={archive.id}
-              className="surface scroll-mt-6 p-4"
+              className="surface min-w-0 scroll-mt-6 p-4"
             >
-              <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <h2 className="mb-1 font-semibold">{archive.id}</h2>
-                  <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                    <span>Canister {truncatePrincipal(archive.canisterId, 10)}</span>
-                    <span>•</span>
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <h2 className="text-sm font-medium">
+                    <span className="tag">{archive.id}</span>
+                  </h2>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+                    <span>Canister</span>
+                    <span className="tag" title={archive.canisterId}>{truncatePrincipal(archive.canisterId)}</span>
                     <span>{formatTimestamp(archive.timestamp)}</span>
                   </div>
                 </div>
@@ -128,25 +126,31 @@ export default function ArchivesPage() {
                 </div>
               </div>
 
-              <div className="mb-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
-                <p>
-                  <span className="text-muted-foreground">Status:</span> {archive.status}
-                </p>
-                <p>
-                  <span className="text-muted-foreground">Size:</span> {formatBytes(Number(archive.size || 0))}
-                </p>
+              {/* The status badge above already says it, so it is not repeated as a field. */}
+              <dl className="mb-4 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
+                <div className="min-w-0">
+                  <dt className="text-xs text-muted-foreground">Size</dt>
+                  <dd className="mt-1 tabular-nums">{formatBytes(Number(archive.size || 0))}</dd>
+                </div>
                 {/* A sha256 is one unbreakable 64-char token; truncating it keeps
                     the card (and <main>) from scrolling sideways on phones. */}
-                <p className="min-w-0 truncate" title={archive.checksum || undefined}>
-                  <span className="text-muted-foreground">Checksum:</span>{' '}
-                  {archive.checksum || 'pending'}
-                </p>
-                <p>
-                  <span className="text-muted-foreground">Cost:</span> {archive.cost || 'n/a'}
-                </p>
-              </div>
+                <div className="min-w-0">
+                  <dt className="text-xs text-muted-foreground">Checksum</dt>
+                  <dd className="mt-1">
+                    {archive.checksum ? (
+                      <span className="tag" title={archive.checksum}>{archive.checksum}</span>
+                    ) : (
+                      'pending'
+                    )}
+                  </dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-xs text-muted-foreground">Cost</dt>
+                  <dd className="mt-1 tabular-nums">{archive.cost ? formatCycles(archive.cost) : 'n/a'}</dd>
+                </div>
+              </dl>
 
-              <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+              <div className="flex flex-wrap items-center gap-2 border-t pt-4">
                 {archive.arweaveTxId ? (
                   <a
                     href={arweaveUrl(archive.arweaveTxId)!}
@@ -154,18 +158,19 @@ export default function ArchivesPage() {
                     rel="noreferrer"
                     className="chip"
                   >
-                    <ExternalLink className="h-3 w-3" />
-                    View Arweave Receipt
+                    <ExternalLink className="h-4 w-4" aria-hidden="true" />
+                    View Arweave receipt
                   </a>
                 ) : null}
 
                 <button
+                  type="button"
                   onClick={() => handleDelete(archive.id)}
                   disabled={deleteInProgress === archive.id}
                   className="chip text-destructive hover:text-destructive disabled:opacity-50"
                 >
-                  <Trash2 className="h-3 w-3" />
-                  {deleteInProgress === archive.id ? 'Removing...' : 'Delete Record'}
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  {deleteInProgress === archive.id ? 'Removing…' : 'Delete record'}
                 </button>
               </div>
             </div>

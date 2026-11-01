@@ -164,7 +164,7 @@ export function ConceptGraph({
   if (loading) {
     return (
       <div
-        className="flex items-center justify-center bg-muted/50 border rounded-lg animate-pulse"
+        className="flex items-center justify-center bg-muted/50 border rounded-lg motion-safe:animate-pulse"
         style={{ width, height }}
       >
         <p className="text-muted-foreground">Loading graph...</p>
@@ -236,7 +236,7 @@ export function ConceptGraph({
                 r={20}
                 stroke={selectedNode?.id === node.id ? 'currentColor' : 'none'}
                 strokeWidth={3}
-                className={`text-foreground transition-all hover:opacity-80 ${nodeFills[node.type || 'default'] || nodeFills.default}`}
+                className={`text-foreground transition-opacity hover:opacity-80 ${nodeFills[node.type || 'default'] || nodeFills.default}`}
               />
               <text
                 y={32}

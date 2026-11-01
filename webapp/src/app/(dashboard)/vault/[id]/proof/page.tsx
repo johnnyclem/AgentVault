@@ -17,7 +17,7 @@ export default function EvidencePage({ params }: { params: Promise<{ id: string 
   const agentHref = `/agents/${encodeURIComponent(id)}`
 
   return (
-    <div className="page max-w-3xl">
+    <div className="page [&>*]:max-w-3xl">
       <div className="space-y-2">
         <BackToEvidence />
         <div className="space-y-1">
@@ -33,7 +33,7 @@ export default function EvidencePage({ params }: { params: Promise<{ id: string 
         </div>
       ) : error?.code === 'AGENT_NOT_FOUND' ? (
         <p className="surface px-4 py-10 text-center text-sm text-muted-foreground">
-          There is no agent called <code className="font-mono text-foreground">{id}</code>. It may have been removed, or
+          There is no agent called <code className="tag">{id}</code>. It may have been removed, or
           the link may be wrong.
         </p>
       ) : error ? (

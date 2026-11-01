@@ -209,13 +209,13 @@ export interface ControlCenterConvoy {
   route: string
   cargo: string
   eta: string
-  status: 'Queued' | 'En Route' | 'Docking'
+  status: 'Queued' | 'En route' | 'Docking'
 }
 
 export interface ControlCenterCrewMember {
   name: string
   rig: string
-  state: 'Ready' | 'On Patrol' | 'Repairing' | 'Offline'
+  state: 'Ready' | 'On patrol' | 'Repairing' | 'Offline'
   hook: string
   activity: string
   session: 'Yes' | 'No'
@@ -272,7 +272,7 @@ export interface ControlCenterRig {
 export interface ControlCenterDog {
   name: string
   handler: string
-  status: 'In Kennel' | 'Deployed'
+  status: 'In kennel' | 'Deployed'
 }
 
 export interface ControlCenterWorkItem {

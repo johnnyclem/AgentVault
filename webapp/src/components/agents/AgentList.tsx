@@ -62,7 +62,7 @@ export function AgentList({ agents = mockAgents }: { agents?: Agent[] }) {
               className="surface block p-4 transition-colors hover:border-primary/40"
             >
               <div className="flex items-start justify-between mb-3">
-                <h3 className="font-semibold">{agent.name}</h3>
+                <h3 className="font-medium">{agent.name}</h3>
                 <StatusBadge status={agent.status} />
               </div>
               <div className="space-y-1 text-sm text-muted-foreground">

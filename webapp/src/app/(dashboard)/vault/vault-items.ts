@@ -95,7 +95,7 @@ export function archiveToItem(archive: Archive): VaultItem {
   return {
     key: `archive:${archive.id}`,
     category: 'archives',
-    title: archive.agentName || (date ? `Archive · ${new Date(date).toLocaleDateString()}` : 'Archive'),
+    title: archive.agentName || (date ? `Archive · ${new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : 'Archive'),
     subtitle: archive.arweaveTxId
       ? `Arweave · tx ${maskTail(archive.arweaveTxId)}`
       : `Local · ${archive.status}`,

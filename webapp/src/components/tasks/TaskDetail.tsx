@@ -68,7 +68,7 @@ export function TaskDetail({ task, onRetry, isRetrying }: TaskDetailProps) {
       <div className="flex items-center gap-4">
         <ArrowLeft className="w-6 h-6 text-muted-foreground cursor-pointer hover:text-foreground" />
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">{task.type.charAt(0).toUpperCase() + task.type.slice(1)}</h2>
+          <h2 className="text-2xl font-medium">{task.type.charAt(0).toUpperCase() + task.type.slice(1)}</h2>
           <p className="text-sm text-muted-foreground">{task.id}</p>
         </div>
       </div>
@@ -76,7 +76,7 @@ export function TaskDetail({ task, onRetry, isRetrying }: TaskDetailProps) {
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-4">
           <div>
-            <h3 className="text-xl font-semibold mb-2">Status</h3>
+            <h3 className="text-xl font-medium mb-2">Status</h3>
             <div className="flex items-center gap-2">
               {getStatusIcon()}
               <StatusBadge status={task.status} />
@@ -86,8 +86,8 @@ export function TaskDetail({ task, onRetry, isRetrying }: TaskDetailProps) {
           <div>
             <h4 className="text-sm font-medium mb-2">Progress</h4>
             <div className="w-full">
-              <div className="h-1.5 bg-muted rounded-full">
-                <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${task.progress}%` }} />
+              <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                <div className="h-full origin-left bg-primary transition-transform" style={{ transform: `scaleX(${task.progress / 100})` }} />
               </div>
               <span className="text-sm text-muted-foreground mt-1 block">{task.progress}%</span>
             </div>
@@ -101,7 +101,7 @@ export function TaskDetail({ task, onRetry, isRetrying }: TaskDetailProps) {
 
         <div className="space-y-4">
           <div>
-            <h3 className="text-xl font-semibold mb-2">Timing</h3>
+            <h3 className="text-xl font-medium mb-2">Timing</h3>
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Created:</span>

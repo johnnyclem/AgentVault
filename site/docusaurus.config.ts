@@ -1,10 +1,10 @@
-import {themes as prismThemes} from 'prism-react-renderer';
 import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
+import {darkTheme, lightTheme} from './src/theme/prism-av';
 
 const config: Config = {
   title: 'AgentVault',
-  tagline: 'Deploy AI agents that run forever.',
+  tagline: 'Run your AI agent on its own canister',
   favicon: 'img/logo.svg',
 
   url: 'https://agentvault.cloud',
@@ -44,11 +44,11 @@ const config: Config = {
   ],
 
   themeConfig: {
-    image: 'img/og-image.svg',
+    image: 'img/og-image.png',
     metadata: [
       {name: 'keywords', content: 'ICP, Internet Computer, AI agents, blockchain, canister, deployment, Web3, MCP, model-agnostic'},
       {name: 'twitter:card', content: 'summary_large_image'},
-      {name: 'twitter:title', content: 'AgentVault — Production infrastructure for autonomous AI agents'},
+      {name: 'twitter:title', content: 'AgentVault: production infrastructure for autonomous AI agents'},
       {name: 'twitter:description', content: 'Deploy AI agents to ICP canisters with a durable identity, multi-chain wallet, encrypted secrets, and versioned memory. Not tied to one chatbot or one model.'},
     ],
     colorMode: {
@@ -104,11 +104,11 @@ const config: Config = {
           title: 'Documentation',
           items: [
             {
-              label: 'Getting Started',
+              label: 'Getting started',
               to: '/docs/getting-started/quick-start',
             },
             {
-              label: 'CLI Reference',
+              label: 'CLI reference',
               to: '/docs/cli/reference',
             },
             {
@@ -125,11 +125,11 @@ const config: Config = {
           title: 'Community',
           items: [
             {
-              label: 'GitHub Issues',
+              label: 'GitHub issues',
               href: 'https://github.com/johnnyclem/agentvault/issues',
             },
             {
-              label: 'ICP Forum',
+              label: 'ICP forum',
               href: 'https://forum.dfinity.org/',
             },
           ],
@@ -152,11 +152,11 @@ const config: Config = {
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} AgentVault.`,
+      copyright: `Copyright © ${new Date().getFullYear()} AgentVault`,
     },
     prism: {
-      theme: prismThemes.github,
-      darkTheme: prismThemes.dracula,
+      theme: lightTheme,
+      darkTheme: darkTheme,
       additionalLanguages: ['bash', 'typescript', 'json', 'yaml', 'markdown'],
     },
   } satisfies Preset.ThemeConfig,

@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
-import { Archive as ArchiveIcon, Cloud, Download, Trash2, Clock, XCircle, Upload, RefreshCw } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Archive as ArchiveIcon, Cloud, Download, Trash2, Upload, RefreshCw } from 'lucide-react'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { TimeAgo } from '@/components/common/TimeAgo'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
+import { ErrorNotice } from '@/components/common/ErrorNotice'
 import { formatBytes, formatCycles } from '@/lib/utils'
 import { useArchives } from '@/hooks/useArchives'
 import type { Archive } from '@/lib/types'
@@ -13,6 +14,7 @@ export default function BackupsPage() {
   const { archives, isLoading, error, refetch } = useArchives()
   const [selectedCanister, setSelectedCanister] = useState('')
   const [actionInProgress, setActionInProgress] = useState<string | null>(null)
+  const canisterInput = useRef<HTMLInputElement>(null)
 
   const handleDownload = async (archive: Archive) => {
     setActionInProgress(`download-${archive.id}`)
@@ -46,7 +48,7 @@ export default function BackupsPage() {
 
   if (isLoading) {
     return (
-      <div className="p-6 flex items-center justify-center min-h-[400px]">
+      <div className="flex min-h-[400px] items-center justify-center p-6">
         <LoadingSpinner size="lg" />
       </div>
     )
@@ -56,9 +58,10 @@ export default function BackupsPage() {
     return (
       <div className="page">
         <div>
-          <h1 className="page-title">Backups & Archives</h1>
-          <p className="text-sm text-destructive">{error.message}</p>
+          <h1 className="page-title">Backups &amp; archives</h1>
+          <p className="page-subtitle">Manage canister backups and Arweave archival storage</p>
         </div>
+        <ErrorNotice title="Couldn't load archives." message={error.message} onRetry={refetch} />
       </div>
     )
   }
@@ -67,158 +70,158 @@ export default function BackupsPage() {
     <div className="page">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="page-title">Backups & Archives</h1>
-          <p className="page-subtitle">
-            Manage canister backups and Arweave archival storage
-          </p>
+          <h1 className="page-title">Backups &amp; archives</h1>
+          <p className="page-subtitle">Manage canister backups and Arweave archival storage</p>
         </div>
         <div className="flex gap-2">
-          <button 
-            onClick={() => refetch()}
-            className="flex items-center gap-2 px-3.5 py-2 text-sm font-medium border bg-card rounded-lg hover:bg-muted transition-colors"
-          >
-            <RefreshCw className="w-4 h-4" />
+          <button type="button" onClick={() => refetch()} className="chip">
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
             Refresh
           </button>
-          <button className="flex items-center gap-2 px-3.5 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">
-            <Upload className="w-4 h-4" />
+          {/* The backup form is on this page, so this goes to it; Download below stays the one primary action. */}
+          <button type="button" onClick={() => canisterInput.current?.focus()} className="chip">
+            <Upload className="h-4 w-4" aria-hidden="true" />
             Create Backup
           </button>
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <div className="surface p-6">
-          <h2 className="text-lg font-semibold flex items-center gap-2 mb-4">
-            <ArchiveIcon className="w-5 h-5 text-muted-foreground" />
-            Quick Backup
-          </h2>
+      {/* Side by side from 1024: with the sidebar, two cards at 768 leave ~170px for the two buttons. */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="surface min-w-0 p-6">
+          <h2 className="mb-4 text-base font-medium">Quick backup</h2>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-1.5">
+              <label htmlFor="quick-backup-canister" className="mb-1.5 block text-sm font-medium">
                 Canister ID
               </label>
               <input
+                id="quick-backup-canister"
+                ref={canisterInput}
                 type="text"
                 placeholder="rrkah-fqaaa-aaaaa-aaaaq-cai"
                 value={selectedCanister}
                 onChange={(e) => setSelectedCanister(e.target.value)}
-                className="w-full px-3 py-2 text-sm border rounded-lg bg-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                className="h-9 w-full rounded-lg border bg-background px-3 font-mono text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
             <div className="flex gap-2">
-              <button 
+              <button
+                type="button"
                 onClick={() => handleQuickBackup('download')}
                 disabled={!selectedCanister || actionInProgress?.startsWith('quick')}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex h-9 min-w-0 flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {actionInProgress === 'quick-download' ? <LoadingSpinner size="sm" /> : <Download className="w-4 h-4" />}
+                {actionInProgress === 'quick-download' ? <LoadingSpinner size="sm" /> : <Download className="h-4 w-4" aria-hidden="true" />}
                 Download
               </button>
-              <button 
+              <button
+                type="button"
                 onClick={() => handleQuickBackup('archive')}
                 disabled={!selectedCanister || actionInProgress?.startsWith('quick')}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium border bg-card rounded-lg hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex h-9 min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border bg-card px-3 text-sm font-medium transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {actionInProgress === 'quick-archive' ? <LoadingSpinner size="sm" /> : <Cloud className="w-4 h-4" />}
+                {actionInProgress === 'quick-archive' ? <LoadingSpinner size="sm" /> : <Cloud className="h-4 w-4" aria-hidden="true" />}
                 Archive
               </button>
             </div>
           </div>
         </div>
 
-        <div className="surface p-6">
-          <h2 className="text-lg font-semibold flex items-center gap-2 mb-4">
-            <Cloud className="w-5 h-5 text-muted-foreground" />
-            Archive Storage
-          </h2>
-          <div className="space-y-3">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Total Archived</span>
-              <span className="font-semibold">{archives.length} canisters</span>
+        <div className="surface min-w-0 p-6">
+          <h2 className="mb-4 text-base font-medium">Archive storage</h2>
+          <dl className="space-y-3 text-sm">
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted-foreground">Total archived</dt>
+              <dd className="font-medium tabular-nums">{archives.length} {archives.length === 1 ? 'canister' : 'canisters'}</dd>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Total Size</span>
-              <span className="font-semibold">{formatBytes(totalSize)}</span>
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted-foreground">Total size</dt>
+              <dd className="font-medium tabular-nums">{formatBytes(totalSize)}</dd>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Total Cost</span>
-              <span className="font-semibold">{formatCycles(totalCost)}</span>
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted-foreground">Total cost</dt>
+              <dd className="font-medium tabular-nums">{formatCycles(totalCost)}</dd>
             </div>
-            <div className="pt-3 border-t">
-              <button className="w-full px-4 py-2 text-sm font-medium border rounded-lg hover:bg-muted transition-colors">
-                Manage Archive Settings
-              </button>
-            </div>
+          </dl>
+          <div className="mt-4 border-t pt-4">
+            {/* Not wired yet: drawn quietly and disabled rather than looking live. */}
+            <button
+              type="button"
+              disabled
+              title="Not available yet"
+              className="h-9 w-full rounded-lg border px-4 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Manage archive settings
+            </button>
           </div>
         </div>
       </div>
 
       <div className="space-y-4">
-        <h2 className="text-lg font-semibold">Archives</h2>
+        <h2 className="text-base font-medium">Archives</h2>
         {archives.length === 0 ? (
           <div className="surface p-8 text-center text-sm text-muted-foreground">
-            <ArchiveIcon className="w-12 h-12 mx-auto mb-4 opacity-50" />
+            <ArchiveIcon className="mx-auto mb-3 h-8 w-8" aria-hidden="true" />
             <p>No archives yet</p>
-            <p className="text-sm mt-2">Create a backup to see it here</p>
+            <p className="mt-1 text-sm">Create a backup to see it here</p>
           </div>
         ) : (
           <div className="surface divide-y">
             {archives.map((archive) => (
               <div key={archive.id} className="p-4">
-                {/* Wraps on phones: the canister id truncates and the icons and time keep their size. */}
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                {/* Wraps on phones: the canister id truncates and the buttons and time keep their size. */}
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-3">
-                    {/* Accepted by the gateway, not known to be mined, so no success icon. 'completed' is the same state from older servers. */}
-                    {isSubmitted(archive) && <Upload className="h-5 w-5 shrink-0 text-primary" />}
-                    {archive.status === 'uploading' && <Clock className="h-5 w-5 shrink-0 text-primary" />}
-                    {archive.status === 'prepared' && <Clock className="h-5 w-5 shrink-0 text-warning" />}
-                    {archive.status === 'failed' && <XCircle className="h-5 w-5 shrink-0 text-destructive" />}
-                    <span className="min-w-0 truncate font-mono text-sm" title={archive.canisterId || undefined}>{archive.canisterId}</span>
-                    <StatusBadge status={archive.status} />
+                    <span className="tag" title={archive.canisterId || undefined}>{archive.canisterId}</span>
+                    <StatusBadge status={archive.status} className="shrink-0" />
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <TimeAgo timestamp={archive.timestamp} className="whitespace-nowrap" />
-                    <button 
+                  <div className="flex shrink-0 items-center gap-1">
+                    <TimeAgo timestamp={archive.timestamp} className="mr-2 whitespace-nowrap" />
+                    <button
+                      type="button"
+                      aria-label={`Download archive for ${archive.canisterId}`}
                       onClick={() => handleDownload(archive)}
                       disabled={!isSubmitted(archive) || actionInProgress === `download-${archive.id}`}
-                      className="p-1.5 hover:bg-muted rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {actionInProgress === `download-${archive.id}` ? <LoadingSpinner size="sm" /> : <Download className="w-4 h-4 text-muted-foreground" />}
+                      {actionInProgress === `download-${archive.id}` ? <LoadingSpinner size="sm" /> : <Download className="h-4 w-4 text-muted-foreground" aria-hidden="true" />}
                     </button>
-                    <button 
+                    <button
+                      type="button"
+                      aria-label={`Delete archive for ${archive.canisterId}`}
                       onClick={() => handleDelete(archive)}
                       disabled={actionInProgress === `delete-${archive.id}`}
-                      className="p-1.5 hover:bg-muted rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {actionInProgress === `delete-${archive.id}` ? <LoadingSpinner size="sm" /> : <Trash2 className="w-4 h-4 text-destructive" />}
+                      {actionInProgress === `delete-${archive.id}` ? <LoadingSpinner size="sm" /> : <Trash2 className="h-4 w-4 text-destructive" aria-hidden="true" />}
                     </button>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">Size: </span>
-                    <span className="font-medium">{formatBytes(archive.size)}</span>
+                <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm md:grid-cols-4">
+                  <div className="min-w-0">
+                    <dt className="text-xs text-muted-foreground">Size</dt>
+                    <dd className="mt-1 tabular-nums">{formatBytes(archive.size)}</dd>
                   </div>
                   {archive.checksum && (
-                    <div>
-                      <span className="text-muted-foreground">Checksum: </span>
-                      <span className="font-mono">{archive.checksum.slice(0, 12)}...</span>
+                    <div className="min-w-0">
+                      <dt className="text-xs text-muted-foreground">Checksum</dt>
+                      <dd className="mt-1"><span className="tag" title={archive.checksum}>{archive.checksum}</span></dd>
                     </div>
                   )}
                   {archive.arweaveTxId && (
-                    <div>
-                      <span className="text-muted-foreground">Arweave: </span>
-                      <span className="font-mono">{archive.arweaveTxId.slice(0, 12)}...</span>
+                    <div className="min-w-0">
+                      <dt className="text-xs text-muted-foreground">Arweave</dt>
+                      <dd className="mt-1"><span className="tag" title={archive.arweaveTxId}>{archive.arweaveTxId}</span></dd>
                     </div>
                   )}
                   {archive.cost && (
-                    <div>
-                      <span className="text-muted-foreground">Cost: </span>
-                      <span className="font-medium">{formatCycles(archive.cost)}</span>
+                    <div className="min-w-0">
+                      <dt className="text-xs text-muted-foreground">Cost</dt>
+                      <dd className="mt-1 tabular-nums">{formatCycles(archive.cost)}</dd>
                     </div>
                   )}
-                </div>
+                </dl>
               </div>
             ))}
           </div>

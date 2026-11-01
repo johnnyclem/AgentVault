@@ -91,11 +91,11 @@ export default function VaultPage() {
   }
 
   return (
-    <div className="page max-w-3xl">
+    <div className="page [&>*]:max-w-3xl">
       <div className="space-y-1">
         <h1 className="page-title">Vault</h1>
         <p className="page-subtitle">
-          Wallets, archives and Arweave receipts for every agent you run: Claude Code, Goose, OpenCode, OpenClaw or your own stack.
+          Wallets, archives and Arweave receipts for every agent you run: Claude Code, Goose, OpenCode, OpenClaw or your own stack
         </p>
       </div>
 
@@ -162,10 +162,10 @@ export default function VaultPage() {
         <ul className="surface divide-y divide-border overflow-hidden" aria-busy="true" aria-label="Loading the vault">
           {[0, 1, 2].map((row) => (
             <li key={row} className="flex items-center gap-3 px-4 py-3">
-              <span className="h-9 w-9 shrink-0 animate-pulse rounded-lg bg-muted" />
+              <span className="h-9 w-9 shrink-0 rounded-lg bg-muted motion-safe:animate-pulse" />
               <span className="flex-1 space-y-2">
-                <span className="block h-3 w-32 animate-pulse rounded bg-muted" />
-                <span className="block h-3 w-24 animate-pulse rounded bg-muted" />
+                <span className="block h-3 w-32 rounded bg-muted motion-safe:animate-pulse" />
+                <span className="block h-3 w-24 rounded bg-muted motion-safe:animate-pulse" />
               </span>
             </li>
           ))}
@@ -231,13 +231,10 @@ function VaultRow({ item }: { item: VaultItem }) {
       >
         <span
           aria-hidden="true"
-          className={cn(
-            'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
-            item.category === 'wallets' ? 'bg-primary/10 text-primary' : 'bg-muted text-foreground'
-          )}
+          className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted text-foreground"
         >
           {item.monogram ? (
-            <span className="text-[10px] font-semibold tracking-tight">{item.monogram}</span>
+            <span className="font-mono text-xs font-medium">{item.monogram}</span>
           ) : (
             <Icon className="h-4 w-4" />
           )}

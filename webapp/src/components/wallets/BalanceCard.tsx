@@ -25,7 +25,7 @@ export function BalanceCard({ wallet, onSend, onReceive }: BalanceCardProps) {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Wallet className="w-5 h-5 text-muted-foreground" />
-          <span className="font-semibold capitalize">{wallet.type} Wallet</span>
+          <span className="font-medium capitalize">{wallet.type} wallet</span>
         </div>
         <span className="text-xs px-2 py-1 bg-success/15 text-success rounded-md">
           Connected
@@ -33,7 +33,7 @@ export function BalanceCard({ wallet, onSend, onReceive }: BalanceCardProps) {
       </div>
 
       <div className="space-y-3">
-        <p className="text-2xl font-bold">{formatCycles(wallet.balance)}</p>
+        <p className="text-2xl font-medium">{formatCycles(wallet.balance)}</p>
 
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground font-mono flex-1 truncate">
