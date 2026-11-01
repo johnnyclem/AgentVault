@@ -1,115 +1,167 @@
 .main {
-  padding: 3rem 0 4.2rem;
+  padding: 64px 0 96px;
 }
 
-.headerCard,
-.releaseCard {
-  background: var(--av-bg);
-  border: 1px solid var(--av-border);
-  border-radius: var(--av-radius-lg);
-  padding: 2rem;
-  box-shadow: var(--av-shadow-md);
-}
-
-.headerCard {
-  margin-bottom: 1rem;
-}
-
-.protocolTag {
-  margin: 0 0 0.7rem;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--ifm-color-primary);
+.header {
+  max-width: 640px;
+  margin-bottom: 48px;
 }
 
 .pageTitle {
-  margin-bottom: 0.7rem;
-  font-size: clamp(1.9rem, 4vw, 3rem);
+  margin: 0 0 16px;
+  font-size: 2.25rem;
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: 0;
 }
 
-.pageLead {
-  margin: 0;
-  color: var(--av-text-muted);
+.release {
+  padding-top: 32px;
+  border-top: 1px solid var(--av-border-strong);
+}
+
+.releaseHead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px 64px;
+  align-items: end;
+  margin-bottom: 48px;
 }
 
 .releaseTitle {
-  margin-bottom: 0.55rem;
-  font-size: clamp(1.15rem, 2.6vw, 1.55rem);
+  margin: 0 0 8px;
+  font-size: 1.75rem;
+  font-weight: 500;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
 }
 
 .releaseSubtitle {
-  margin-top: 0;
-  margin-bottom: 1.4rem;
-  color: var(--av-text-muted);
+  margin: 0;
+  font-size: 1rem;
+  line-height: 24px;
+  color: var(--av-text-2);
+}
+
+.manifest {
+  max-width: 480px;
+}
+
+.releaseBody {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 48px 64px;
+  align-items: start;
+}
+
+.block {
+  min-width: 0;
+  padding-top: 24px;
+  border-top: 1px solid var(--av-border);
 }
 
 .subTitle {
-  margin-top: 1.3rem;
-  margin-bottom: 0.65rem;
-  font-size: clamp(0.95rem, 2.2vw, 1.16rem);
+  margin: 0 0 12px;
+  font-size: 1.25rem;
+  font-weight: 500;
+  line-height: 28px;
 }
 
 .itemList {
   margin: 0;
-  padding-left: 1.25rem;
-  color: var(--av-text-muted);
+  padding-left: 20px;
+  font-size: 0.9375rem;
+  line-height: 24px;
+  color: var(--av-text-2);
 }
 
 .itemList li {
-  margin: 0.35rem 0;
+  margin: 4px 0;
 }
 
 .codeVessel {
-  background: var(--av-bg-inset);
-  border-radius: var(--av-radius-md);
+  background: var(--av-raised);
   border: 1px solid var(--av-border);
+  border-radius: var(--av-radius-sm);
 }
 
 .codeVessel pre {
   margin: 0;
-  padding: 1rem;
+  padding: 12px 16px;
   background: transparent;
-  border: none;
+  border: 0;
+  font-size: 0.8125rem;
+  line-height: 20px;
 }
 
-.linkGrid {
+.linkList {
   display: grid;
-  gap: 0.58rem;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 24px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.linkGrid a {
+.linkList li {
+  border-top: 1px solid var(--av-border);
+}
+
+.linkList a {
   display: block;
-  border: 1px solid var(--av-border);
-  border-left: 3px solid var(--ifm-color-primary);
-  border-radius: var(--av-radius-sm);
-  background: var(--av-bg-subtle);
-  padding: 0.7rem 0.8rem;
-  text-decoration: none;
+  padding: 12px 0;
   color: var(--av-text);
-  font-weight: 500;
-  transition: transform 120ms ease, border-color 120ms ease;
+  font-size: 0.9375rem;
+  line-height: 24px;
+  text-decoration: none;
+  transition-property: color;
+  transition-duration: var(--av-fast);
+  transition-timing-function: var(--av-ease);
 }
 
-.linkGrid a:hover {
-  transform: translate3d(3px, 0, 0);
-  border-color: var(--ifm-color-primary);
+.linkList a:hover {
+  color: var(--av-accent-text);
 }
 
 .actions {
-  margin-top: 1rem;
   display: flex;
-  gap: 0.8rem;
   flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 48px;
+}
+
+.actions :global(.button) {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.actionIcon {
+  color: var(--av-text-3);
 }
 
 @media (max-width: 996px) {
-  .headerCard,
-  .releaseCard {
-    padding: 1.4rem;
+  .releaseHead,
+  .releaseBody {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
   }
 
-  .linkGrid {
-    grid-template-columns: 1fr;
+  .manifest {
+    max-width: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .main {
+    padding: 40px 0 64px;
+  }
+
+  .linkList {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .actions :global(.button) {
+    flex: 1 1 100%;
   }
 }

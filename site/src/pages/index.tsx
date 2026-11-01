@@ -5,6 +5,14 @@ import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import Layout from '@theme/Layout';
 import Heading from '@theme/Heading';
 import HomepageFeatures from '@site/src/components/HomepageFeatures';
+import {
+  ArrowRightIcon,
+  ArrowUpRightIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  CopyIcon,
+} from '@site/src/components/Icons';
 
 import styles from './index.module.css';
 
@@ -134,10 +142,12 @@ type StackLayer = {
   title: string;
   description: string;
   names: string[];
+  /** The names are tried in this order, so they read as a chain. */
+  ordered?: boolean;
 };
 
 /**
- * The "Bring any model, any agent" cards. Every name is something the code
+ * The "Bring any model, any agent" rows. Every name is something the code
  * supports today: the inference fallback chain (src/inference, wired into the
  * dashboard's /api/inference), the dashboard's archive profiles, the tool
  * groups the stdio MCP server serves (`agentvault mcp serve`; they are tools,
@@ -149,7 +159,7 @@ type StackLayer = {
  * Arweave: the agent's id and name, canister id, network and time, and for
  * each artifact its kind, file name and (except for directories and the
  * credential file) size and SHA-256. No paths, no file contents. It does not
- * copy the agent's config, skill or memory files anywhere, so the Agents card
+ * copy the agent's config, skill or memory files anywhere, so the Agents row
  * must not say it does.
  */
 const stackLayers: StackLayer[] = [
@@ -159,6 +169,7 @@ const stackLayers: StackLayer[] = [
     description:
       "The dashboard's inference API tries a Bittensor subnet, then Venice AI, then a model you run locally with Ollama. Each answer names the one that replied.",
     names: ['Bittensor', 'Venice AI', 'Ollama (local)'],
+    ordered: true,
   },
   {
     id: 'agents',
@@ -215,7 +226,7 @@ type EcosystemComponent = {
   role: string;
   description: string;
   /** Package and version of the suite release, for suite components. */
-  release?: string;
+  release?: string[];
   /** What AgentVault itself does with this component today. */
   inAgentVault?: string;
   href?: string;
@@ -228,14 +239,14 @@ const ecosystemComponents: EcosystemComponent[] = [
     name: 'AgentVault',
     role: 'Runtime',
     description:
-      'Packages your agent to WASM and runs it on an Internet Computer canister — a durable identity, multi-chain wallet, secrets vault, and versioned memory that survive independent of any browser tab or host process.',
+      'Packages your agent to WASM and runs it on an Internet Computer canister, with a durable identity, multi-chain wallet, secrets vault, and versioned memory that survive independent of any browser tab or host process.',
     isCurrent: true,
   },
   {
     id: 'smallchat',
     name: 'smallchat',
     role: 'Tool dispatch',
-    release: '@smallchat/core 1.0.0 · SmallChat Swift package 1.0.0',
+    release: ['@smallchat/core 1.0.0', 'SmallChat Swift package 1.0.0'],
     description:
       "Semantic tool dispatch. It resolves an intent to at most one tool, checks the arguments against that tool's JSON Schema, and records a replayable proof. The same artifact, embedder and runtime state give the same choice.",
     inAgentVault:
@@ -247,7 +258,7 @@ const ecosystemComponents: EcosystemComponent[] = [
     id: 'polytician',
     name: 'Polytician',
     role: 'Semantic memory',
-    release: 'polytician 3.0.0',
+    release: ['polytician 3.0.0'],
     description:
       'A local-first MCP server for semantic memory. Each concept can be stored as, and converted between, a 384-dimension vector, markdown and structured ThoughtForm JSON.',
     inAgentVault:
@@ -259,7 +270,7 @@ const ecosystemComponents: EcosystemComponent[] = [
     id: 'stenographer',
     name: 'Stenographer',
     role: 'Conversation memory',
-    release: '@stenographer/core 1.0.0',
+    release: ['@stenographer/core 1.0.0'],
     description:
       'An MCP server that indexes agent conversation logs for GraphRAG search and keeps a hash-chained truth ledger. One agent alone settles nothing. A person signs, or two or more agent sessions agree within 15 minutes, each citing its own checkable evidence. Agents never override or rule, and a contested claim goes to a person.',
     inAgentVault: 'Not integrated yet. The engineering guide sketches how it could plug in.',
@@ -270,7 +281,7 @@ const ecosystemComponents: EcosystemComponent[] = [
     id: 'shorthand',
     name: 'Short-hand',
     role: 'Context compaction',
-    release: '@shorthand/core 1.0.0',
+    release: ['@shorthand/core 1.0.0'],
     description:
       'Progressive, LSM-tree-style compaction of conversation history into a token-budgeted context frame. Corrections are tracked as tombstones, so overridden facts do not quietly come back.',
     inAgentVault:
@@ -304,87 +315,171 @@ function shortAddress(address: string): string {
   return `${address.slice(0, 7)}...${address.slice(-5)}`;
 }
 
-function HomepageHeader() {
-  const {siteConfig} = useDocusaurusContext();
-  const trustRow = ['MIT licensed', 'Tested in CI', 'ICP mainnet', 'Multi-chain wallets'];
-
+/** One line of the manifest: a mono key, a dotted leader, a mono value. */
+function ManifestRow({label, value, accent}: {label: string; value: string; accent?: boolean}) {
   return (
-    <header className={styles.heroBanner}>
-      <div className={clsx('container', styles.heroInner)}>
-        <p className={styles.heroKicker}>Open source · v1.0</p>
-        <Heading as="h1" className={styles.heroTitle}>
-          {siteConfig.tagline}
-        </Heading>
-        <p className={styles.heroDescription}>
-          AgentVault packages your AI agent, deploys it to a durable Internet Computer canister, and keeps it
-          running with its own identity, wallet, secrets, and memory — no server to babysit, no session to lose.
-        </p>
-        <p className={styles.heroAgnostic}>
-          Not tied to one chatbot or one model. Bring Claude Code, OpenClaw, Goose, OpenCode or an agent of your own.
-        </p>
+    <div className="av-manifestRow">
+      <dt className="av-manifestKey">{label}</dt>
+      <dd className={clsx('av-manifestValue', accent && styles.manifestAccent)}>{value}</dd>
+    </div>
+  );
+}
 
-        <div className={styles.heroButtons}>
-          <Link className="button button--secondary button--lg" to="/docs/getting-started/installation">
-            Get started
-          </Link>
-          <a className="button button--outline button--lg" href="#instant-control">
-            Try the 1-click installer
-          </a>
-          <Link className="button button--outline button--lg" to="/docs/getting-started/quick-start">
-            Read the quick start
-          </Link>
+/**
+ * The hero object. The commands are the quick start's (README), and the
+ * receipt uses the labels `agentvault deploy` prints for the canister it
+ * created (cli/commands/deploy.ts). The values are placeholders and the
+ * caption says so.
+ */
+function DeployTerminal() {
+  return (
+    <figure className={styles.terminalFigure}>
+      <div className={styles.terminal}>
+        <div className={styles.terminalBar}>
+          <span className={styles.terminalTitle}>my-agent</span>
         </div>
 
-        <div className={styles.trustRow}>
-          {trustRow.map((item) => (
-            <span key={item} className={styles.trustItem}>
-              {item}
+        <div className={styles.terminalBody}>
+          <p className={clsx(styles.cmd, styles.cmdOptional)}>
+            <span className={styles.prompt} aria-hidden="true">
+              $
             </span>
-          ))}
+            <span className={styles.cmdText}>
+              npx agentvault@latest init my-agent <span className={styles.flag}>--template default</span>
+            </span>
+          </p>
+          <p className={clsx(styles.cmd, styles.cmdOptional)}>
+            <span className={styles.prompt} aria-hidden="true">
+              $
+            </span>
+            <span className={styles.cmdText}>cd my-agent</span>
+          </p>
+          <p className={styles.cmd}>
+            <span className={styles.prompt} aria-hidden="true">
+              $
+            </span>
+            <span className={styles.cmdText}>agentvault package ./</span>
+          </p>
+          <p className={styles.cmd}>
+            <span className={styles.prompt} aria-hidden="true">
+              $
+            </span>
+            <span className={styles.cmdText}>
+              agentvault deploy <span className={styles.flag}>--network ic</span>
+            </span>
+          </p>
+        </div>
+
+        <div className={styles.slip}>
+          <div className={styles.slipHead}>
+            <p className={styles.slipTitle}>Canister Info</p>
+            <p className={styles.slipStatus}>
+              <CheckIcon />
+              Agent deployed
+            </p>
+          </div>
+          <dl className="av-manifest">
+            <ManifestRow label="Canister ID" value="vjk3q-wyaaa-aaaaa-aabqa-cai" accent />
+            <ManifestRow label="Network" value="ic" />
+            <ManifestRow label="Agent" value="my-agent" />
+            <ManifestRow label="Deployed" value="2026-10-31T09:41:07.312Z" />
+            <ManifestRow label="WASM Hash" value="3f9a1c0be27d4a58..." />
+          </dl>
+        </div>
+      </div>
+      <figcaption className={styles.terminalCaption}>
+        Example session. The canister ID and hash are placeholders.
+      </figcaption>
+    </figure>
+  );
+}
+
+function HomepageHeader() {
+  const {siteConfig} = useDocusaurusContext();
+
+  return (
+    <header className={styles.hero}>
+      <div className={clsx('av-wrap', styles.heroGrid)}>
+        <div className={styles.heroCopy}>
+          <p className={styles.heroKicker}>Open source, MIT licensed</p>
+          <Heading as="h1" className={styles.heroTitle}>
+            {siteConfig.tagline}
+          </Heading>
+          <p className={styles.heroDescription}>
+            AgentVault packages your AI agent, deploys it to a durable Internet Computer canister, and keeps it
+            running with its own identity, wallet, secrets, and memory. No server to babysit, no session to lose.
+          </p>
+          <p className={styles.heroNote}>
+            Not tied to one chatbot or one model. Bring Claude Code, OpenClaw, Goose, OpenCode or an agent of your
+            own.
+          </p>
+
+          <div className={styles.heroActions}>
+            <Link className="button button--secondary button--lg" to="/docs/getting-started/installation">
+              Get started
+            </Link>
+            <a className="button button--outline button--lg" href="#instant-control">
+              Try the 1-click installer
+            </a>
+          </div>
+        </div>
+
+        <div className={styles.heroVisual}>
+          <DeployTerminal />
         </div>
       </div>
     </header>
   );
 }
 
+function SectionHead({label, title, lead}: {label?: string; title: string; lead?: React.ReactNode}) {
+  return (
+    <div className="av-sectionHead">
+      {label ? <p className="av-label">{label}</p> : null}
+      <Heading as="h2" className="av-h2">
+        {title}
+      </Heading>
+      {lead ? <p className="av-lead">{lead}</p> : null}
+    </div>
+  );
+}
+
 function AgnosticSection() {
   return (
-    <section className={styles.agnosticSection}>
-      <div className="container">
-        <div className={styles.blockHeader}>
-          <p className={styles.blockLabel}>Works with your stack</p>
-          <Heading as="h2" className={styles.blockTitle}>
-            Bring any model, any agent
-          </Heading>
-          <p className={styles.blockLead}>
-            AgentVault is where your agent lives, not the model it talks to. Each layer gives you more than one
-            choice.
-          </p>
-        </div>
+    <section className={styles.section}>
+      <div className="av-wrap">
+        <SectionHead
+          label="Works with your stack"
+          title="Bring any model, any agent"
+          lead="AgentVault is where your agent lives, not the model it talks to. Each layer gives you more than one choice."
+        />
 
-        <div className={styles.agnosticGrid}>
+        <ul className={styles.stackList}>
           {stackLayers.map((layer) => (
-            <article key={layer.id} className={styles.agnosticCard}>
-              <Heading as="h3" className={styles.agnosticCardTitle}>
+            <li key={layer.id} className={styles.stackRow}>
+              <Heading as="h3" className={styles.stackTitle}>
                 {layer.title}
               </Heading>
-              <p className={styles.agnosticCardBody}>{layer.description}</p>
-              <div className={styles.storagePillRow}>
-                {layer.names.map((name) => (
-                  <span key={name} className={styles.storagePill}>
-                    {name}
-                  </span>
-                ))}
+              <div className={styles.stackDetail}>
+                <p className={styles.stackBody}>{layer.description}</p>
+                <ul className={clsx(styles.stackNames, layer.ordered && styles.stackNamesOrdered)}>
+                  {layer.names.map((name, index) => (
+                    <li key={name}>
+                      {layer.ordered && index > 0 ? <ChevronRightIcon /> : null}
+                      {name}
+                    </li>
+                  ))}
+                </ul>
               </div>
-            </article>
+            </li>
           ))}
-        </div>
+        </ul>
 
-        <div className={styles.deployLinks}>
-          <Link className={styles.inlineLink} to="/docs/guides/total-recall">
+        <div className={styles.linkRow}>
+          <Link className="av-link" to="/docs/guides/total-recall">
             Total Recall guide
           </Link>
-          <Link className={styles.inlineLink} to="/docs/user/wallets">
+          <Link className="av-link" to="/docs/user/wallets">
             Wallets guide
           </Link>
         </div>
@@ -395,60 +490,115 @@ function AgnosticSection() {
 
 function EcosystemSection() {
   return (
-    <section className={styles.ecosystemSection}>
-      <div className="container">
-        <div className={styles.blockHeader}>
-          <p className={styles.blockLabel}>The agent stack</p>
-          <Heading as="h2" className={styles.blockTitle}>
-            AgentVault is the runtime. The smallchat suite covers the rest of the stack.
-          </Heading>
-          <p className={styles.blockLead}>
-            Long-running agents need more than a place to execute. They need a way to pick the next tool, a
-            memory that survives, and a way to keep that memory inside a token budget. The smallchat suite
-            covers those layers and just shipped 1.0. AgentVault ships on its own schedule: today it has its own
-            dispatcher modeled on smallchat and an MCP client for Polytician 3.0, and Stenographer and Short-hand
-            are not integrated yet.
-          </p>
-        </div>
+    <section className={styles.section}>
+      <div className="av-wrap">
+        <SectionHead
+          label="The agent stack"
+          title="AgentVault is the runtime; the smallchat suite covers the rest of the stack"
+          lead="Long-running agents need more than a place to execute. They need a way to pick the next tool, a memory that survives, and a way to keep that memory inside a token budget. The smallchat suite covers those layers and just shipped 1.0. AgentVault ships on its own schedule: today it has its own dispatcher modeled on smallchat and an MCP client for Polytician 3.0, and Stenographer and Short-hand are not integrated yet."
+        />
 
-        <div className={styles.ecosystemGrid}>
+        <ul className={styles.ledger}>
           {ecosystemComponents.map((component) => (
-            <article
-              key={component.id}
-              className={clsx(styles.ecosystemCard, component.isCurrent && styles.ecosystemCardCurrent)}>
-              <div className={styles.ecosystemCardHeader}>
-                <Heading as="h3" className={styles.ecosystemCardTitle}>
+            <li key={component.id} className={clsx(styles.ledgerRow, component.isCurrent && styles.ledgerRowCurrent)}>
+              <div className={styles.ledgerName}>
+                <Heading as="h3" className={styles.ledgerTitle}>
                   {component.name}
                 </Heading>
-                <span className={styles.ecosystemCardRole}>{component.role}</span>
-                {component.release ? <p className={styles.ecosystemCardRelease}>{component.release}</p> : null}
+                <p className={styles.ledgerRole}>{component.role}</p>
+                {component.href ? (
+                  <a className={clsx('av-link', styles.ledgerLink)} href={component.href}>
+                    {component.href.replace('https://', '')}
+                    <ArrowUpRightIcon />
+                  </a>
+                ) : null}
               </div>
-              <p className={styles.ecosystemCardBody}>{component.description}</p>
+
+              <div className={styles.ledgerBody}>
+                {component.release ? (
+                  <dl className={clsx('av-manifest', styles.ledgerRelease)}>
+                    {component.release.map((value) => (
+                      <ManifestRow key={value} label="Release" value={value} />
+                    ))}
+                  </dl>
+                ) : null}
+                <p>{component.description}</p>
+              </div>
+
               {component.inAgentVault ? (
-                <p className={clsx(styles.ecosystemCardBody, styles.ecosystemCardStatus)}>
+                <p className={clsx(styles.ledgerBody, styles.ledgerStatus)}>
                   <strong>In AgentVault:</strong> {component.inAgentVault}
                 </p>
               ) : null}
-              {component.href ? (
-                <a className={clsx(styles.inlineLink, styles.ecosystemCardLink)} href={component.href}>
-                  {component.href.replace('https://', '')}
-                </a>
-              ) : null}
-              {component.isCurrent ? <span className={styles.ecosystemCardBadge}>You are here</span> : null}
-            </article>
+            </li>
           ))}
-        </div>
+        </ul>
 
-        <div className={styles.deployLinks}>
-          <Link className={styles.inlineLink} to="/docs/ecosystem/executive-summary">
+        <div className={styles.linkRow}>
+          <Link className="av-link" to="/docs/ecosystem/executive-summary">
             Ecosystem overview
           </Link>
-          <Link className={styles.inlineLink} to="/docs/ecosystem/engineering-guide">
+          <Link className="av-link" to="/docs/ecosystem/engineering-guide">
             Engineering guide
           </Link>
         </div>
       </div>
     </section>
+  );
+}
+
+type CommandBlockProps = {
+  label: string;
+  command: string;
+  copyLabel: string;
+  copied: boolean;
+  onCopy: () => void;
+};
+
+/** A command the visitor copies: label and copy button above, the whole command below. */
+function CommandBlock({label, command, copyLabel, copied, onCopy}: CommandBlockProps) {
+  return (
+    <div className={styles.command}>
+      <div className={styles.commandHead}>
+        <p className={styles.commandLabel}>{label}</p>
+        <button type="button" className={styles.copyButton} aria-label={copyLabel} onClick={onCopy}>
+          {copied ? <CheckIcon /> : <CopyIcon />}
+          <span aria-live="polite">{copied ? 'Copied' : 'Copy'}</span>
+        </button>
+      </div>
+      <pre className={styles.commandShell}>
+        <code>{command}</code>
+      </pre>
+    </div>
+  );
+}
+
+/** A native select with the set's chevron in place of the browser's arrow. */
+function SelectField({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{value: string; label: string}>;
+}) {
+  return (
+    <label className={styles.field}>
+      <span className={styles.fieldLabel}>{label}</span>
+      <span className={styles.selectWrap}>
+        <select className={clsx(styles.fieldInput, styles.fieldSelect)} value={value} onChange={(event) => onChange(event.target.value)}>
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <ChevronDownIcon className={styles.selectIcon} />
+      </span>
+    </label>
   );
 }
 
@@ -492,21 +642,15 @@ function BackupStudioSection() {
   };
 
   return (
-    <section className={styles.backupStudioSection}>
-      <div className="container">
-        <div className={styles.backupStudioHeader}>
-          <p className={styles.instantControlLabel}>Backup studio</p>
-          <Heading as="h2" className={styles.instantControlTitle}>
-            Back up and restore in two commands
-          </Heading>
-          <p className={styles.instantControlLead}>
-            Name your agent, choose where it comes back, and copy the exact commands. The backup is encrypted on
-            your machine, and a restore installs it on a fresh canister.
-          </p>
-        </div>
+    <section className={styles.section}>
+      <div className="av-wrap">
+        <SectionHead
+          title="Back up and restore in two commands"
+          lead="Name your agent, choose where it comes back, and copy the exact commands. The backup is encrypted on your machine, and a restore installs it on a fresh canister."
+        />
 
-        <div className={styles.backupStudioGrid}>
-          <article className={styles.instantPanel}>
+        <div className={styles.toolGrid}>
+          <article className={styles.panel}>
             <div className={styles.panelHeader}>
               <p className={styles.panelKicker}>Step 1</p>
               <Heading as="h3" className={styles.panelTitle}>
@@ -524,27 +668,25 @@ function BackupStudioSection() {
                 />
               </label>
 
-              <label className={styles.field}>
-                <span className={styles.fieldLabel}>Restore to</span>
-                <select
-                  className={styles.fieldInput}
-                  value={restoreNetwork}
-                  onChange={(event) => setRestoreNetwork(event.target.value as DeployNetwork)}>
-                  <option value="local">local</option>
-                  <option value="ic">ic</option>
-                </select>
-              </label>
+              <SelectField
+                label="Restore to"
+                value={restoreNetwork}
+                onChange={(value) => setRestoreNetwork(value as DeployNetwork)}
+                options={[
+                  {value: 'local', label: 'local'},
+                  {value: 'ic', label: 'ic'},
+                ]}
+              />
 
-              <label className={styles.field}>
-                <span className={styles.fieldLabel}>Arweave manifest</span>
-                <select
-                  className={styles.fieldInput}
-                  value={anchorOnArweave ? 'upload' : 'skip'}
-                  onChange={(event) => setAnchorOnArweave(event.target.value === 'upload')}>
-                  <option value="skip">skip</option>
-                  <option value="upload">upload</option>
-                </select>
-              </label>
+              <SelectField
+                label="Arweave manifest"
+                value={anchorOnArweave ? 'upload' : 'skip'}
+                onChange={(value) => setAnchorOnArweave(value === 'upload')}
+                options={[
+                  {value: 'skip', label: 'skip'},
+                  {value: 'upload', label: 'upload'},
+                ]}
+              />
 
               {anchorOnArweave ? (
                 <label className={styles.field}>
@@ -566,7 +708,7 @@ function BackupStudioSection() {
             </p>
           </article>
 
-          <article className={styles.instantPanel}>
+          <article className={styles.panel}>
             <div className={styles.panelHeader}>
               <p className={styles.panelKicker}>Step 2</p>
               <Heading as="h3" className={styles.panelTitle}>
@@ -574,96 +716,68 @@ function BackupStudioSection() {
               </Heading>
             </div>
 
-            <div className={styles.commandBlock}>
-              <p className={styles.commandLabel}>Export command</p>
-              <pre className={styles.commandShell}>
-                <code>{exportCommand}</code>
-              </pre>
-              <button
-                type="button"
-                className={clsx('button button--secondary button--lg', styles.commandButton)}
-                onClick={() => void handleCopy('export', exportCommand)}>
-                {copiedField === 'export' ? 'Copied' : 'Copy export command'}
-              </button>
-            </div>
+            <CommandBlock
+              label="Export command"
+              command={exportCommand}
+              copyLabel="Copy export command"
+              copied={copiedField === 'export'}
+              onCopy={() => void handleCopy('export', exportCommand)}
+            />
 
-            <div className={styles.commandBlock}>
-              <p className={styles.commandLabel}>Restore command</p>
-              <pre className={styles.commandShell}>
-                <code>{restoreCommand}</code>
-              </pre>
-              <button
-                type="button"
-                className={clsx('button button--secondary button--lg', styles.commandButton)}
-                onClick={() => void handleCopy('restore', restoreCommand)}>
-                {copiedField === 'restore' ? 'Copied' : 'Copy restore command'}
-              </button>
-            </div>
+            <CommandBlock
+              label="Restore command"
+              command={restoreCommand}
+              copyLabel="Copy restore command"
+              copied={copiedField === 'restore'}
+              onCopy={() => void handleCopy('restore', restoreCommand)}
+            />
 
-            <div className={styles.storagePillRow}>
-              <span className={styles.storagePill}>AES-256-GCM</span>
-              <span className={styles.storagePill}>Passphrase from Vault</span>
-              <span className={styles.storagePill}>Optional Arweave manifest</span>
-              <span className={styles.storagePill}>Fresh canister on restore</span>
-            </div>
+            <p className={styles.metaLine}>
+              AES-256-GCM · Passphrase from Vault · Optional Arweave manifest · Fresh canister on restore
+            </p>
           </article>
         </div>
 
-        <article className={styles.timelineCard}>
-          <div className={styles.panelHeader}>
-            <p className={styles.panelKicker}>How it works</p>
-            <Heading as="h3" className={styles.panelTitle}>
+        <article className={styles.sheet} aria-label="Backup lifecycle">
+          <div className={styles.sheetIntro}>
+            <Heading as="h3" className={styles.sheetTitle}>
               Backup lifecycle
             </Heading>
+            <p className={styles.sheetLead}>Three steps. Each one lists what it leaves behind.</p>
+            <div className={styles.sheetLinks}>
+              <Link className="av-link" to="/docs/user/backups">
+                Backup guide
+              </Link>
+              <Link className="av-link" to="/docs/user/troubleshooting">
+                Recovery troubleshooting
+              </Link>
+              <Link className="av-link" to="/docs/security/overview">
+                Security overview
+              </Link>
+            </div>
           </div>
 
-          <div className={styles.timeline}>
+          <ol className={styles.timeline}>
             {backupPhases.map((phase) => (
-              <div key={phase.id} className={styles.timelineItem}>
+              <li key={phase.id} className={styles.timelineItem}>
                 <span className={styles.timelineId}>{phase.id}</span>
-                <div>
+                <div className={styles.timelineBody}>
                   <p className={styles.timelineLabel}>{phase.label}</p>
                   <p className={styles.timelineText}>{phase.description}</p>
-                  <p className={styles.timelineOutput}>Output: {phase.output}</p>
+                  <dl className={clsx('av-manifest', styles.timelineOutput)}>
+                    <ManifestRow label="Output" value={phase.output} />
+                  </dl>
                 </div>
-              </div>
+              </li>
             ))}
-          </div>
-
-          <div className={styles.deployLinks}>
-            <Link className={styles.inlineLink} to="/docs/user/backups">
-              Backup guide
-            </Link>
-            <Link className={styles.inlineLink} to="/docs/user/troubleshooting">
-              Recovery troubleshooting
-            </Link>
-            <Link className={styles.inlineLink} to="/docs/security/overview">
-              Security overview
-            </Link>
-          </div>
+          </ol>
         </article>
       </div>
     </section>
   );
 }
 
-function GetStartedSection() {
-  return (
-    <section className={styles.getStartedSection}>
-      <div className="container">
-        <article className={styles.getStartedCard}>
-          <p className={styles.getStartedLabel}>Get started</p>
-          <Heading as="h2" className={styles.sectionTitle}>
-            From zero to a running agent in three commands
-          </Heading>
-          <p className={styles.sectionLead}>
-            Every agent gets its own canister — a persistent identity, wallet, and memory that keep running
-            whether or not you're watching. No infrastructure to provision, no server to keep alive.
-          </p>
-
-          <div className={styles.codeBlock}>
-            <pre>
-              <code>{`# Create a new project
+const quickStartCommands = `# Create a new project
 agentvault init my-agent
 cd my-agent
 
@@ -673,18 +787,49 @@ agentvault deploy --network local
 
 # Check that it's alive
 agentvault status
-agentvault health`}</code>
-            </pre>
+agentvault health`;
+
+function GetStartedSection() {
+  return (
+    <section className={styles.section}>
+      <div className="av-wrap">
+        <div className={styles.startGrid}>
+          <div className={styles.startCopy}>
+            <p className="av-label">Get started</p>
+            <Heading as="h2" className="av-h2">
+              From zero to a running agent in three steps
+            </Heading>
+            <p className="av-lead">
+              Every agent gets its own canister, a persistent identity, wallet, and memory that keep running whether
+              or not you're watching. No infrastructure to provision, no server to keep alive.
+            </p>
+
+            <p className={styles.note}>
+              Wire <code>status</code>, <code>health</code>, and <code>backup</code> into your deployment pipeline.
+              Fast recovery should be built in from day one, not bolted on later.
+            </p>
+
+            <div className={styles.linkRow}>
+              <Link className="av-link" to="/docs/getting-started/quick-start">
+                Read the quick start
+                <ArrowRightIcon />
+              </Link>
+            </div>
           </div>
 
-          <div className={clsx(styles.admonition, styles.admonitionTip)}>
-            <p className={styles.admonitionLabel}>Tip</p>
-            <p>
-              Wire <code>status</code>, <code>health</code>, and <code>backup</code> into your deployment
-              pipeline. Fast recovery should be built in from day one, not bolted on later.
-            </p>
+          <div className={styles.startCode}>
+            <pre>
+              <code>
+                {quickStartCommands.split('\n').map((line, index) => (
+                  <span key={index} className={clsx(styles.codeLine, line.startsWith('#') && styles.codeComment)}>
+                    {line}
+                    {'\n'}
+                  </span>
+                ))}
+              </code>
+            </pre>
           </div>
-        </article>
+        </div>
       </div>
     </section>
   );
@@ -719,7 +864,7 @@ function InstantControlSection() {
 
   const deployCommand = useMemo(() => {
     const deployFlags = canisterId.trim()
-      ? `--network ${network} --canister-id ${canisterId.trim()} --upgrade`
+      ? `--network ${network} --canister-id ${canisterId.trim()} --mode upgrade`
       : `--network ${network}`;
 
     return `cd ${safeProjectName} && ${cliPrefix} package ${safePackagePath} && ${cliPrefix} deploy ${deployFlags}`;
@@ -767,21 +912,15 @@ function InstantControlSection() {
   };
 
   return (
-    <section id="instant-control" className={styles.instantControlSection}>
-      <div className="container">
-        <div className={styles.instantControlHeader}>
-          <p className={styles.instantControlLabel}>1-click installer</p>
-          <Heading as="h2" className={styles.instantControlTitle}>
-            Connect a wallet, configure your deploy, copy the commands
-          </Heading>
-          <p className={styles.instantControlLead}>
-            Connect your wallet, tune your deployment settings, and get ready-to-run commands for the exact
-            environment you're shipping to.
-          </p>
-        </div>
+    <section id="instant-control" className={styles.section}>
+      <div className="av-wrap">
+        <SectionHead
+          title="Connect a wallet and copy your deploy commands"
+          lead="Connect your wallet, tune your deployment settings, and get ready-to-run commands for the exact environment you're shipping to."
+        />
 
-        <div className={styles.instantControlGrid}>
-          <article className={styles.instantPanel}>
+        <div className={styles.toolGrid}>
+          <article className={styles.panel}>
             <div className={styles.panelHeader}>
               <p className={styles.panelKicker}>Step 1</p>
               <Heading as="h3" className={styles.panelTitle}>
@@ -803,11 +942,11 @@ function InstantControlSection() {
                     onClick={() => void handleConnectWallet(wallet)}
                     disabled={walletConnecting}>
                     <span className={styles.walletName}>{wallet.name}</span>
-                    <span className={styles.walletMeta}>
-                      {wallet.chainName} · {isAvailable ? 'detected' : 'not detected'}
-                    </span>
                     <span className={styles.walletState}>
                       {walletConnecting && isSelected ? 'Connecting…' : isConnected ? 'Connected' : 'Connect'}
+                    </span>
+                    <span className={styles.walletMeta}>
+                      {wallet.chainName} · {isAvailable ? 'detected' : 'not detected'}
                     </span>
                   </button>
                 );
@@ -820,23 +959,32 @@ function InstantControlSection() {
                   Connected {walletConnection.chainName}: <code>{shortAddress(walletConnection.address)}</code>
                 </p>
               ) : (
-                <p className={styles.walletHint}>No wallet connected yet.</p>
+                <p className={styles.walletHint}>No wallet connected yet</p>
               )}
 
               {walletInstall ? (
                 <p className={styles.walletHint}>
-                  Wallet extension missing.{' '}
+                  Wallet extension missing:{' '}
                   <a href={walletInstall.url} target="_blank" rel="noreferrer">
                     {walletInstall.label}
                   </a>
                 </p>
               ) : null}
 
-              {walletError ? <p className={styles.walletError}>{walletError}</p> : null}
+              {walletError ? (
+                <p className={styles.walletError} role="alert">
+                  {walletError}
+                </p>
+              ) : null}
             </div>
+
+            <p className={styles.panelNote}>
+              Connecting Plug Wallet sets the deploy network to <code>ic</code>. MetaMask and ArConnect set it to{' '}
+              <code>local</code>. You can change it in step 2.
+            </p>
           </article>
 
-          <article className={styles.instantPanel}>
+          <article className={styles.panel}>
             <div className={styles.panelHeader}>
               <p className={styles.panelKicker}>Step 2</p>
               <Heading as="h3" className={styles.panelTitle}>
@@ -854,27 +1002,25 @@ function InstantControlSection() {
                 />
               </label>
 
-              <label className={styles.field}>
-                <span className={styles.fieldLabel}>Template</span>
-                <select
-                  className={styles.fieldInput}
-                  value={template}
-                  onChange={(event) => setTemplate(event.target.value as ProjectTemplate)}>
-                  <option value="default">default</option>
-                  <option value="minimal">minimal</option>
-                </select>
-              </label>
+              <SelectField
+                label="Template"
+                value={template}
+                onChange={(value) => setTemplate(value as ProjectTemplate)}
+                options={[
+                  {value: 'default', label: 'default'},
+                  {value: 'minimal', label: 'minimal'},
+                ]}
+              />
 
-              <label className={styles.field}>
-                <span className={styles.fieldLabel}>Install channel</span>
-                <select
-                  className={styles.fieldInput}
-                  value={installChannel}
-                  onChange={(event) => setInstallChannel(event.target.value as InstallChannel)}>
-                  <option value="npx">npx</option>
-                  <option value="global">global npm</option>
-                </select>
-              </label>
+              <SelectField
+                label="Install channel"
+                value={installChannel}
+                onChange={(value) => setInstallChannel(value as InstallChannel)}
+                options={[
+                  {value: 'npx', label: 'npx'},
+                  {value: 'global', label: 'global npm'},
+                ]}
+              />
 
               <label className={styles.field}>
                 <span className={styles.fieldLabel}>Package path</span>
@@ -885,16 +1031,15 @@ function InstantControlSection() {
                 />
               </label>
 
-              <label className={styles.field}>
-                <span className={styles.fieldLabel}>Deploy network</span>
-                <select
-                  className={styles.fieldInput}
-                  value={network}
-                  onChange={(event) => setNetwork(event.target.value as DeployNetwork)}>
-                  <option value="local">local</option>
-                  <option value="ic">ic</option>
-                </select>
-              </label>
+              <SelectField
+                label="Deploy network"
+                value={network}
+                onChange={(value) => setNetwork(value as DeployNetwork)}
+                options={[
+                  {value: 'local', label: 'local'},
+                  {value: 'ic', label: 'ic'},
+                ]}
+              />
 
               <label className={styles.field}>
                 <span className={styles.fieldLabel}>Existing canister ID (optional)</span>
@@ -907,41 +1052,31 @@ function InstantControlSection() {
               </label>
             </div>
 
-            <div className={styles.commandBlock}>
-              <p className={styles.commandLabel}>Install</p>
-              <pre className={styles.commandShell}>
-                <code>{installCommand}</code>
-              </pre>
-              <button
-                type="button"
-                className={clsx('button button--secondary button--lg', styles.commandButton)}
-                onClick={() => void handleCopy('install', installCommand)}>
-                {copiedAction === 'install' ? 'Copied' : 'Copy install command'}
-              </button>
-            </div>
+            <CommandBlock
+              label="Install"
+              command={installCommand}
+              copyLabel="Copy install command"
+              copied={copiedAction === 'install'}
+              onCopy={() => void handleCopy('install', installCommand)}
+            />
 
-            <div className={styles.commandBlock}>
-              <p className={styles.commandLabel}>Deploy</p>
-              <pre className={styles.commandShell}>
-                <code>{deployCommand}</code>
-              </pre>
-              <button
-                type="button"
-                className={clsx('button button--secondary button--lg', styles.commandButton)}
-                onClick={() => void handleCopy('deploy', deployCommand)}>
-                {copiedAction === 'deploy' ? 'Copied' : 'Copy deploy command'}
-              </button>
-            </div>
-
-            <div className={styles.deployLinks}>
-              <Link className={styles.inlineLink} to="/docs/getting-started/installation">
-                Installation guide
-              </Link>
-              <Link className={styles.inlineLink} to="/docs/user/deployment">
-                Deployment guide
-              </Link>
-            </div>
+            <CommandBlock
+              label="Deploy"
+              command={deployCommand}
+              copyLabel="Copy deploy command"
+              copied={copiedAction === 'deploy'}
+              onCopy={() => void handleCopy('deploy', deployCommand)}
+            />
           </article>
+        </div>
+
+        <div className={styles.linkRow}>
+          <Link className="av-link" to="/docs/getting-started/installation">
+            Installation guide
+          </Link>
+          <Link className="av-link" to="/docs/user/deployment">
+            Deployment guide
+          </Link>
         </div>
       </div>
     </section>
@@ -950,32 +1085,34 @@ function InstantControlSection() {
 
 function Pathways() {
   return (
-    <section className={styles.pathwaysSection}>
-      <div className="container">
+    <section className={clsx(styles.section, styles.sectionLast)}>
+      <div className="av-wrap">
         <div className={styles.pathGrid}>
           <article className={styles.pathCard}>
-            <p className={styles.pathLabel}>Next step</p>
+            <p className="av-label">Next step</p>
             <Heading as="h3" className={styles.pathTitle}>
               Backups and recovery
             </Heading>
             <p className={styles.pathBody}>
               Export an encrypted backup, restore it to a fresh canister, and manage backup files from the CLI.
             </p>
-            <Link className={styles.pathAction} to="/docs/user/backups">
-              Open the backup guide →
+            <Link className="av-link" to="/docs/user/backups">
+              Open the backup guide
+              <ArrowRightIcon />
             </Link>
           </article>
 
           <article className={styles.pathCard}>
-            <p className={styles.pathLabel}>Deep dive</p>
+            <p className="av-label">Deep dive</p>
             <Heading as="h3" className={styles.pathTitle}>
               Security and hardening
             </Heading>
             <p className={styles.pathBody}>
               Review production hardening, key custody controls, and incident response strategy.
             </p>
-            <Link className={styles.pathAction} to="/docs/security/overview">
-              Read the security guide →
+            <Link className="av-link" to="/docs/security/overview">
+              Read the security guide
+              <ArrowRightIcon />
             </Link>
           </article>
         </div>
@@ -990,7 +1127,7 @@ export default function Home(): React.ReactElement {
   return (
     <Layout
       title={siteConfig.title}
-      description="AgentVault deploys AI agents to Internet Computer canisters with a durable identity, multi-chain wallet, and versioned memory — so they keep running when your laptop doesn't. Not tied to one chatbot or one model.">
+      description="AgentVault deploys AI agents to Internet Computer canisters with a durable identity, multi-chain wallet, and versioned memory, so they keep running when your laptop doesn't. Not tied to one chatbot or one model.">
       <HomepageHeader />
       <main className={styles.main}>
         <AgnosticSection />

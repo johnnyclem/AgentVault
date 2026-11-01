@@ -1,28 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
   <title id="title">AgentVault</title>
-  <desc id="desc">AgentVault branding for social previews</desc>
-  <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#f6f7fb" />
-      <stop offset="100%" stop-color="#eef0ff" />
-    </linearGradient>
-    <linearGradient id="line" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#4f46e5" />
-      <stop offset="100%" stop-color="#818cf8" />
-    </linearGradient>
-  </defs>
+  <desc id="desc">AgentVault: run your AI agent on its own canister</desc>
 
-  <rect width="1200" height="630" fill="url(#bg)" />
+  <rect width="1200" height="630" fill="#f7f4ee" />
 
-  <rect x="82" y="72" width="104" height="104" rx="20" fill="#ffffff" stroke="url(#line)" stroke-width="4" />
-  <path d="M110 146L124 92H133L147 146H138L135 136H122L119 146Z" fill="#4338ca" />
-  <path d="M124 128H132L128 113Z" fill="#ffffff" />
-  <path d="M150 92H164L157 146H145L140 124H149L153 136L156 108H150Z" fill="#4338ca" />
+  <g transform="translate(82 72) scale(0.8125)">
+    <rect width="128" height="128" rx="24" fill="#2563eb" />
+    <path d="M24 94L45 34H53L74 94H64.5L59.5 79H38.5L33.5 94Z" fill="#ffffff" />
+    <path d="M41.5 71H56.5L49 49Z" fill="#2563eb" />
+    <path d="M64 34H74L84 70L94 34H104L89 94H79Z" fill="#ffffff" />
+  </g>
 
-  <text x="82" y="302" fill="#1a1d29" font-family="Inter, Arial, sans-serif" font-size="112" font-weight="800" letter-spacing="-2">AgentVault</text>
-  <text x="82" y="374" fill="#4f46e5" font-family="Inter, Arial, sans-serif" font-size="32" font-weight="600">Deploy AI agents that run forever.</text>
-  <text x="82" y="440" fill="#565a70" font-family="Inter, Arial, sans-serif" font-size="30">Durable identity, multi-chain wallet, and versioned memory on Internet Computer canisters.</text>
+  <text x="82" y="302" fill="#1f1b16" font-family="'IBM Plex Sans', Arial, sans-serif" font-size="112" font-weight="500" letter-spacing="-3">AgentVault</text>
+  <text x="82" y="374" fill="#1d4ed8" font-family="'IBM Plex Sans', Arial, sans-serif" font-size="36" font-weight="500">Run your AI agent on its own canister</text>
+  <text x="82" y="436" fill="#5e554a" font-family="'IBM Plex Sans', Arial, sans-serif" font-size="30">Durable identity, multi-chain wallet, and versioned memory</text>
+  <text x="82" y="476" fill="#5e554a" font-family="'IBM Plex Sans', Arial, sans-serif" font-size="30">on Internet Computer canisters.</text>
 
-  <line x1="82" y1="492" x2="1118" y2="492" stroke="url(#line)" stroke-opacity="0.5" stroke-width="2" />
-  <text x="82" y="550" fill="#83879c" font-family="Inter, Arial, sans-serif" font-size="28">github.com/johnnyclem/agentvault</text>
+  <line x1="82" y1="520" x2="1118" y2="520" stroke="#1f1b16" stroke-opacity="0.16" stroke-width="2" />
+  <text x="82" y="574" fill="#6f665a" font-family="'IBM Plex Mono', 'Courier New', monospace" font-size="28">github.com/johnnyclem/agentvault</text>
 </svg>

@@ -1,25 +1,68 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
 
+/*
+ * AgentVault site tokens.
+ *
+ * World: a bank archive. Ledger paper, sealed manifests, blue ink. The warm
+ * neutral ramp carries the paper, the brand blue (the same blue as the
+ * dashboard's primary) is the one ink, and the terminal is the one dark
+ * object on the page.
+ *
+ * Type: IBM Plex Sans for the interface, IBM Plex Mono for commands, figures
+ * and meta. Weights 400 and 500, 600 only for the wordmark.
+ *
+ * Spacing: multiples of 4px. Radius: controls 8, cards 12, panels 16.
+ */
 :root {
-  --av-bg: #ffffff;
-  --av-bg-subtle: #f6f7fb;
-  --av-bg-inset: #f0f1f7;
-  --av-border: #e3e5ee;
-  --av-border-strong: #d3d6e3;
-  --av-text: #1a1d29;
-  --av-text-muted: #565a70;
-  --av-text-faint: #83879c;
-  /* The same calm blue as the webapp's primary (hsl(221 83% 53%)). */
+  --av-bg: #f7f4ee;
+  --av-surface: #fdfbf7;
+  --av-raised: #efe9df;
+  --av-border: rgba(31, 27, 22, 0.1);
+  --av-border-strong: rgba(31, 27, 22, 0.28);
+  /* Input and select outlines: 3.6:1 against the panel, the non-text minimum is 3:1. */
+  --av-field-border: rgba(31, 27, 22, 0.55);
+  --av-text: #1f1b16;
+  --av-text-2: #5e554a;
+  /* The token's #7b7266 reaches 4.3:1 on the page, this one 5.1:1. */
+  --av-text-3: #6f665a;
+
   --av-accent: #2563eb;
-  --av-accent-dark: #1d4ed8;
-  --av-accent-light: #eff6ff;
+  --av-accent-text: #1d4ed8;
   --av-accent-contrast: #ffffff;
-  --av-shadow-sm: 0 1px 2px rgba(20, 21, 41, 0.06);
-  --av-shadow-md: 0 4px 16px rgba(20, 21, 41, 0.08);
-  --av-shadow-lg: 0 12px 32px rgba(20, 21, 41, 0.1);
+  --av-accent-hover: #1d4ed8;
+  --av-focus: #1d4ed8;
+
+  --av-negative: #dc2626;
+
+  /* The one dark object: the terminal, and the paper slip printed on it. */
+  --av-ink: #12110f;
+  --av-ink-line: rgba(239, 233, 222, 0.1);
+  --av-ink-text: #efe9de;
+  --av-ink-text-2: #a8a196;
+  --av-ink-text-3: #8a847a;
+  --av-ink-accent: #7db0fb;
+  --av-paper: #f1ece2;
+  --av-paper-text: #1f1b16;
+  --av-paper-text-2: #5e554a;
+  --av-paper-line: rgba(31, 27, 22, 0.32);
+  /* The one semantic colour, printed on paper: 6.1:1 on the light slip, 5.6:1 on the dark theme's. */
+  --av-paper-positive: #166534;
+
+  --av-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --av-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.06);
+
   --av-radius-sm: 8px;
   --av-radius-md: 12px;
   --av-radius-lg: 16px;
+
+  --av-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --av-fast: 160ms;
+  --av-enter: 320ms;
+
+  /* Infima's own transitions use these, so they follow the site's one curve. */
+  --ifm-transition-fast: 160ms;
+  --ifm-transition-slow: 160ms;
+  --ifm-transition-timing-default: cubic-bezier(0.22, 1, 0.36, 1);
 
   --ifm-color-primary: #2563eb;
   --ifm-color-primary-dark: #1d4ed8;
@@ -29,55 +72,84 @@
   --ifm-color-primary-lighter: #60a5fa;
   --ifm-color-primary-lightest: #93c5fd;
   --ifm-background-color: var(--av-bg);
-  --ifm-background-surface-color: #ffffff;
-  --ifm-navbar-background-color: rgba(255, 255, 255, 0.92);
-  --ifm-navbar-shadow: 0 1px 0 var(--av-border);
-  --ifm-footer-background-color: var(--av-bg-subtle);
-  --ifm-footer-color: var(--av-text-muted);
-  --ifm-font-family-base: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --ifm-heading-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --ifm-font-family-monospace: 'JetBrains Mono', 'SFMono-Regular', Menlo, monospace;
+  --ifm-background-surface-color: var(--av-surface);
+  --ifm-navbar-background-color: var(--av-bg);
+  --ifm-navbar-shadow: none;
+  --ifm-navbar-height: 60px;
+  --ifm-footer-background-color: var(--av-raised);
+  --ifm-footer-color: var(--av-text-2);
+  --ifm-footer-title-color: var(--av-text);
+  --ifm-footer-link-color: var(--av-text-2);
+  --ifm-footer-link-hover-color: var(--av-text);
+  --ifm-font-family-base: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --ifm-heading-font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --ifm-font-family-monospace: 'IBM Plex Mono', 'SFMono-Regular', Menlo, monospace;
   --ifm-font-color-base: var(--av-text);
-  --ifm-font-color-secondary: var(--av-text-muted);
+  --ifm-font-color-secondary: var(--av-text-2);
   --ifm-heading-color: var(--av-text);
-  --ifm-heading-font-weight: 700;
+  --ifm-heading-font-weight: 500;
+  --ifm-heading-line-height: 1.25;
+  --ifm-font-weight-semibold: 500;
+  --ifm-font-weight-bold: 600;
+  --ifm-table-head-font-weight: 500;
   --ifm-color-content: var(--av-text);
-  --ifm-color-content-secondary: var(--av-text-muted);
-  --ifm-link-color: var(--av-accent);
-  --ifm-link-hover-color: var(--av-accent-dark);
-  --ifm-menu-color: var(--av-text-muted);
-  --ifm-menu-color-active: var(--av-accent);
-  --ifm-menu-color-background-active: var(--av-accent-light);
-  --ifm-menu-color-background-hover: var(--av-bg-subtle);
-  --ifm-toc-link-color: var(--av-text-muted);
-  --ifm-code-background: var(--av-bg-inset);
+  --ifm-color-content-secondary: var(--av-text-2);
+  --ifm-link-color: var(--av-accent-text);
+  --ifm-link-hover-color: var(--av-accent-hover);
+  --ifm-menu-color: var(--av-text-2);
+  --ifm-menu-color-active: var(--av-text);
+  --ifm-menu-color-background-active: var(--av-raised);
+  --ifm-menu-color-background-hover: var(--av-raised);
+  --ifm-toc-link-color: var(--av-text-2);
+  --ifm-code-background: var(--av-raised);
   --ifm-global-radius: var(--av-radius-sm);
-  --ifm-h1-font-size: clamp(2.1rem, 4vw, 2.75rem);
-  --ifm-h2-font-size: clamp(1.35rem, 2.6vw, 1.75rem);
-  --ifm-h3-font-size: clamp(1.1rem, 2vw, 1.3rem);
-  --ifm-code-font-size: 0.88rem;
-  --ifm-line-height-base: 1.65;
-  --docusaurus-highlighted-code-line-bg: rgba(37, 99, 235, 0.12);
+  --ifm-h1-font-size: 2.25rem;
+  --ifm-h2-font-size: 1.75rem;
+  --ifm-h3-font-size: 1.25rem;
+  --ifm-h4-font-size: 1rem;
+  --ifm-code-font-size: 0.8125rem;
+  --ifm-line-height-base: 1.6;
+  --ifm-breadcrumb-color-active: var(--av-text);
+  --ifm-breadcrumb-item-background-active: transparent;
+  --ifm-breadcrumb-border-radius: 8px;
+  /* The separator is the set's chevron-right, 16px. Infima lightens it and inverts it in dark mode. */
+  --ifm-breadcrumb-separator: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E");
+  --ifm-breadcrumb-separator-size: 1rem;
+  --ifm-breadcrumb-separator-size-multiplier: 1.25;
+  --ifm-menu-link-padding-vertical: 0.5rem;
+  --ifm-menu-link-padding-horizontal: 0.75rem;
+  --ifm-navbar-item-padding-vertical: 0.5rem;
+  --ifm-navbar-item-padding-horizontal: 0.75rem;
+  --ifm-pre-background: var(--av-raised);
+  --docusaurus-highlighted-code-line-bg: rgba(37, 99, 235, 0.1);
 }
 
 html[data-theme='dark'] {
-  --av-bg: #0f1117;
-  --av-bg-subtle: #161822;
-  --av-bg-inset: #1b1e2b;
-  --av-border: #262a3a;
-  --av-border-strong: #33374a;
-  --av-text: #eef0f7;
-  --av-text-muted: #a4a8bd;
-  --av-text-faint: #767b93;
-  /*
-   * One step lighter than the light theme's blue, so links and labels stay
-   * above 4.5:1 on the dark surfaces. White text on it would not, which is
-   * why the accent's text colour switches to the page background here.
-   */
+  --av-bg: #161513;
+  --av-surface: #1c1a18;
+  --av-raised: #262421;
+  --av-border: rgba(239, 233, 222, 0.08);
+  --av-border-strong: rgba(239, 233, 222, 0.28);
+  --av-field-border: rgba(239, 233, 222, 0.45);
+  --av-text: #efe9de;
+  --av-text-2: #aaa398;
+  /* 6.1:1 on the page, 5.1:1 on the raised surface the code comments sit on. */
+  --av-text-3: #9d978d;
+  --av-negative: #f87171;
+
+  /* One step lighter than the light theme's blue so links clear 4.5:1. */
   --av-accent: #60a5fa;
-  --av-accent-dark: #3b82f6;
-  --av-accent-light: rgba(96, 165, 250, 0.14);
-  --av-accent-contrast: var(--av-bg);
+  --av-accent-text: #60a5fa;
+  --av-accent-contrast: #161513;
+  --av-accent-hover: #93c5fd;
+  --av-focus: #93c5fd;
+
+  --av-ink: #0e0d0c;
+  --av-ink-line: rgba(239, 233, 222, 0.12);
+  --av-paper: #e9e3d7;
+
+  --av-shadow-sm: none;
+  --av-shadow-md: none;
 
   --ifm-color-primary: #60a5fa;
   --ifm-color-primary-dark: #3b82f6;
@@ -86,11 +158,16 @@ html[data-theme='dark'] {
   --ifm-color-primary-light: #93c5fd;
   --ifm-color-primary-lighter: #bfdbfe;
   --ifm-color-primary-lightest: #dbeafe;
-  --ifm-background-color: var(--av-bg);
-  --ifm-background-surface-color: var(--av-bg-subtle);
-  --ifm-navbar-background-color: rgba(15, 17, 23, 0.92);
-  --ifm-navbar-shadow: 0 1px 0 var(--av-border);
-  --ifm-footer-background-color: var(--av-bg-subtle);
+  --ifm-navbar-background-color: var(--av-bg);
+  --ifm-footer-background-color: #12110f;
+  --docusaurus-highlighted-code-line-bg: rgba(96, 165, 250, 0.1);
+}
+
+/* Name the properties that transition instead of leaving the default of all. */
+*,
+*::before,
+*::after {
+  transition-property: color, background-color, border-color, opacity, transform;
 }
 
 html {
@@ -99,44 +176,77 @@ html {
 
 body {
   font-family: var(--ifm-font-family-base);
-  line-height: var(--ifm-line-height-base);
+  -webkit-font-smoothing: antialiased;
 }
 
 code,
-pre {
+pre,
+kbd {
   font-family: var(--ifm-font-family-monospace);
+  font-variant-numeric: tabular-nums;
 }
 
 h1,
 h2,
 h3,
 h4 {
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-weight: 500;
+}
+
+h1 {
+  line-height: 1.15;
 }
 
 a {
-  text-underline-offset: 0.2em;
+  text-underline-offset: 4px;
 }
 
+:focus-visible {
+  outline: 2px solid var(--av-focus);
+  outline-offset: 2px;
+}
+
+/* ---------- Navigation ---------- */
+
 .navbar {
-  backdrop-filter: blur(10px);
+  padding: 0;
   border-bottom: 1px solid var(--av-border);
 }
 
 .navbar__inner {
   max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+html.plugin-docs .navbar__inner {
+  max-width: none;
+}
+
+.navbar__brand {
+  margin-right: 24px;
+}
+
+.navbar__logo {
+  height: 28px;
+  margin-right: 8px;
+}
+
+.navbar__logo img {
+  border-radius: 6px;
 }
 
 .navbar__title {
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1;
 }
 
 .navbar__link {
-  font-weight: 500;
-  font-size: 0.92rem;
-  color: var(--av-text-muted);
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 20px;
+  color: var(--av-text-2);
 }
 
 .navbar__link:hover,
@@ -144,55 +254,123 @@ a {
   color: var(--av-text);
 }
 
+.navbar__link--active {
+  font-weight: 500;
+}
+
 .navbar-sidebar {
   background: var(--av-bg);
 }
 
 .navbar-sidebar .menu__link {
-  font-weight: 500;
+  font-weight: 400;
 }
+
+/* The mobile sidebar's back button and close icon sit on the 4px grid too. */
+.navbar-sidebar__back {
+  margin: 0 -16px 8px;
+  padding: 8px 16px;
+  font-size: 0.875rem;
+  line-height: 20px;
+}
+
+/* Menu and close icons are 16px, so the button carries the 32px target. */
+.navbar-sidebar__close {
+  display: inline-flex;
+}
+
+.navbar__toggle,
+.navbar-sidebar__close {
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: var(--av-radius-sm);
+  color: var(--av-text);
+}
+
+.navbar__toggle {
+  margin-right: 8px;
+}
+
+.navbar__toggle:hover,
+.navbar-sidebar__close:hover {
+  background: var(--av-raised);
+}
+
+.navbar__toggle svg,
+.navbar-sidebar__close svg {
+  color: var(--av-text);
+}
+
+/* The colour mode switch: a square 32px button with the set's 16px icon. */
+button[class*='toggleButton'] {
+  border-radius: var(--av-radius-sm);
+  color: var(--av-text-2);
+  transition-property: background-color, color;
+  transition-duration: var(--av-fast);
+  transition-timing-function: var(--av-ease);
+}
+
+button[class*='toggleButton']:hover {
+  background: var(--av-raised);
+  color: var(--av-text);
+}
+
+/* ---------- Buttons ---------- */
 
 .button {
   border-radius: var(--av-radius-sm);
-  font-weight: 600;
-  font-size: 0.92rem;
-  transition:
-    transform 120ms ease,
-    box-shadow 120ms ease,
-    background-color 120ms ease,
-    border-color 120ms ease,
-    color 120ms ease;
+  font-family: var(--ifm-font-family-base);
+  font-weight: 500;
+  font-size: 0.9375rem;
+  line-height: 1.25;
+  padding: 12px 20px;
+  transition-property: color, background-color, border-color, transform;
+  transition-duration: var(--av-fast);
+  transition-timing-function: var(--av-ease);
+}
+
+.button:active {
+  transform: scale(0.98);
 }
 
 /*
  * Infima sets the label colour with `.button.button--secondary`, which
- * outranks a bare `.button--secondary`, so match its selector or the label
- * falls back to Infima's near-black on the blue.
+ * outranks a bare `.button--secondary`, so match its selector. In this site
+ * `button--secondary` is the filled primary button.
  */
 .button.button--secondary {
-  border: 1px solid var(--ifm-color-primary);
+  border: 1px solid var(--av-accent);
   color: var(--av-accent-contrast);
-  background: var(--ifm-color-primary);
-  box-shadow: var(--av-shadow-sm);
+  background: var(--av-accent);
 }
 
 .button.button--secondary:hover {
-  background: var(--ifm-color-primary-dark);
-  border-color: var(--ifm-color-primary-dark);
+  background: var(--av-accent-hover);
+  border-color: var(--av-accent-hover);
   color: var(--av-accent-contrast);
-  box-shadow: var(--av-shadow-md);
 }
 
-.button--outline {
-  border-color: var(--av-border-strong);
+.button.button--outline {
+  border: 1px solid var(--av-border-strong);
   color: var(--av-text);
   background: transparent;
 }
 
-.button--outline:hover {
-  border-color: var(--ifm-color-primary);
-  color: var(--ifm-color-primary);
+.button.button--outline:hover {
+  background: var(--av-raised);
+  border-color: var(--av-border-strong);
+  color: var(--av-text);
 }
+
+.button.button--lg {
+  padding: 12px 20px;
+  font-size: 0.9375rem;
+}
+
+/* ---------- Docs ---------- */
 
 .docs-wrapper .theme-doc-sidebar-container {
   background: var(--av-bg);
@@ -200,34 +378,148 @@ a {
 }
 
 .docs-wrapper .theme-doc-sidebar-menu .menu__link {
-  font-size: 0.9rem;
+  font-size: 0.875rem;
+  line-height: 20px;
   border-radius: var(--av-radius-sm);
 }
 
+/* The collapsible row wraps the link, so its corners match the link's. */
+.menu__list-item-collapsible {
+  border-radius: var(--av-radius-sm);
+}
+
+/*
+ * Sidebar carets: the set's chevron (stroke 1.5 at 16px) as a mask, so it
+ * takes the muted text colour in both themes. Infima draws a filled glyph from
+ * a background image and rotates it, which the mask keeps: expanded points
+ * down, collapsed points right.
+ */
+.menu__link--sublist-caret::after,
+.menu__caret::before {
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  background: var(--av-text-3);
+  filter: none;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m18 15-6-6-6 6'/%3E%3C/svg%3E") center / 16px 16px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m18 15-6-6-6 6'/%3E%3C/svg%3E") center / 16px 16px no-repeat;
+  transition: transform var(--av-fast) var(--av-ease);
+}
+
+.menu__caret {
+  padding: 8px;
+}
+
 .docs-wrapper .theme-doc-sidebar-menu .menu__link--active {
-  font-weight: 600;
+  font-weight: 500;
+  color: var(--av-accent-text);
 }
 
 .docs-wrapper .theme-doc-toc-desktop .table-of-contents {
-  border-left: 2px solid var(--av-border);
-  padding-left: 0.9rem;
+  border-left: 1px solid var(--av-border);
+  padding-left: 16px;
+}
+
+/* Contents links are 28px targets on the 13px step, not 20px lines apart by margins. */
+.table-of-contents {
+  font-size: 0.8125rem;
+}
+
+.table-of-contents li {
+  margin: 0;
+}
+
+.table-of-contents__link {
+  padding: 4px 0;
+  line-height: 20px;
 }
 
 .docs-wrapper .theme-doc-toc-desktop .table-of-contents__link:hover,
 .docs-wrapper .theme-doc-toc-desktop .table-of-contents__link--active {
-  color: var(--ifm-color-primary);
+  color: var(--av-accent-text);
 }
 
-.docs-wrapper .theme-doc-markdown h1,
-.docs-wrapper .theme-doc-markdown h2,
-.docs-wrapper .theme-doc-markdown h3 {
+.theme-doc-markdown h1,
+.theme-doc-markdown h2,
+.theme-doc-markdown h3,
+.theme-doc-markdown h4 {
+  color: var(--av-text);
+  letter-spacing: 0;
+}
+
+/*
+ * Infima sets the page title with `.markdown h1:first-child` (3rem) and the
+ * section headings with `.markdown > h2..h4`, so these match that specificity
+ * and win by coming later. Page title 36px, then 28, 20 and 16, with margins
+ * on the 4px scale.
+ */
+.theme-doc-markdown.markdown h1:first-child {
+  --ifm-h1-font-size: 2.25rem;
+  margin-bottom: 24px;
+  line-height: 1.15;
+}
+
+.theme-doc-markdown.markdown > h2 {
+  --ifm-h2-font-size: 1.75rem;
+  margin: 48px 0 16px;
+}
+
+.theme-doc-markdown.markdown > h3 {
+  --ifm-h3-font-size: 1.25rem;
+  margin: 32px 0 12px;
+}
+
+.theme-doc-markdown.markdown > h4 {
+  --ifm-h4-font-size: 1rem;
+  margin: 24px 0 8px;
+}
+
+/* Breadcrumbs: plain text, no chip around the current page. */
+nav.theme-doc-breadcrumbs {
+  margin-bottom: 12px;
+}
+
+.theme-doc-breadcrumbs .breadcrumbs__link {
+  padding: 4px 12px;
+  font-size: 0.8125rem;
+  line-height: 20px;
+}
+
+.theme-doc-breadcrumbs .breadcrumbs__item--active .breadcrumbs__link {
+  background: transparent;
   color: var(--av-text);
 }
 
+.theme-doc-breadcrumbs .breadcrumbs__item:not(:last-child)::after {
+  vertical-align: middle;
+}
+
+[class*='breadcrumbHomeIcon'] {
+  width: 16px;
+  height: 16px;
+  top: 0;
+  vertical-align: middle;
+}
+
+/* Numerals in tables, titles and the contents list line up in columns. */
+.theme-doc-markdown table,
+.theme-doc-markdown h1,
+.theme-doc-markdown h2,
+.theme-doc-markdown h3,
+.table-of-contents {
+  font-variant-numeric: tabular-nums;
+}
+
+.theme-doc-markdown strong,
+.theme-doc-markdown b {
+  font-weight: 600;
+}
+
 .docs-wrapper .theme-doc-markdown blockquote {
-  border-left: 3px solid var(--ifm-color-primary);
-  background: var(--av-bg-subtle);
-  border-radius: 0 var(--av-radius-sm) var(--av-radius-sm) 0;
+  border-left: 2px solid var(--av-border-strong);
+  background: transparent;
+  border-radius: 0;
+  color: var(--av-text-2);
 }
 
 .docs-wrapper .theme-doc-markdown table {
@@ -235,64 +527,296 @@ a {
   border-spacing: 0;
   border: 1px solid var(--av-border);
   border-radius: var(--av-radius-sm);
-  overflow: hidden;
+}
+
+@media (min-width: 997px) {
+  .docs-wrapper .theme-doc-markdown table {
+    display: table;
+    width: 100%;
+    overflow: hidden;
+  }
+}
+
+.docs-wrapper .theme-doc-markdown table th,
+.docs-wrapper .theme-doc-markdown table td {
+  border: 0;
+  border-bottom: 1px solid var(--av-border);
+  text-align: left;
+}
+
+.docs-wrapper .theme-doc-markdown table tr:last-child td {
+  border-bottom: 0;
 }
 
 .docs-wrapper .theme-doc-markdown table th {
-  background: var(--av-bg-subtle);
+  background: var(--av-raised);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.docs-wrapper .theme-doc-markdown table tr,
+.docs-wrapper .theme-doc-markdown table tr:nth-child(2n) {
+  background: transparent;
 }
 
 .theme-admonition {
-  margin: 1.75rem 0;
+  margin: 24px 0;
   border-radius: var(--av-radius-sm);
   border: 1px solid var(--av-border);
-  background: var(--av-bg-subtle);
+  border-left-width: 1px;
+  background: var(--av-surface);
+  box-shadow: none;
+  color: var(--av-text);
 }
 
-.theme-code-block,
+.theme-admonition .alert__heading,
+.theme-admonition [class*='admonitionHeading'] {
+  text-transform: none;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.theme-admonition [class*='admonitionHeading']:not(:last-child) {
+  margin-bottom: 4px;
+}
+
+/* Admonition icons come from the set: 16px, 1.5 stroke, the heading's colour. */
+.theme-admonition [class*='admonitionIcon'] {
+  margin-right: 8px;
+  color: var(--av-text-2);
+}
+
+.theme-admonition [class*='admonitionIcon'] svg.av-glyph {
+  width: 16px;
+  height: 16px;
+  fill: none;
+}
+
 pre {
   border-radius: var(--av-radius-sm);
   border: 1px solid var(--av-border);
   box-shadow: none;
 }
 
-:not(pre) > code {
+/*
+ * Docusaurus writes the Prism colours as inline custom properties and the
+ * theme's background inline on the pre, so both need !important to follow the
+ * site's ramp. The container carries the border, the pre sits flat inside it.
+ */
+.theme-code-block {
+  --prism-background-color: var(--av-raised) !important;
+  --prism-color: var(--av-text) !important;
   border: 1px solid var(--av-border);
-  border-radius: 5px;
-  background: var(--av-bg-inset);
+  border-radius: var(--av-radius-sm);
+  box-shadow: none;
+}
+
+.theme-code-block pre {
+  background-color: var(--av-raised) !important;
+  border: 0;
+  border-radius: 0;
+}
+
+:not(pre) > code {
+  border: 0;
+  border-radius: 6px;
+  background: var(--av-raised);
+  padding: 2px 8px;
+}
+
+.markdown {
+  --ifm-code-font-size: 0.875rem;
+}
+
+/*
+ * Code block toolbar: the set's 16px icons in 32px buttons, 4px apart. The
+ * theme animates its icons with `all`, so name the properties, and its copied
+ * check is a bright green outside the palette, so it takes the text colour.
+ */
+.theme-code-block svg.av-glyph {
+  fill: none;
+}
+
+.theme-code-block [class*='buttonGroup'] {
+  column-gap: 4px;
+}
+
+.theme-code-block [class*='buttonGroup'] button {
+  padding: 8px;
+}
+
+.theme-code-block [class*='copyButtonIcons'],
+.theme-code-block [class*='wordWrapButtonIcon'] {
+  width: 16px;
+  height: 16px;
+}
+
+.theme-code-block [class*='copyButtonIcon'],
+.theme-code-block [class*='copyButtonSuccessIcon'] {
+  transition-property: opacity, transform;
+  transition-timing-function: var(--av-ease);
+}
+
+.theme-code-block [class*='copyButtonSuccessIcon'] {
+  color: var(--av-text);
+}
+
+/* External link arrow, from the set, in the muted text colour. */
+.av-iconExternal {
+  margin-left: 4px;
+  vertical-align: -3px;
+  color: var(--av-text-3);
+}
+
+/* Edit this page and last updated, on the grid. */
+.theme-edit-this-page {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.theme-doc-footer [class*='lastUpdated'] {
+  margin-top: 4px;
+}
+
+/*
+ * The theme animates a few things with its own curves. They all take the
+ * site's one curve, and the doc sidebar's width no longer animates, since
+ * width is a layout property.
+ */
+div.navbar-sidebar,
+div.navbar-sidebar__items,
+div.navbar-sidebar__backdrop,
+a.hash-link,
+button[class*='tocCollapsibleButton']::after,
+.theme-code-block [class*='buttonGroup'] button {
+  transition-timing-function: var(--av-ease);
+}
+
+.docs-wrapper .theme-doc-sidebar-container {
+  transition: none;
+}
+
+/* The "On this page" button on small screens. */
+button[class*='tocCollapsibleButton'] {
+  padding: 8px 16px;
 }
 
 .pagination-nav__link {
   border: 1px solid var(--av-border);
   border-radius: var(--av-radius-sm);
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  transition-property: border-color, background-color;
+  transition-duration: var(--av-fast);
+  transition-timing-function: var(--av-ease);
 }
 
 .pagination-nav__link:hover {
-  border-color: var(--ifm-color-primary);
-  box-shadow: var(--av-shadow-sm);
+  border-color: var(--av-border-strong);
+  background: var(--av-surface);
 }
+
+.pagination-nav__sublabel {
+  font-size: 0.8125rem;
+}
+
+/* ---------- Footer ---------- */
 
 .footer {
   border-top: 1px solid var(--av-border);
+  padding: 48px 0 32px;
+}
+
+/* Two columns on the page grid: links left, the manifest right. */
+.av-footerGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 32px 64px;
+  align-items: start;
+}
+
+.av-footerLinks .footer__links,
+.av-footerLinks .footer__col {
+  margin-bottom: 0;
+}
+
+.av-footerManifest {
+  max-width: 400px;
+  margin-top: 24px;
+}
+
+.footer__bottom {
+  margin-top: 40px;
+  padding-top: 24px;
+  border-top: 1px solid var(--av-border);
+  text-align: left;
+}
+
+.footer > .container {
+  max-width: 1200px;
+  padding: 0 24px;
 }
 
 .footer__title {
-  font-weight: 700;
-  font-size: 0.92rem;
+  font-weight: 500;
+  font-size: 0.875rem;
+  margin-bottom: 12px;
+}
+
+.footer__item {
+  line-height: 1.25;
 }
 
 .footer__link-item {
-  color: var(--av-text-muted);
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 0.875rem;
+  line-height: 24px;
+  color: var(--av-text-2);
 }
 
 .footer__link-item:hover {
   color: var(--av-text);
+  text-decoration: underline;
+}
+
+.footer__copyright {
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.75rem;
+  color: var(--av-text-3);
 }
 
 @media (max-width: 996px) {
+  .navbar__toggle {
+    display: inline-flex;
+  }
+
+  .av-footerGrid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+  }
+
+  .av-footerLinks .footer__col {
+    margin-bottom: 24px;
+  }
+
+  .av-footerLinks .footer__col:last-child {
+    margin-bottom: 0;
+  }
+
+  .av-footerManifest {
+    max-width: none;
+    margin-top: 0;
+  }
+
   .navbar-github-desktop {
     display: none;
+  }
+
+  .navbar__inner {
+    padding: 0 16px;
   }
 }
 
@@ -304,8 +828,154 @@ pre {
 
 @media (max-width: 640px) {
   .button {
-    width: 100%;
     justify-content: center;
+  }
+
+  .footer > .container {
+    padding: 0 16px;
+  }
+}
+
+/* ---------- Shared primitives for the home and changelog pages ---------- */
+
+.av-wrap {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.av-label {
+  margin: 0 0 12px;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.75rem;
+  line-height: 16px;
+  color: var(--av-text-3);
+}
+
+.av-sectionHead {
+  max-width: 640px;
+  margin: 0 0 40px;
+}
+
+.av-h2 {
+  margin: 0 0 16px;
+  font-size: 1.75rem;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.av-lead {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--av-text-2);
+}
+
+.av-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--av-text);
+  text-decoration: underline;
+  text-decoration-color: var(--av-border-strong);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  transition-property: color, text-decoration-color;
+  transition-duration: var(--av-fast);
+  transition-timing-function: var(--av-ease);
+}
+
+.av-link:hover {
+  color: var(--av-accent-text);
+  text-decoration-color: currentColor;
+}
+
+.av-link svg {
+  flex: none;
+}
+
+.av-glyph {
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.av-icon {
+  width: 16px;
+  height: 16px;
+}
+
+/*
+ * The manifest row is this site's one signature: a mono key, a dotted
+ * leader and a mono value, the way a receipt or a manifest lists things.
+ */
+.av-manifest {
+  margin: 0;
+  padding: 0;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.75rem;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+.av-manifestRow {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin: 0;
+  padding: 4px 0;
+}
+
+.av-manifestKey {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: baseline;
+  min-width: 0;
+  margin: 0;
+  color: var(--av-text-3);
+  white-space: nowrap;
+}
+
+.av-manifestKey::after {
+  content: '';
+  flex: 1 1 auto;
+  min-width: 16px;
+  margin-left: 8px;
+  border-bottom: 1px dotted currentColor;
+  opacity: 0.6;
+  transform: translateY(-4px);
+}
+
+.av-manifestValue {
+  flex: 0 1 auto;
+  max-width: 70%;
+  margin: 0;
+  color: var(--av-text);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .av-wrap {
+    padding: 0 16px;
+  }
+
+  .av-sectionHead {
+    margin-bottom: 32px;
+  }
+
+  .av-h2 {
+    font-size: 1.5rem;
   }
 }
 
