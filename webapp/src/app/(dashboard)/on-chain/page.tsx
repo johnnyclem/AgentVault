@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { Blocks, RefreshCw } from 'lucide-react'
 import { useAgentList } from '@/hooks/useAgentList'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
+import { ErrorNotice } from '@/components/common/ErrorNotice'
 import { apiClient } from '@/lib/api-client'
 import { formatBytes, formatCycles, formatTimestamp } from '@/lib/utils'
 import type { Canister } from '@/lib/types'
@@ -16,6 +17,15 @@ interface OnChainEntry {
   canisterId: string
   canister?: Canister
   status: 'loading' | 'error' | 'unavailable'
+}
+
+function Fact({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="mt-1 min-w-0 tabular-nums">{children}</dd>
+    </div>
+  )
 }
 
 export default function OnChainPage() {
@@ -94,34 +104,27 @@ export default function OnChainPage() {
     <div className="page">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="page-title">On-Chain</h1>
-          <p className="page-subtitle">Monitor deployed canister states and network links</p>
+          <h1 className="page-title">On-chain</h1>
+          <p className="page-subtitle">Status, cycles and memory of each deployed canister</p>
         </div>
-        <button
-          onClick={refreshAll}
-          className="chip px-3 py-1.5 text-sm"
-        >
-          <RefreshCw className="h-4 w-4" />
+        <button type="button" onClick={refreshAll} className="chip">
+          <RefreshCw className="h-4 w-4" aria-hidden="true" />
           Refresh
         </button>
       </div>
 
-      {error ? (
-        <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
-          {error.message}
-        </div>
-      ) : null}
+      {error ? <ErrorNotice title="Couldn't load agents." message={error.message} onRetry={refreshAll} /> : null}
 
       {deployedAgents.length === 0 ? (
         <div className="surface p-10 text-center">
-          <Blocks className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
+          <Blocks className="mx-auto mb-3 h-8 w-8 text-muted-foreground" aria-hidden="true" />
           <p className="font-medium">No deployed agents yet</p>
           <p className="text-sm text-muted-foreground">Deploy an agent to start tracking canister state.</p>
           <Link
             href="/agents"
-            className="mt-4 inline-flex rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            className="mt-4 inline-flex h-9 items-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
-            Go to Agents
+            Go to agents
           </Link>
         </div>
       ) : (
@@ -133,12 +136,14 @@ export default function OnChainPage() {
             return (
               <div
                 key={entry.agentId}
-                className="surface p-4"
+                className="surface min-w-0 p-4"
               >
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <h2 className="font-semibold">{entry.agentName}</h2>
-                    <p className="text-sm text-muted-foreground">Agent {entry.agentId}</p>
+                  <div className="min-w-0">
+                    <h2 className="truncate font-medium">{entry.agentName}</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Agent <span className="tag ml-1" title={entry.agentId}>{entry.agentId}</span>
+                    </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <StatusBadge status={canister ? canisterStatus : 'error'} />
@@ -154,35 +159,18 @@ export default function OnChainPage() {
                 </div>
 
                 {canister ? (
-                  <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
-                    <p>
-                      <span className="text-muted-foreground">Canister:</span>{' '}
-                      <span className="font-mono">{entry.canisterId}</span>
-                    </p>
-                    <p>
-                      <span className="text-muted-foreground">Cycles:</span>{' '}
-                      {formatCycles(canister.cycles)}
-                    </p>
-                    <p>
-                      <span className="text-muted-foreground">Memory:</span>{' '}
-                      {formatBytes(canister.memory)}
-                    </p>
-                    <p>
-                      <span className="text-muted-foreground">Controller:</span>{' '}
-                      <span className="font-mono">{canister.controller.slice(0, 12)}...</span>
-                    </p>
-                    <p>
-                      <span className="text-muted-foreground">Updated:</span>{' '}
-                      {formatTimestamp(canister.updatedAt)}
-                    </p>
-                    <p>
-                      <span className="text-muted-foreground">Status:</span> {canisterStatus}
-                    </p>
-                    <p>
-                      <span className="text-muted-foreground">Error:</span>{' '}
-                      {entry.status === 'error' ? 'unable to fetch status' : 'none'}
-                    </p>
-                  </div>
+                  <dl className="grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                    <Fact label="Canister">
+                      <span className="tag" title={entry.canisterId}>{entry.canisterId}</span>
+                    </Fact>
+                    <Fact label="Cycles">{formatCycles(canister.cycles)}</Fact>
+                    <Fact label="Memory">{formatBytes(canister.memory)}</Fact>
+                    <Fact label="Controller">
+                      <span className="tag" title={canister.controller}>{canister.controller}</span>
+                    </Fact>
+                    <Fact label="Updated">{formatTimestamp(canister.updatedAt)}</Fact>
+                    <Fact label="Error">{entry.status === 'error' ? 'unable to fetch status' : 'none'}</Fact>
+                  </dl>
                 ) : (
                   <p className="text-sm text-muted-foreground">
                     Canister metadata not available. Check ICP canister configuration.

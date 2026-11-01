@@ -75,6 +75,30 @@
   body {
     @apply bg-background text-foreground antialiased;
   }
+
+  /*
+   * One keyboard focus ring for every link and button. Inputs and the switch
+   * set their own ring with focus:ring, which has higher specificity and so
+   * replaces this outline instead of stacking on it.
+   */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+
+  /* Browsers give table cells 1px of padding; the grid starts at 0. */
+  th,
+  td {
+    padding: 0;
+  }
+
+  /* Figures line up in columns. */
+  time,
+  th,
+  td,
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
 }
 
 /*
@@ -83,16 +107,30 @@
  * override a single property (e.g. `page max-w-7xl`).
  */
 @layer components {
+  /*
+   * One frame for every page, so a title never moves sideways between
+   * sections. A page that reads better narrow (a form, a list) caps what is
+   * inside the frame instead, with `[&>*]:max-w-3xl`, and stays left-aligned.
+   */
   .page {
-    @apply mx-auto max-w-6xl space-y-6 p-4 md:p-8;
+    @apply mx-auto max-w-7xl space-y-6 p-4 md:p-8;
   }
 
   .page-title {
-    @apply text-2xl font-semibold tracking-tight;
+    @apply text-[28px] font-medium leading-8;
   }
 
   .page-subtitle {
     @apply text-sm text-muted-foreground;
+  }
+
+  .page-title + .page-subtitle {
+    @apply mt-1;
+  }
+
+  /* A label and its value on one line. Every row is 24px, with or without a tag in it. */
+  .kv {
+    @apply flex min-h-6 items-center justify-between gap-3;
   }
 
   .surface {
@@ -100,22 +138,68 @@
   }
 
   .surface-muted {
-    @apply rounded-xl bg-muted/50;
+    @apply rounded-lg bg-muted/50;
   }
 
+  /* A 32px control: filters, links to other sites, small secondary actions. */
   .chip {
-    @apply inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground;
+    @apply inline-flex h-8 items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground;
   }
 
   .chip-active {
     @apply border-transparent bg-secondary text-foreground hover:bg-secondary;
   }
 
+  /* An action that is drawn but not wired yet: present and quiet. aria-disabled keeps it focusable, so a page whose only controls are stubs still has a keyboard stop. */
+  .chip:disabled,
+  .chip[aria-disabled='true'] {
+    @apply cursor-not-allowed border-transparent bg-transparent opacity-60 hover:bg-transparent hover:text-muted-foreground;
+  }
+
+  /* A 32px row, 12px from the edge, icon and label on fixed columns. */
   .nav-item {
-    @apply flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground;
+    @apply flex h-8 items-center gap-2.5 rounded-lg px-3 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground;
   }
 
   .nav-item-active {
     @apply bg-secondary font-medium text-foreground hover:bg-secondary;
+  }
+
+  /* Signature: every id, hash and principal is a mono reference tag. */
+  .tag {
+    @apply inline-block max-w-full truncate rounded-sm border border-border bg-muted/60 px-1.5 py-0.5 align-middle font-mono text-xs tabular-nums text-foreground;
+  }
+
+  /* A keyboard shortcut. */
+  .keycap {
+    @apply inline-flex h-5 min-w-5 items-center justify-center rounded border border-border bg-muted px-1 font-mono text-xs text-muted-foreground;
+  }
+
+  /* A figure in a stat strip. */
+  .figure {
+    @apply text-2xl font-medium leading-none tabular-nums;
+  }
+}
+
+/*
+ * One icon stroke for the whole dashboard; lucide draws at 2 by default.
+ * Kept outside @layer on purpose: Tailwind only emits layered rules whose class
+ * it finds in the content globs, and `lucide` never appears there.
+ */
+svg.lucide {
+  stroke-width: 1.5;
+}
+
+/* Motion is feedback only; people who ask for less get none of it. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-pulse {
+    animation: none !important;
   }
 }

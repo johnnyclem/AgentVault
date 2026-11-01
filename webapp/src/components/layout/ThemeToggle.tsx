@@ -23,7 +23,7 @@ export function ThemeToggle() {
   }, [])
 
   return (
-    <div role="group" aria-label="Theme" className="inline-flex shrink-0 items-center gap-0.5 rounded-full border bg-card p-0.5">
+    <div role="group" aria-label="Theme" className="inline-flex shrink-0 items-center gap-0.5 rounded-lg border bg-card p-0.5">
       {OPTIONS.map(({ value, label, icon: Icon }) => {
         const selected = mounted && theme === value
 
@@ -36,11 +36,11 @@ export function ThemeToggle() {
             title={label}
             onClick={() => setTheme(value)}
             className={cn(
-              'flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground',
+              'flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground',
               selected && 'bg-secondary text-foreground'
             )}
           >
-            <Icon className="h-3.5 w-3.5" />
+            <Icon className="h-4 w-4" aria-hidden="true" />
           </button>
         )
       })}

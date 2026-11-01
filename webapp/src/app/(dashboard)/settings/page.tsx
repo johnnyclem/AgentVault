@@ -22,7 +22,7 @@ import {
  * toggle that is on never reads as a feature that is running.
  */
 const SECTIONS = [
-  { id: 'appearance', label: 'Appearance', description: 'How the dashboard looks in this browser.', icon: Palette },
+  { id: 'appearance', label: 'Appearance', description: 'How the dashboard looks in this browser', icon: Palette },
   {
     id: 'network',
     label: 'Network',
@@ -78,16 +78,16 @@ export default function SettingsPage() {
   const current = SECTIONS.find(({ id }) => id === section) ?? SECTIONS[0]
 
   return (
-    <div className="page max-w-4xl">
+    <div className="page [&>*]:max-w-4xl">
       <div className="space-y-1">
         <h1 className="page-title">Settings</h1>
-        <p className="page-subtitle">Preferences for this dashboard.</p>
+        <p className="page-subtitle">Preferences for this dashboard</p>
       </div>
 
-      <div className="surface overflow-hidden md:flex">
+      <div className="surface overflow-hidden lg:flex">
         <nav
           aria-label="Settings sections"
-          className="flex gap-1 overflow-x-auto border-b border-border p-2 md:w-52 md:shrink-0 md:flex-col md:border-b-0 md:border-r"
+          className="grid grid-cols-2 gap-1 border-b border-border p-2 lg:flex lg:w-52 lg:shrink-0 lg:flex-col lg:border-b-0 lg:border-r"
         >
           {SECTIONS.map(({ id, label, icon: Icon }) => (
             <button
@@ -95,7 +95,7 @@ export default function SettingsPage() {
               type="button"
               onClick={() => setSection(id)}
               aria-current={section === id ? 'true' : undefined}
-              className={cn('nav-item shrink-0 whitespace-nowrap max-md:rounded-full', section === id && 'nav-item-active')}
+              className={cn('nav-item whitespace-nowrap', section === id && 'nav-item-active')}
             >
               <Icon className="h-4 w-4" aria-hidden="true" />
               {label}
@@ -104,12 +104,12 @@ export default function SettingsPage() {
         </nav>
 
         <section className="min-w-0 flex-1 p-4 md:p-6" aria-labelledby="settings-pane-title">
-          <h2 id="settings-pane-title" className="text-base font-semibold">{current.label}</h2>
+          <h2 id="settings-pane-title" className="text-base font-medium">{current.label}</h2>
           <p className="text-sm text-muted-foreground">{current.description}</p>
 
           <div className="mt-4 divide-y divide-border">
             {section === 'appearance' && (
-              <SettingRow title="Theme" description="Light, dark, or match your system.">
+              <SettingRow title="Theme" description="Light, dark or match your system">
                 <div role="group" aria-label="Theme" className="inline-flex rounded-lg border border-border p-0.5">
                   {THEMES.map(({ id, label, icon: Icon }) => {
                     const active = loaded && theme === id
@@ -120,11 +120,11 @@ export default function SettingsPage() {
                         aria-pressed={active}
                         onClick={() => setTheme(id)}
                         className={cn(
-                          'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground',
+                          'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground',
                           active && 'bg-secondary text-foreground'
                         )}
                       >
-                        <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                        <Icon className="h-4 w-4" aria-hidden="true" />
                         {label}
                       </button>
                     )
@@ -135,7 +135,7 @@ export default function SettingsPage() {
 
             {section === 'network' && (
               <>
-                <SettingRow title="Auto refresh" description="Whether you'd like network data refreshed on a timer.">
+                <SettingRow title="Auto refresh" description="Whether you'd like network data refreshed on a timer">
                   <Toggle label="Auto refresh" checked={settings.autoRefresh} onChange={(autoRefresh) => update({ autoRefresh })} />
                 </SettingRow>
                 {settings.autoRefresh && (
@@ -153,10 +153,10 @@ export default function SettingsPage() {
 
             {section === 'notifications' && (
               <>
-                <SettingRow title="Notifications" description="Whether you'd like alerts for important events.">
+                <SettingRow title="Notifications" description="Whether you'd like alerts for important events">
                   <Toggle label="Notifications" checked={settings.notifications} onChange={(notifications) => update({ notifications })} />
                 </SettingRow>
-                <SettingRow title="Sound" description="Whether you'd like a sound with each alert.">
+                <SettingRow title="Sound" description="Whether you'd like a sound with each alert">
                   <Toggle label="Sound" checked={settings.sound} onChange={(sound) => update({ sound })} />
                 </SettingRow>
               </>
@@ -191,15 +191,15 @@ export default function SettingsPage() {
         </section>
       </div>
 
-      <p className="flex items-start gap-1.5 text-xs text-muted-foreground" aria-live="polite">
+      <p className="flex items-start gap-2 text-xs text-muted-foreground" aria-live="polite">
         {storageBlocked ? (
           <>
-            <TriangleAlert className="mt-px h-3.5 w-3.5 shrink-0 text-warning" aria-hidden="true" />
+            <TriangleAlert className="h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
             Not saved: this browser is blocking local storage, so changes last until you reload.
           </>
         ) : (
           <>
-            <Check className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <Check className="h-4 w-4 shrink-0" aria-hidden="true" />
             Saved in this browser. The theme applies across the dashboard; the other options are kept as
             preferences and don&apos;t change other pages.
           </>
@@ -221,7 +221,7 @@ function SettingRow({
   children: ReactNode
 }) {
   return (
-    <div className="flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+    <div className="flex flex-col gap-3 py-4 first:pt-0 last:pb-0 xl:flex-row xl:items-center xl:justify-between xl:gap-6">
       <div className="min-w-0">
         {htmlFor ? (
           <label htmlFor={htmlFor} className="text-sm font-medium">{title}</label>
@@ -284,7 +284,7 @@ function IntervalField({
   const isValid = (n: number) => Number.isInteger(n) && n >= bounds.min && n <= bounds.max
 
   return (
-    <SettingRow title={title} description={`Between ${bounds.min} and ${bounds.max}.`} htmlFor={id}>
+    <SettingRow title={title} description={`Between ${bounds.min} and ${bounds.max}`} htmlFor={id}>
       <div className="flex items-center gap-2">
         <input
           id={id}
@@ -307,7 +307,7 @@ function IntervalField({
           onKeyDown={(event) => {
             if (event.key === 'Enter') event.currentTarget.blur()
           }}
-          className="w-24 rounded-md border border-input bg-background px-3 py-1.5 text-sm tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-9 w-24 rounded-lg border border-input bg-background px-3 text-sm tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
         <span className="text-sm text-muted-foreground">{unit}</span>
       </div>

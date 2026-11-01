@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { Globe, CheckCircle2, XCircle, AlertTriangle, RefreshCw } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
+import { ErrorNotice } from '@/components/common/ErrorNotice'
 import { useNetworks } from '@/hooks/useNetworks'
 import type { Network } from '@/lib/types'
 
@@ -26,7 +27,7 @@ export default function NetworksPage() {
 
   if (isLoading) {
     return (
-      <div className="p-6 flex items-center justify-center min-h-[400px]">
+      <div className="flex min-h-[400px] items-center justify-center p-6">
         <LoadingSpinner size="lg" />
       </div>
     )
@@ -37,8 +38,9 @@ export default function NetworksPage() {
       <div className="page">
         <div>
           <h1 className="page-title">Networks</h1>
-          <p className="text-sm text-destructive">{error.message}</p>
+          <p className="page-subtitle">View and manage ICP network connections</p>
         </div>
+        <ErrorNotice title="Couldn't load networks." message={error.message} onRetry={refetch} />
       </div>
     )
   }
@@ -48,58 +50,47 @@ export default function NetworksPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="page-title">Networks</h1>
-          <p className="page-subtitle">
-            View and manage ICP network connections
-          </p>
+          <p className="page-subtitle">View and manage ICP network connections</p>
         </div>
-        <button 
-          onClick={() => refetch()}
-          className="flex items-center gap-2 px-3.5 py-2 text-sm font-medium border bg-card rounded-lg hover:bg-muted transition-colors"
-        >
-          <RefreshCw className="w-4 h-4" />
+        <button type="button" onClick={() => refetch()} className="chip">
+          <RefreshCw className="h-4 w-4" aria-hidden="true" />
           Refresh
         </button>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {networks.map((network) => (
-          <div key={network.name} className="surface p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Globe className="w-5 h-5 text-muted-foreground" />
-                <h3 className="font-semibold">{network.name}</h3>
-              </div>
-              {network.status === 'connected' && <CheckCircle2 className="w-5 h-5 text-success" />}
-              {network.status === 'disconnected' && <XCircle className="w-5 h-5 text-muted-foreground" />}
-              {network.status === 'degraded' && <AlertTriangle className="w-5 h-5 text-warning" />}
+          <div key={network.name} className="surface min-w-0 p-6">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h3 className="min-w-0 truncate font-medium">{network.name}</h3>
+              <StatusBadge status={network.status} className="shrink-0" />
             </div>
 
-            <div className="space-y-3">
-              <div>
-                <p className="text-sm text-muted-foreground">Status</p>
-                <StatusBadge status={network.status} />
+            <dl className="space-y-3 text-sm">
+              <div className="kv">
+                <dt className="text-muted-foreground">URL</dt>
+                <dd className="min-w-0">
+                  <span className="tag" title={network.url}>{network.url}</span>
+                </dd>
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">URL</p>
-                <p className="text-sm font-mono">{network.url}</p>
+              <div className="kv">
+                <dt className="text-muted-foreground">Nodes</dt>
+                <dd className="tabular-nums">{network.nodeCount}</dd>
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Nodes</p>
-                <p className="text-sm">{network.nodeCount}</p>
-              </div>
-            </div>
+            </dl>
 
-            <div className="mt-4 pt-4 border-t">
-              <button 
+            <div className="mt-4 border-t pt-4">
+              <button
+                type="button"
                 onClick={() => handleConnect(network.name)}
                 disabled={connectingTo === network.name}
-                className={`w-full px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                className={`h-9 w-full rounded-lg px-4 text-sm font-medium transition-colors ${
                   network.status === 'connected'
-                    ? 'bg-success/10 text-success hover:bg-success/15'
+                    ? 'bg-secondary text-foreground hover:bg-secondary/80'
                     : 'border hover:bg-muted'
-                } ${connectingTo === network.name ? 'opacity-50 cursor-not-allowed' : ''}`}
+                } ${connectingTo === network.name ? 'cursor-not-allowed opacity-50' : ''}`}
               >
-                {connectingTo === network.name ? 'Connecting...' : network.status === 'connected' ? 'Connected' : 'Connect'}
+                {connectingTo === network.name ? 'Connecting…' : network.status === 'connected' ? 'Connected' : 'Connect'}
               </button>
             </div>
           </div>
@@ -107,38 +98,41 @@ export default function NetworksPage() {
       </div>
 
       <div className="surface p-6">
-        <h2 className="text-lg font-semibold mb-4">Add Network</h2>
+        <h2 className="mb-4 text-base font-medium">Add network</h2>
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1.5">
-              Network Name
+            <label htmlFor="network-name" className="mb-1.5 block text-sm font-medium">
+              Name
             </label>
             <input
+              id="network-name"
               type="text"
-              placeholder="My Custom Network"
+              placeholder="staging"
               value={newNetwork.name}
               onChange={(e) => setNewNetwork(prev => ({ ...prev, name: e.target.value }))}
               className="w-full px-3 py-2 text-sm border rounded-lg bg-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1.5">
-              Network URL
+            <label htmlFor="network-url" className="mb-1.5 block text-sm font-medium">
+              URL
             </label>
             <input
+              id="network-url"
               type="url"
-              placeholder="https://..."
+              placeholder="https://replica.example.com"
               value={newNetwork.url}
               onChange={(e) => setNewNetwork(prev => ({ ...prev, url: e.target.value }))}
               className="w-full px-3 py-2 text-sm border rounded-lg bg-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
-          <button 
+          <button
+            type="button"
             onClick={handleAddNetwork}
             disabled={!newNetwork.name || !newNetwork.url}
-            className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="h-9 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Add Network
+            Add network
           </button>
         </div>
       </div>

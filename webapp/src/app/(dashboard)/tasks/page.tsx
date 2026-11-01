@@ -1,14 +1,35 @@
 'use client'
 
 import { useState } from 'react'
-import { CheckCircle2, Clock, XCircle, Filter } from 'lucide-react'
+import { Filter } from 'lucide-react'
 import { StatusBadge } from '@/components/common/StatusBadge'
+import { ErrorNotice } from '@/components/common/ErrorNotice'
+import { Select } from '@/components/common/Select'
 import { TimeAgo } from '@/components/common/TimeAgo'
 import { useTasks } from '@/hooks/useTasks'
 import { DataTable } from '@/components/common/DataTable'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import type { Column } from '@/components/common/DataTable'
 import type { Task } from '@/lib/types'
+
+/** A thin bar for one task's progress; the same on the table and on the phone list. */
+function Progress({ task }: { task: Task }) {
+  return (
+    <div className="w-full min-w-24">
+      <div
+        className="h-1.5 overflow-hidden rounded-full bg-muted"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={task.progress}
+        aria-label={`${task.type} progress`}
+      >
+        <div className="h-full bg-primary" style={{ width: `${task.progress}%` }} />
+      </div>
+      <span className="mt-1 block text-xs tabular-nums text-muted-foreground">{task.progress}%</span>
+    </div>
+  )
+}
 
 const columns: Column<Task>[] = [
   {
@@ -21,30 +42,12 @@ const columns: Column<Task>[] = [
   {
     key: 'status',
     label: 'Status',
-    render: (value, row) => (
-      <div className="flex items-center gap-2">
-        {row.status === 'running' && <Clock className="w-4 h-4 text-primary" />}
-        {row.status === 'completed' && <CheckCircle2 className="w-4 h-4 text-success" />}
-        {row.status === 'failed' && <XCircle className="w-4 h-4 text-destructive" />}
-        {row.status === 'pending' && <Clock className="w-4 h-4 text-warning" />}
-        <StatusBadge status={row.status} />
-      </div>
-    ),
+    render: (_value, row) => <StatusBadge status={row.status} />,
   },
   {
     key: 'progress',
     label: 'Progress',
-    render: (value, row) => (
-      <div className="w-full">
-        <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-          <div
-            className="h-full bg-primary transition-all"
-            style={{ width: `${row.progress}%` }}
-          />
-        </div>
-        <span className="text-xs text-muted-foreground">{row.progress}%</span>
-      </div>
-    ),
+    render: (_value, row) => <Progress task={row} />,
   },
   {
     key: 'message',
@@ -73,27 +76,24 @@ export default function TasksPage() {
   return (
     <div className="page">
       <div>
-        <h1 className="page-title">Task Queue</h1>
-        <p className="page-subtitle">
-          Monitor background tasks and operations
-        </p>
+        <h1 className="page-title">Task queue</h1>
+        <p className="page-subtitle">Deploy, backup, restore and upgrade tasks</p>
       </div>
 
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2">
-          <Filter className="w-4 h-4 text-muted-foreground" />
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="all">All Status</option>
-            <option value="pending">Pending</option>
-            <option value="running">Running</option>
-            <option value="completed">Completed</option>
-            <option value="failed">Failed</option>
-          </select>
-        </div>
+      <div className="flex items-center gap-2">
+        <Filter className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+        <Select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          aria-label="Filter by status"
+          wrapperClassName="w-44"
+        >
+          <option value="all">All statuses</option>
+          <option value="pending">Pending</option>
+          <option value="running">Running</option>
+          <option value="completed">Completed</option>
+          <option value="failed">Failed</option>
+        </Select>
       </div>
 
       {isLoading ? (
@@ -101,17 +101,39 @@ export default function TasksPage() {
           <LoadingSpinner size="lg" />
         </div>
       ) : error ? (
-        <div className="flex items-center justify-center min-h-[400px]">
-          <p className="text-sm text-destructive">{error.message}</p>
-        </div>
+        <ErrorNotice title="Couldn't load tasks." message={error.message} />
       ) : (
-        <div className="surface">
-          <DataTable
-            columns={columns}
-            data={filteredTasks}
-            emptyMessage="No tasks found"
-          />
-        </div>
+        <>
+          {/* Below 1024 each task is a card: with the sidebar, a five-column table is cut at the card edge. */}
+          <div className="lg:hidden">
+            {filteredTasks.length === 0 ? (
+              <div className="surface flex items-center justify-center py-12 text-sm text-muted-foreground">No tasks found</div>
+            ) : (
+              <ul className="surface divide-y">
+                {filteredTasks.map((task) => (
+                  <li key={task.id} className="space-y-3 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-medium capitalize">{task.type}</span>
+                      <StatusBadge status={task.status} />
+                    </div>
+                    <Progress task={task} />
+                    <p className="text-sm text-muted-foreground">{task.message}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Started <TimeAgo timestamp={task.createdAt} className="text-xs" />
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div className="surface hidden lg:block">
+            <DataTable
+              columns={columns}
+              data={filteredTasks}
+              emptyMessage="No tasks found"
+            />
+          </div>
+        </>
       )}
     </div>
   )

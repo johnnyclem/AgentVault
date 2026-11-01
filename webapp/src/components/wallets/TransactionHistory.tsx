@@ -14,7 +14,7 @@ export function TransactionHistory({ transactions, emptyMessage = 'No transactio
   return (
     <div className="surface divide-y">
       <div className="flex items-center justify-between p-4 bg-muted/50">
-        <span className="font-semibold">Transaction History ({transactions.length})</span>
+        <span className="font-medium">Transaction history ({transactions.length})</span>
         <div className="flex items-center gap-2 text-sm text-primary cursor-pointer hover:underline">
           <ExternalLink className="w-4 h-4" />
           <span>View all on explorer</span>

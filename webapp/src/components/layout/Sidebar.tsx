@@ -15,7 +15,7 @@ function SidebarLink({ item, active }: { item: NavItem; active: boolean }) {
       aria-current={active ? 'page' : undefined}
       className={cn('nav-item', active && 'nav-item-active')}
     >
-      <Icon className="h-4 w-4 shrink-0" />
+      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
       {item.label}
     </Link>
   )
@@ -26,14 +26,14 @@ export function Sidebar() {
 
   return (
     <aside className="hidden h-full w-60 shrink-0 flex-col border-r bg-muted/40 md:flex">
-      <div className="flex h-14 items-center px-5">
+      <div className="flex h-14 items-center px-6">
         <BrandMark />
       </div>
 
-      <nav aria-label="Sections" className="flex-1 space-y-5 overflow-y-auto px-3 py-3">
+      <nav aria-label="Sections" className="flex-1 space-y-6 overflow-y-auto px-3 py-4">
         {NAV_GROUPS.map((group) => (
           <div key={group.label} className="space-y-0.5">
-            <p className="px-2.5 pb-1 text-xs font-medium text-muted-foreground">{group.label}</p>
+            <p className="px-3 pb-2 text-xs text-muted-foreground">{group.label}</p>
             {group.items.map((item) => (
               <SidebarLink key={item.href} item={item} active={isNavItemActive(pathname, item.href)} />
             ))}

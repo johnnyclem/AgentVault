@@ -18,6 +18,10 @@ export function formatBytes(bytes: bigint | number): string {
 
 export function formatCycles(cycles: bigint | number): string {
   const num = typeof cycles === 'bigint' ? Number(cycles) : cycles
+  // Zero reads in the same unit as every other balance: "0.00 T" beside "4.20 T".
+  if (num === 0) {
+    return '0.00 T'
+  }
   if (num < 1_000_000) {
     return `${num.toLocaleString()} T`
   }
@@ -30,10 +34,17 @@ export function formatCycles(cycles: bigint | number): string {
   return `${(num / 1_000_000_000_000).toFixed(2)} T`
 }
 
+const DATE_FORMAT = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+
+/**
+ * The one date rule: relative for the last 30 days ("4d ago"), then a plain
+ * calendar date ("Oct 19, 2026"). A date alone never reads as 10/19 or 19/10.
+ */
 export function formatTimestamp(timestamp: string): string {
   const date = new Date(timestamp)
-  const now = new Date()
-  const diff = now.getTime() - date.getTime()
+  if (Number.isNaN(date.getTime())) return '—'
+
+  const diff = Date.now() - date.getTime()
   const minutes = Math.floor(diff / 60_000)
   const hours = Math.floor(diff / 3_600_000)
   const days = Math.floor(diff / 86_400_000)
@@ -41,9 +52,9 @@ export function formatTimestamp(timestamp: string): string {
   if (minutes < 1) return 'Just now'
   if (minutes < 60) return `${minutes}m ago`
   if (hours < 24) return `${hours}h ago`
-  if (days < 7) return `${days}d ago`
-  
-  return date.toLocaleDateString()
+  if (days < 30) return `${days}d ago`
+
+  return DATE_FORMAT.format(date)
 }
 
 export function formatDateTime(timestamp: string): string {
@@ -51,17 +62,19 @@ export function formatDateTime(timestamp: string): string {
 }
 
 export function formatDate(timestamp: string): string {
-  return new Date(timestamp).toLocaleDateString()
+  const date = new Date(timestamp)
+  return Number.isNaN(date.getTime()) ? '—' : DATE_FORMAT.format(date)
 }
 
 export function truncate(str: string, length: number = 20): string {
   if (str.length <= length) return str
-  return `${str.slice(0, length)}...`
+  return `${str.slice(0, length)}…`
 }
 
+/** One head and tail length for every principal and address: "rrkah-fq…aaaq-cai". */
 export function truncatePrincipal(principal: string, length: number = 8): string {
   if (principal.length <= length * 2) return principal
-  return `${principal.slice(0, length)}...${principal.slice(-length)}`
+  return `${principal.slice(0, length)}…${principal.slice(-length)}`
 }
 
 /**

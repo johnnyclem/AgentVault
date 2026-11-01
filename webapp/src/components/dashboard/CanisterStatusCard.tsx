@@ -71,14 +71,14 @@ export function CanisterStatusCard({
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1">
-          <p className="text-xs text-muted-foreground">Cycles Balance</p>
-          <p className="text-lg font-semibold">
+          <p className="text-xs text-muted-foreground">Cycles balance</p>
+          <p className="text-lg font-medium">
             {cyclesFormatted}
           </p>
         </div>
         <div className="space-y-1">
-          <p className="text-xs text-muted-foreground">Memory Usage</p>
-          <p className="text-lg font-semibold">
+          <p className="text-xs text-muted-foreground">Memory usage</p>
+          <p className="text-lg font-medium">
             {memoryMB.toFixed(2)} MB
           </p>
         </div>

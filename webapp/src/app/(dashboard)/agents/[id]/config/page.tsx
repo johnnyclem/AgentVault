@@ -3,7 +3,7 @@
 import { use, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Settings } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import { AgentConfigForm } from '@/components/agents/AgentConfigForm'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { useAgent } from '@/hooks/useAgent'
@@ -35,7 +35,7 @@ export default function AgentConfigPage({ params }: { params: Promise<{ id: stri
 
   if (isLoading) {
     return (
-      <div className="p-6 flex items-center justify-center min-h-[400px]">
+      <div className="flex min-h-[400px] items-center justify-center p-6">
         <LoadingSpinner size="lg" />
       </div>
     )
@@ -44,9 +44,9 @@ export default function AgentConfigPage({ params }: { params: Promise<{ id: stri
   if (error || !agent) {
     return (
       <div className="page">
-        <Link href="/agents" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="w-4 h-4" />
-          Back to Agents
+        <Link href="/agents" className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground">
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+          Back to agents
         </Link>
         <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error?.message || `Agent '${id}' not found`}
@@ -56,19 +56,16 @@ export default function AgentConfigPage({ params }: { params: Promise<{ id: stri
   }
 
   return (
-    <div className="page max-w-2xl">
+    <div className="page [&>*]:max-w-2xl">
       <Link
         href={`/agents/${id}`}
-        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+        className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
-        <ArrowLeft className="w-4 h-4" />
+        <ArrowLeft className="h-4 w-4" aria-hidden="true" />
         Back to {agent.name}
       </Link>
 
-      <h1 className="page-title flex items-center gap-2">
-        <Settings className="w-6 h-6 text-muted-foreground" />
-        Configure {agent.name}
-      </h1>
+      <h1 className="page-title">Configure {agent.name}</h1>
 
       {saveError && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">

@@ -54,7 +54,7 @@ export function AlertsFeed() {
     <div className="surface p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h3 className="text-lg font-semibold">Recent Alerts</h3>
+          <h3 className="text-lg font-medium">Recent alerts</h3>
           <p className="text-sm text-muted-foreground">
             {alerts.length} in last 24 hours
           </p>

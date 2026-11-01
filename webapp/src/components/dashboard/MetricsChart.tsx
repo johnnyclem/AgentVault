@@ -7,7 +7,7 @@ export function MetricsChart() {
     <div className="surface p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h3 className="text-lg font-semibold">Metrics Overview</h3>
+          <h3 className="text-lg font-medium">Metrics overview</h3>
           <p className="text-sm text-muted-foreground">
             Last 24 hours
           </p>
@@ -26,7 +26,7 @@ export function MetricsChart() {
               <Zap className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <p className="text-sm font-medium">Cycles Balance</p>
+              <p className="text-sm font-medium">Cycles balance</p>
               <p className="text-xs text-muted-foreground">
                 5000000000000 ICP
               </p>
@@ -49,7 +49,7 @@ export function MetricsChart() {
               <Activity className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <p className="text-sm font-medium">Request Rate</p>
+              <p className="text-sm font-medium">Request rate</p>
               <p className="text-xs text-muted-foreground">
                 2,847 req/h
               </p>
@@ -72,7 +72,7 @@ export function MetricsChart() {
               <Activity className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <p className="text-sm font-medium">Error Rate</p>
+              <p className="text-sm font-medium">Error rate</p>
               <p className="text-xs text-muted-foreground">
                 0.34%
               </p>

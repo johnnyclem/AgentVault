@@ -1,7 +1,7 @@
 import type { ControlCenterData } from '@/lib/types'
 
 export const controlCenterFallback: ControlCenterData = {
-  title: 'Gas Town Control Center',
+  title: 'Gas Town control center',
   mayor: {
     name: 'The Mayor',
     status: 'Detached',
@@ -19,14 +19,14 @@ export const controlCenterFallback: ControlCenterData = {
   convoys: [
     {
       id: 'CV-204',
-      route: 'Build Yard -> Central Vault',
+      route: 'Build Yard → Central Vault',
       cargo: 'optimized wasm',
       eta: '18m',
-      status: 'En Route',
+      status: 'En route',
     },
     {
       id: 'CV-199',
-      route: 'North Cache -> QA Dock',
+      route: 'North Cache → QA Dock',
       cargo: 'snapshot bundle',
       eta: '42m',
       status: 'Queued',
@@ -44,7 +44,7 @@ export const controlCenterFallback: ControlCenterData = {
     {
       name: 'atlas-9',
       rig: 'DustRunner',
-      state: 'On Patrol',
+      state: 'On patrol',
       hook: 'merge',
       activity: 'Queue triage',
       session: 'Yes',
@@ -59,9 +59,9 @@ export const controlCenterFallback: ControlCenterData = {
     },
   ],
   workers: [
-    { name: 'packager-1', role: 'WASM Build', status: 'Running', uptime: '3h 14m' },
-    { name: 'guardrail-2', role: 'Policy Check', status: 'Idle', uptime: '47m' },
-    { name: 'deployer-7', role: 'Canister Ops', status: 'Paused', uptime: '11m' },
+    { name: 'packager-1', role: 'WASM build', status: 'Running', uptime: '3h 14m' },
+    { name: 'guardrail-2', role: 'Policy check', status: 'Idle', uptime: '47m' },
+    { name: 'deployer-7', role: 'Canister ops', status: 'Paused', uptime: '11m' },
   ],
   sessions: [
     { id: 'S-129', owner: 'johnnyclem', state: 'Active', lastSeen: 'now' },
@@ -87,13 +87,13 @@ export const controlCenterFallback: ControlCenterData = {
     { id: 'E-09', severity: 'P2', title: 'Merge queue blocked > 20m', owner: 'atlas-9' },
   ],
   rigs: [
-    { name: 'AgentVault', polecats: 2, crew: 3, agents: '👁️ 🌩️' },
-    { name: 'DustRunner', polecats: 1, crew: 2, agents: '🛰️ 🧭' },
-    { name: 'NeonRelay', polecats: 1, crew: 2, agents: '🛠️ 🔦' },
+    { name: 'AgentVault', polecats: 2, crew: 3, agents: '2 agents' },
+    { name: 'DustRunner', polecats: 1, crew: 2, agents: '2 agents' },
+    { name: 'NeonRelay', polecats: 1, crew: 2, agents: '2 agents' },
   ],
   dogs: [
     { name: 'Bolt', handler: 'johnnyclem', status: 'Deployed' },
-    { name: 'Trace', handler: 'atlas-9', status: 'In Kennel' },
+    { name: 'Trace', handler: 'atlas-9', status: 'In kennel' },
   ],
   workItems: [
     { priority: 'P2', id: 'hq-cv-4hftk', title: 'Tracking air-buds', status: 'READY', age: '3h ago' },
@@ -101,7 +101,7 @@ export const controlCenterFallback: ControlCenterData = {
     { priority: 'P3', id: 'ux-11f0', title: 'Tune dashboard labels', status: 'BLOCKED', age: '1d ago' },
   ],
   hooks: [
-    { name: 'merge-watch', target: 'Merge Queue', status: 'Bound', lastRun: '2m ago' },
+    { name: 'merge-watch', target: 'Merge queue', status: 'Bound', lastRun: '2m ago' },
     { name: 'mail-drain', target: 'Inbox', status: 'Bound', lastRun: '7m ago' },
     { name: 'convoy-ping', target: 'Convoys', status: 'Muted', lastRun: '15m ago' },
   ],

@@ -64,7 +64,7 @@ function buildCrewFromAgents(agents: Agent[], deployments: Deployment[]): Contro
       agent.status === 'active'
         ? 'Ready'
         : agent.status === 'deploying'
-          ? 'On Patrol'
+          ? 'On patrol'
           : agent.status === 'error'
             ? 'Repairing'
             : 'Offline'
@@ -83,15 +83,15 @@ function buildCrewFromAgents(agents: Agent[], deployments: Deployment[]): Contro
 function buildConvoys(deployments: Deployment[]): ControlCenterConvoy[] {
   return deployments.slice(0, 8).map((deployment, index) => {
     const route = deployment.canisterId
-      ? `Build Yard -> ${deployment.canisterId.slice(0, 8)}`
-      : `Build Yard -> Agent ${deployment.agentId}`
+      ? `Build Yard → ${deployment.canisterId.slice(0, 8)}`
+      : `Build Yard → agent ${deployment.agentId}`
 
     const status: ControlCenterConvoy['status'] =
       deployment.status === 'failed'
         ? 'Queued'
         : deployment.status === 'completed'
           ? 'Docking'
-          : 'En Route'
+          : 'En route'
 
     return {
       id: `CV-${String(200 + index)}`,
@@ -123,19 +123,19 @@ function buildWorkers(canisters: CanisterSnapshot[]): ControlCenterWorker[] {
   const workers: ControlCenterWorker[] = [
     {
       name: 'packager-1',
-      role: 'WASM Build',
+      role: 'WASM build',
       status: running > 0 ? 'Running' : 'Idle',
       uptime: running > 0 ? 'live' : '0m',
     },
     {
       name: 'deployer-7',
-      role: 'Canister Ops',
+      role: 'Canister ops',
       status: stopped > 0 ? 'Paused' : 'Running',
       uptime: stopped > 0 ? 'holding' : 'live',
     },
     {
       name: 'guardrail-2',
-      role: 'Policy Check',
+      role: 'Policy check',
       status: errors > 0 ? 'Running' : 'Idle',
       uptime: errors > 0 ? 'alerting' : 'standby',
     },
@@ -245,7 +245,7 @@ function buildRigs(agents: Agent[], crew: ControlCenterCrewMember[]): ControlCen
       name: agent.name,
       polecats: agent.canisterId ? 1 : 0,
       crew: crewCount,
-      agents: agent.canisterId ? '🛰️ 🤖' : '👤',
+      agents: agent.canisterId ? 'On-chain' : 'Local',
     }
   })
 }
@@ -254,7 +254,7 @@ function buildDogs(crew: ControlCenterCrewMember[]): ControlCenterDog[] {
   return crew.slice(0, 8).map((member, index) => ({
     name: `Dog-${index + 1}`,
     handler: member.name,
-    status: member.state === 'Offline' ? 'In Kennel' : 'Deployed',
+    status: member.state === 'Offline' ? 'In kennel' : 'Deployed',
   }))
 }
 

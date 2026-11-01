@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { Calculator, FileText, Link2, type LucideIcon } from 'lucide-react'
 
 // A Polytician 3.0 list_concepts entry: no name, timestamps in epoch milliseconds
 interface Concept {
@@ -60,15 +61,15 @@ export function ConceptList({ agentId, onSelect, limit = 50 }: ConceptListProps)
     fetchConcepts()
   }, [fetchConcepts])
 
-  const repIcons: Record<string, string> = {
-    markdown: '📝',
-    vector: '🧮',
-    thoughtform: '🔗',
+  const repIcons: Record<string, LucideIcon> = {
+    markdown: FileText,
+    vector: Calculator,
+    thoughtform: Link2,
   }
 
   if (loading) {
     return (
-      <div className="animate-pulse space-y-2">
+      <div className="space-y-2 motion-safe:animate-pulse">
         {[...Array(5)].map((_, i) => (
           <div key={i} className="h-12 bg-muted rounded-lg" />
         ))}
@@ -129,12 +130,15 @@ export function ConceptList({ agentId, onSelect, limit = 50 }: ConceptListProps)
                 <td className="px-4 py-3">
                   {Object.entries(concept.representations ?? {})
                     .filter(([, present]) => present)
-                    .map(([representation]) => (
-                      <span key={representation} className="inline-flex items-center gap-1 mr-2">
-                        {repIcons[representation] || '📄'}
-                        <span className="text-muted-foreground">{representation}</span>
-                      </span>
-                    ))}
+                    .map(([representation]) => {
+                      const RepIcon = repIcons[representation] ?? FileText
+                      return (
+                        <span key={representation} className="mr-2 inline-flex items-center gap-2">
+                          <RepIcon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                          <span className="text-muted-foreground">{representation}</span>
+                        </span>
+                      )
+                    })}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1">

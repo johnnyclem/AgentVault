@@ -75,7 +75,7 @@ export function ArchivePanel({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="font-medium">Arweave Archive</h3>
+        <h3 className="font-medium">Arweave archive</h3>
         {conceptId && (
           <button
             onClick={handleArchive}

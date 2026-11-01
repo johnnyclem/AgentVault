@@ -39,7 +39,7 @@ export default function SignedMemoryWritesPage() {
   }, [older.status, nextCursor])
 
   return (
-    <div className="page max-w-3xl">
+    <div className="page [&>*]:max-w-3xl">
       <div className="space-y-2">
         <Link
           href="/vault?filter=evidence"
@@ -55,7 +55,7 @@ export default function SignedMemoryWritesPage() {
           {/* Every receipt is held to this canister; without one, none can be verified, which matters only when there are receipts. */}
           {status === 'ready' && canisterId && (
             <p className="page-subtitle">
-              {COPY.canister} <code className="break-all font-mono text-foreground">{canisterId}</code>
+              {COPY.canister} <code className="tag">{canisterId}</code>
             </p>
           )}
           {status === 'ready' && !canisterId && receipts.length > 0 && <p className="page-subtitle">{COPY.noCanister}</p>}

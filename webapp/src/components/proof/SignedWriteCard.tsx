@@ -153,7 +153,7 @@ export function SignedWriteCard({
           onClick={() => setOpen((value) => !value)}
           className="chip min-h-11 w-full justify-center sm:w-auto"
         >
-          <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-180')} aria-hidden="true" />
+          <ChevronDown className={cn('h-4 w-4 transition-transform', open && 'rotate-180')} aria-hidden="true" />
           {open ? 'Hide details' : 'Details'}
         </button>
       </div>
@@ -175,14 +175,14 @@ export function SignedWriteCard({
         </dl>
 
         <div className="space-y-2">
-          <h2 className="text-xs font-semibold">What was checked</h2>
+          <h2 className="text-xs font-medium">What was checked</h2>
           <ul className="space-y-2 text-xs">
             {card.steps.map((step) => {
               const outcome = STEP_ICON[step.outcome]
               const StepIcon = outcome.icon
               return (
                 <li key={step.id} className="flex items-start gap-2">
-                  <StepIcon className={cn('mt-0.5 h-3.5 w-3.5 shrink-0', outcome.tone)} aria-hidden="true" />
+                  <StepIcon className={cn('h-4 w-4 shrink-0', outcome.tone)} aria-hidden="true" />
                   <div className="min-w-0">
                     <p>
                       <span className="font-medium">{step.label}</span>

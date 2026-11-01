@@ -20,7 +20,7 @@ export function MobileNav() {
 
   return (
     <nav aria-label="Sections" className="shrink-0 overflow-x-auto border-b [scrollbar-width:none] md:hidden">
-      <div className="flex w-max gap-1.5 px-4 py-2">
+      <div className="flex w-max gap-2 px-4 py-2">
         {ALL_NAV_ITEMS.map((item) => {
           const active = isNavItemActive(pathname, item.href)
 
