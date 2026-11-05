@@ -45,7 +45,26 @@ Your data lives in a named Docker volume, mounted at `/data` by default (`--volu
 
 Two flags weaken isolation and say so when used: `--network bridge` (unrestricted network access) and `--writable-rootfs`. `--volume /host/path:/container/path` bind-mounts a host directory; the Docker socket, `/`, `/run` and any unix socket are refused, even through a symlink.
 
-Environment variables reach the agent only if you name them: `--env KEY=VALUE`, or `--env KEY` to copy it from your shell. Values travel in a mode-0600 env file, never on a command line. Anything starting with `AGENTVAULT_` or `AV_SECRET_`, and `DOCKER_HOST` and `SSH_AUTH_SOCK`, is never forwarded. Note that `--env KEY=VALUE` is typed into your shell and so lands in its history; use `--env KEY` for anything sensitive.
+Environment variables reach the agent only if **you** name them: `--env KEY=VALUE`, or `--env KEY` to copy it from your shell. An image may list the variables it reads (`package --env-name`); `run` prints that list as a note and does not go looking for them in your shell. Values travel in a mode-0600 env file, never on a command line. Anything starting with `AGENTVAULT_` or `AV_SECRET_`, and `DOCKER_HOST` and `SSH_AUTH_SOCK`, is never forwarded. Note that `--env KEY=VALUE` is typed into your shell and so lands in its history; use `--env KEY` for anything sensitive.
+
+The network an agent gets when it needs a credential has no route out and **no address on your computer either**: a database, a dev server or Ollama listening on your machine cannot be reached from the agent (AgentVault creates that network without the host-side gateway address). Only the credential proxy is on it.
+
+## Running an image you did not build
+
+An image's manifest (the `agentvault.manifest` label) is written by whoever built it, so `run` treats it as a *request*, not as a grant. Nothing the label says can widen what the agent is given:
+
+| The image asks for | What happens |
+|---|---|
+| host environment variables (`env`) | listed by name; **not** copied. Only your own `--env` reaches the agent |
+| the unrestricted network (`bridge`) | refused. Only your own `--network bridge` allows it |
+| stored credentials (`secrets`) | you are asked (terminal), or must pass `--yes` or name each one with `--service <name>`. Without a terminal and without a flag it is refused, naming the flags |
+| a service that opens a path to your own machine (`ollama`) | never from an image. Only your own `--service ollama` |
+| the name of an agent that already exists (from a different image repository) | refused. Say `--name <agent>` to take it over, or pick another name |
+| a system location as a volume (`/etc`, `/proc`, `/tmp`, ...) | the label is rejected |
+
+Docker volumes and networks are also checked by owner. A volume or network named like one of this agent's but not created by AgentVault for it (a volume you made by hand, or another agent's whose name combines the same way: agent `my` with volume `agent-data` and agent `my-agent` with volume `data` are both `av-my-agent-data`) is refused, never used, never deleted by a failed start, `rm` or a restore.
+
+This does not make an untrusted image safe to run: it still executes its own code inside the container, with whatever you give it through `--env`, `--volume` and `--service`.
 
 ## Giving an agent an API key
 
@@ -63,7 +82,8 @@ export ANTHROPIC_API_KEY=sk-ant-...
 agentvault secrets add anthropic --from-env ANTHROPIC_API_KEY
 agentvault secrets list                          # names only
 
-# Package an agent that declares it needs it, then run
+# Package an agent that declares it needs it, then run. Because the IMAGE is asking for your credential,
+# you are asked to approve it (in a script: --yes, or name it yourself with --service anthropic)
 agentvault package ./my-agent --target container --secret anthropic
 agentvault run ./my-agent -d
 
@@ -76,7 +96,7 @@ Presets exist for `anthropic`, `openai`, `venice` and `ollama` (a local Ollama o
 What the proxy does and does not protect:
 
 - The agent cannot read the key, send it elsewhere, or reach any host except the preset's. A key the agent *sends* is replaced, not forwarded.
-- Other containers on your machine cannot use the key: the sidecar sits on a dedicated per-agent network, not the shared bridge.
+- Other containers on your machine cannot use the key: the sidecar sits on a dedicated per-agent network, not the shared bridge. The agent cannot reach services on your computer through it either (see above).
 - The key is visible to anyone who can run `docker inspect` on the sidecar. It is never on a command line and never in the agent container.
 - It injects a header only. No query or body injection, no WebSocket, no spend caps or rate limits. If an upstream echoes your key in a response *body*, the agent sees it (headers are filtered, bodies are not scanned).
 
@@ -152,13 +172,13 @@ npm installs use `--ignore-scripts`, so a dependency's install scripts do not ru
 | Command | What it does |
 |---|---|
 | `package <dir> --target container` | build the image |
-| `run <image\|dir> [-d] [-- cmd]` | start an agent (and its proxy, if it needs one) |
+| `run <image\|dir> [-d] [--yes] [-- cmd]` | start an agent (and its proxy, if it needs one); `--yes` approves the credentials the image asks for |
 | `ps [-a] [--json]` | list agents |
 | `container logs <agent> [-f] [--tail n]` | the agent's output |
 | `container exec <agent> -- cmd` | run a command in a running agent |
 | `container stats <agent>` / `inspect <agent>` | resource use / details (env values redacted) |
 | `stop <agent> [-t sec]` | stop the agent, then its proxy; data kept |
-| `rm <agent> [--volumes] [-y]` | remove containers and networks; `--volumes` deletes data |
+| `rm <agent> [--volumes] [-y]` | remove containers and networks; `--volumes` deletes data (asks first; without a terminal you must pass `-y`, otherwise it fails) |
 | `snapshot create\|restore\|verify\|list` | see above |
 | `secrets add\|list\|rm` | the encrypted credential store |
 
@@ -176,6 +196,14 @@ npm installs use `--ignore-scripts`, so a dependency's install scripts do not ru
 
 **The agent gets `502 {"error":"bad_gateway"}` from the proxy.** The body is deliberately generic. The reason is in the sidecar log: `docker logs av-<agent>-proxy` shows an `upstreamError` code on the failing line. `ENOTFOUND` / `EAI_AGAIN` means the sidecar could not resolve the host; `ECONNREFUSED` that nothing is listening; `SELF_SIGNED_CERT_IN_CHAIN` (or `UNABLE_TO_VERIFY_LEAF_SIGNATURE`) that something between you and the API, such as a corporate TLS-inspecting proxy, is re-signing traffic with a certificate the sidecar does not trust. The sidecar currently has no option to add a CA, so that last case needs a network path without interception.
 
+**Ctrl-C during `run -d`.** A detached start takes a few seconds (network, the credential proxy, waiting for it). Ctrl-C asks it to stop: everything that start created is removed again (the proxy, its networks, a volume it made, its temporary key file), nothing is left running, and the command exits 130. A copy killed outright (`kill -9`) cannot clean up after itself; the next AgentVault command that starts Docker work deletes the key file it left in the temp directory.
+
+**`This image asks to use credentials (...)`.** The image's label asked for stored credentials and you did not approve them. Approve with `--service anthropic` (each service by name) or `--yes`; on a terminal you are simply asked.
+
+**`rm --volumes` fails with "needs confirmation and there is no terminal".** Piped input is not an answer, and a script must not mistake a refusal for a deletion. Pass `-y`.
+
+**`Docker volume av-... already exists but was not created by AgentVault` / `belongs to agent ...`.** A volume with that name exists that this agent does not own. It is left alone. Remove it (`docker volume rm`) if it is yours to discard, or choose another `--name`.
+
 **The agent cannot reach the internet.** That is the default (`--network none`). Use the credential proxy for model APIs. `--network bridge` is the unrestricted escape hatch.
 
 **`Cannot connect to the Docker daemon`.** Start Docker. AgentVault reports unreachable, permission-denied and missing-binary separately.
@@ -187,6 +215,8 @@ What this release does not do, so you do not find out the hard way:
 - **Docker only.** No Podman, no rootless-specific testing, not tested on Windows. No SSH or Kubernetes deployment, no migration from canisters, and the default `package` target is still WASM.
 - **No TypeScript compilation**, and only Node and Python agents. Only dependency-light npm and pip agents were built against a real daemon.
 - **Base images are tags** (`node:22-slim`), not pinned digests.
+- **A kept volume is found again by name.** `rm` without `--volumes` keeps an agent's data so a later `run` can use it. The check that stops a different image from taking over an agent's *container* by claiming its name does not apply once the container is gone, so an image you run without `--name` that claims the name of an agent whose container you removed will mount the kept data. Run images you do not trust with an explicit `--name` of your own, and snapshot first.
+- **`--env` values are on disk while a foreground run is going.** They are in a mode-0600 file in a private temp directory until `docker run` returns, so for a foreground agent that is as long as it runs. A copy of AgentVault that is killed outright leaves the file; the next one deletes it. `run -d` removes it as soon as Docker has started the container.
 - **One model-API credential path:** header injection through the proxy. Multi-line secrets such as PEM keys cannot be delivered. There is no per-agent policy, rate limit or spend cap, and no shared proxy for several agents.
 - **Snapshots are not live, and not every volume can be snapshotted.** A volume that holds an absolute symlink makes the snapshot fail, by design. So does a setuid, setgid or sticky mode bit anywhere in it (a `mkdir -m 1777` or setgid directory the agent made) and a FIFO or device file: the restore-safety check refuses such an archive, and the error names the entry and the rule. A Unix socket is silently left out of the archive. Sparse files are archived at their full size, so a 3 GiB hole that uses no disk in the volume becomes a 3 GiB tar and, encrypted, another 3 GiB beside it, and restore writes it back dense. `create` checks that the snapshot directory has room for the encrypted copy before encrypting each volume, and `restore` and `verify` check that `<AgentVault home>/tmp` has room for the decrypted copies; neither can see the free space of Docker's own storage, so a restore into a nearly full Docker disk fails when the helper does, and is then reported and cleaned up as any failed restore. The network stays internal-only, so a restored agent that expects the internet needs the proxy or `--network bridge`.
 - **Library callers decide for themselves about unencrypted snapshots.** The `--allow-unencrypted` refusal is in the command line: `restoreContainerSnapshot` and `verifyContainerSnapshot` still accept an unencrypted snapshot, as they always did, because they cannot know what the caller expects.
