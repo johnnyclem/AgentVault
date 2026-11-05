@@ -151,6 +151,7 @@ export interface RunOptions {
   proxy?: boolean;
   service?: string[];
   secretsFromEnv?: boolean;
+  yes?: boolean;
   cpus?: string;
   memory?: string;
   pidsLimit?: string;
@@ -375,6 +376,66 @@ function printEarlyExit(ctx: CliContext, started: StartedAgent): void {
   );
 }
 
+/** `registry:5000/ns/name:tag@sha256:...` -> `registry:5000/ns/name`: what stays the same across versions of one image. */
+export function imageRepository(ref: string): string {
+  const withoutDigest = ref.split('@')[0] ?? ref;
+  const lastSlash = withoutDigest.lastIndexOf('/');
+  const colon = withoutDigest.indexOf(':', lastSlash + 1);
+  return (colon === -1 ? withoutDigest : withoutDigest.slice(0, colon)).toLowerCase();
+}
+
+/**
+ * The agent name defaults to the one in the image's manifest, which is written by whoever built the image. Without
+ * this, an image that merely CLAIMS the name of a stopped agent replaces its container and mounts its data volumes
+ * (and prints only "Started agent"). A new version of the same image repository is the normal rebuild-and-rerun
+ * loop and needs nothing; anything else needs the user to say --name.
+ */
+async function assertNotAnotherImagesAgent(runtime: ContainerRuntime, agent: string, image: string): Promise<void> {
+  const containerName = resourceNames(agent).container;
+  const existing = (await runtime.list({ agent, all: true })).find((c) => c.name === containerName && c.role === 'agent');
+  if (existing === undefined) return;
+  let ref: unknown;
+  try {
+    ref = ((await runtime.inspect(containerName)) as { Config?: { Image?: unknown } } | null)?.Config?.Image;
+  } catch (error) {
+    if (error instanceof ContainerError && error.code === 'NOT_FOUND') return;
+    throw error;
+  }
+  if (typeof ref !== 'string' || imageRepository(ref) === imageRepository(image)) return;
+  throw new ContainerError(
+    'POLICY_VIOLATION',
+    `An agent named "${agent}" already exists from image ${ref}, and ${image} would take over its container and its data volumes. ` +
+      `If that is what you want, say so with --name ${agent}; otherwise choose another name with --name <agent>.`
+  );
+}
+
+/**
+ * Credentials the IMAGE asks for (rather than the user naming them with --service) are a request, not a grant: the
+ * agent never sees the keys, but through the proxy it can spend them. Asked for on a terminal, otherwise refused
+ * with the exact flags. A service that opens a path to the user's own machine is never enabled by an image.
+ */
+async function approveRequestedServices(ctx: CliContext, requested: readonly string[], named: readonly string[], yes: boolean): Promise<void> {
+  const asked = requested.filter((service) => !named.includes(service));
+  if (asked.length === 0) return;
+  const hostReaching = asked.filter((service) => (getPreset(service).addHosts ?? []).length > 0);
+  if (hostReaching.length > 0) {
+    throw new ContainerError(
+      'POLICY_VIOLATION',
+      `This image asks for ${hostReaching.join(', ')}, which gives the agent a path to services running on your computer. ` +
+        `An image cannot enable that for itself; if you want it, pass ${hostReaching.map((service) => `--service ${service}`).join(' ')}.`
+    );
+  }
+  if (yes) return;
+  const list = asked.join(', ');
+  if (ctx.interactive && (await ctx.confirm(`This image asks to use your stored credentials: ${list}. It never sees the keys, but it can spend them. Allow?`))) return;
+  throw new ContainerError(
+    'POLICY_VIOLATION',
+    ctx.interactive
+      ? `Not approved: this image asks to use credentials (${list}). Nothing was started.`
+      : `This image asks to use credentials (${list}). Approve them with ${asked.map((service) => `--service ${service}`).join(' ')}, or approve everything it asks for with --yes.`
+  );
+}
+
 export async function executeRun(target: string, command: readonly string[], options: RunOptions, ctx: CliContext): Promise<number | void> {
   const runtime = ctx.runtime();
   const { image } = resolveRunTarget(target, ctx);
@@ -382,9 +443,17 @@ export async function executeRun(target: string, command: readonly string[], opt
   const manifest = await loadImageManifest(runtime, image);
 
   const agent = assertAgentName(options.name ?? manifest.name);
+  if (options.name === undefined) await assertNotAnotherImagesAgent(runtime, agent, image);
   const detach = options.detach === true;
   const explicitNetwork = parseNetworkOption(options);
   const extraServices = options.service ?? [];
+  // The manifest is written by whoever built the image: it may narrow isolation, never widen it.
+  if (explicitNetwork === undefined && manifest.isolation.network === 'bridge') {
+    throw new ContainerError(
+      'POLICY_VIOLATION',
+      'This image asks for unrestricted network access (bridge). An image cannot choose that for itself; if you trust it, pass --network bridge.'
+    );
+  }
   const network: NetworkMode = explicitNetwork ?? (extraServices.length > 0 ? 'proxy' : manifest.isolation.network);
   const services = [...new Set([...manifest.secrets, ...extraServices])];
 
@@ -400,6 +469,16 @@ export async function executeRun(target: string, command: readonly string[], opt
 
   const limits = parseLimits(options);
   const explicitEnv = parseEnvFlags(options.env ?? [], ctx);
+  // The image's list of variables it reads is documentation, not an instruction: the user's shell is not searched for
+  // them. Only what the user typed with --env reaches the agent.
+  const unprovided = manifest.env.filter((name) => !Object.hasOwn(explicitEnv, name));
+  if (unprovided.length > 0) {
+    noteLine(
+      ctx,
+      `This image reads ${unprovided.join(', ')}. None is copied from your shell unless you name it: ` +
+        `--env ${unprovided[0]} copies it, --env ${unprovided[0]}=<value> sets it.`
+    );
+  }
   if (options.restart !== undefined && !(RESTART_POLICIES as readonly string[]).includes(options.restart)) {
     throw new ContainerError('INVALID_INPUT', '--restart must be one of: no, unless-stopped, on-failure');
   }
@@ -411,9 +490,10 @@ export async function executeRun(target: string, command: readonly string[], opt
     }
   }
 
-  // Credentials: resolved (and the passphrase asked for) before anything is created.
+  // Credentials: approved, then resolved (and the passphrase asked for), before anything is created.
   let proxyPlan: ProxyPlan | undefined;
   if (network === 'proxy') {
+    await approveRequestedServices(ctx, manifest.secrets, extraServices, options.yes === true);
     const secrets = await resolveCredentials(ctx, secretsNeededBy(services), options.secretsFromEnv === true);
     const { planProxy } = await import('../../src/container/proxy/plan.js');
     proxyPlan = await planProxy({ services, secrets });
@@ -441,7 +521,6 @@ export async function executeRun(target: string, command: readonly string[], opt
     image,
     network,
     detach,
-    hostEnv: ctx.env,
     explicitEnv,
     onWarning: (message: string): void => {
       if (detach) pendingWarnings.push(message);
@@ -504,6 +583,7 @@ export function runCommand(deps: ContainerCliDeps = {}): Command {
     .option('--network <mode>', 'none | proxy | bridge (default: the image manifest)')
     .option('--proxy', 'shorthand for --network proxy')
     .option('--service <name>', 'credential-proxy service to enable, for example anthropic or ollama (repeatable)', collect)
+    .option('-y, --yes', 'approve the credential services the image asks for, instead of being asked (a service named with --service never needs this)')
     .option('--secrets-from-env', 'resolve credentials from their conventional environment variable (ANTHROPIC_API_KEY, ...) instead of the encrypted store')
     .option('--cpus <n>', 'CPU limit (default 2)')
     .option('--memory <size>', 'memory limit, for example 2g (default 2g)')

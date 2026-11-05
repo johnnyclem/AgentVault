@@ -209,6 +209,13 @@ function resolveNetwork(request: StartAgentRequest, manifest: ContainerManifest)
   if (requested !== undefined && !NETWORK_MODES.includes(requested)) {
     throw new ContainerError('INVALID_INPUT', `Unknown network mode ${JSON.stringify(String(requested))}: use none, proxy or bridge`);
   }
+  // The manifest is written by whoever built the image: it may narrow isolation, never widen it.
+  if (requested === undefined && request.proxyPlan === undefined && manifest.isolation.network === 'bridge') {
+    throw new ContainerError(
+      'POLICY_VIOLATION',
+      'The image asks for unrestricted network access (bridge). An image cannot choose that for itself: request the "bridge" network explicitly if you trust it.'
+    );
+  }
   const mode: NetworkMode = requested ?? (request.proxyPlan !== undefined ? 'proxy' : manifest.isolation.network);
   const declared = manifest.secrets;
 

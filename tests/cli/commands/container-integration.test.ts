@@ -26,6 +26,7 @@ import type { MockInstance } from 'vitest';
 import { createProgram } from '../../../cli/index.js';
 import type { ContainerCliDeps } from '../../../cli/commands/cli-support.js';
 import { DockerRuntime } from '../../../src/container/docker.js';
+import { containerManifestSchema, manifestToLabel } from '../../../src/container/manifest.js';
 import { dockerTestEnv, imagePresent } from '../../container/helpers/docker.js';
 
 vi.setConfig({ testTimeout: 180_000, hookTimeout: 300_000 });
@@ -359,7 +360,7 @@ describe.skipIf(!usable)('container commands against a real daemon', () => {
     });
 
     it('run without the credential fails closed, naming it, before creating anything', async () => {
-      const refused = await cli(['run', agent.dir, '-d']);
+      const refused = await cli(['run', agent.dir, '-d', '--yes']);
       expect(refused.code).toBe(1);
       expect(refused.err).toContain('credentials that are not available: anthropic');
       expect(dockerNames(['ps', '-a', '--format', '{{.Names}}']).filter((n) => n.includes(agent.name))).toEqual([]);
@@ -378,7 +379,7 @@ describe.skipIf(!usable)('container commands against a real daemon', () => {
     });
 
     it('run -d starts the real sidecar; the agent holds the placeholder, the sidecar holds the key', async () => {
-      const started = await cli(['run', agent.dir, '-d']);
+      const started = await cli(['run', agent.dir, '-d', '--yes']);
       expect(started.code, started.err).toBe(0);
       expect(started.out).toContain(`credential proxy: av-${agent.name}-proxy`);
       expect(started.out + started.err).not.toContain(CANARY);
@@ -476,6 +477,93 @@ describe.skipIf(!usable)('container commands against a real daemon', () => {
       expect(result.code, result.err).toBe(0);
       expect(result.err).not.toMatch(/exited immediately|crash-looping/);
       expect(docker(['inspect', '--format', '{{.State.Running}}', `av-${node.name}`]).stdout.trim()).toBe('true');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Flow 4: an image is a request, never a grant. The agentvault.manifest label is whatever its builder wrote.
+  // These are the hand-built images an adversarial review used (verbatim in spirit) against the real CLI and daemon.
+  // -------------------------------------------------------------------------
+
+  describe('a hand-built image cannot grant itself anything', () => {
+    const HOST_CANARY = 'ghp_HOST-CANARY-avtk-0f9c2b7e1a';
+
+    function forgedImage(label: string, manifest: Record<string, unknown>): { name: string; tag: string } {
+      const name = d.agent(label);
+      const tag = `agentvault/${name}:evil`;
+      const parsed = containerManifestSchema.parse({
+        schemaVersion: 1,
+        name,
+        version: '1',
+        runtime: 'node',
+        entrypoint: ['node', '-e', 'setInterval(() => {}, 1000)'],
+        volumes: ['/data'],
+        env: [],
+        secrets: [],
+        isolation: { network: 'none', user: '10001:10001', readOnlyRootfs: true },
+        source: { type: 'node', contentHash: 'a'.repeat(64) },
+        ...manifest,
+      });
+      const dockerfile = `FROM node:22-slim\nUSER 10001:10001\nCMD ["node","-e","setInterval(() => {}, 1000)"]\n`;
+      const built = docker(['build', '-q', '-t', tag, '--label', `agentvault.manifest=${manifestToLabel(parsed)}`, '-'], dockerfile);
+      expect(built.status, built.stderr).toBe(0);
+      return { name, tag };
+    }
+
+    const containersOf = (name: string): string[] => dockerNames(['ps', '-a', '--format', '{{.Names}}']).filter((n) => n.startsWith(`av-${name}`));
+
+    it('choosing the unrestricted bridge network is refused, and nothing is created', async () => {
+      const evil = forgedImage('bridge', { env: ['GITHUB_TOKEN'], isolation: { network: 'bridge', user: '10001:10001', readOnlyRootfs: true } });
+      const result = await cli(['run', evil.tag, '-d'], { env: { GITHUB_TOKEN: HOST_CANARY } });
+      expect(result.code).toBe(1);
+      expect(result.err).toContain('--network bridge');
+      expect(containersOf(evil.name)).toEqual([]);
+      expect(result.out + result.err).not.toContain(HOST_CANARY);
+    });
+
+    it('a variable the image names is NOT copied from the shell: the agent does not have it', async () => {
+      const evil = forgedImage('env', { env: ['GITHUB_TOKEN'] });
+      const result = await cli(['run', evil.tag, '-d'], { env: { GITHUB_TOKEN: HOST_CANARY } });
+      expect(result.code, result.err).toBe(0);
+      expect(result.err).toContain('This image reads GITHUB_TOKEN');
+      expect(result.out + result.err).not.toContain(HOST_CANARY);
+      const configured = docker(['inspect', '--format', '{{json .Config.Env}}', `av-${evil.name}`]).stdout;
+      expect(configured).not.toContain(HOST_CANARY);
+      expect(docker(['exec', `av-${evil.name}`, 'printenv', 'GITHUB_TOKEN']).status).not.toBe(0);
+    });
+
+    it('...but the user typing --env for it does hand it over', async () => {
+      const evil = forgedImage('envyes', { env: ['GITHUB_TOKEN'] });
+      const result = await cli(['run', evil.tag, '-d', '--env', 'GITHUB_TOKEN'], { env: { GITHUB_TOKEN: HOST_CANARY } });
+      expect(result.code, result.err).toBe(0);
+      expect(docker(['exec', `av-${evil.name}`, 'printenv', 'GITHUB_TOKEN']).stdout.trim()).toBe(HOST_CANARY);
+    });
+
+    it('asking for stored credentials is refused without approval: no sidecar, no network, the key never read', async () => {
+      const evil = forgedImage('creds', { secrets: ['anthropic'], isolation: { network: 'proxy', user: '10001:10001', readOnlyRootfs: true } });
+      const result = await cli(['run', evil.tag, '-d', '--secrets-from-env'], { env: { ANTHROPIC_API_KEY: CANARY } });
+      expect(result.code).toBe(1);
+      expect(result.err).toContain('anthropic');
+      expect(result.err).toContain('--yes');
+      expect(containersOf(evil.name)).toEqual([]);
+      expect(dockerNames(['network', 'ls', '--format', '{{.Name}}']).filter((n) => n.includes(evil.name))).toEqual([]);
+      expect(result.out + result.err).not.toContain(CANARY);
+    });
+
+    it('claiming another agent\'s name does not take over its stopped container and data', async () => {
+      const victim = forgedImage('victim', {});
+      expect((await cli(['run', victim.tag, '-d'])).code).toBe(0);
+      docker(['exec', `av-${victim.name}`, 'sh', '-c', 'echo VICTIM-DATA > /data/memory.db']);
+      expect((await cli(['stop', victim.name])).code).toBe(0);
+
+      // A different image (different repository) whose label claims the victim's name.
+      const thief = forgedImage('thief', { name: victim.name });
+      const result = await cli(['run', thief.tag, '-d']);
+      expect(result.code).toBe(1);
+      expect(result.err).toContain(`--name ${victim.name}`);
+      // Still the victim's container, still stopped, data untouched.
+      expect(docker(['inspect', '--format', '{{.Config.Image}}', `av-${victim.name}`]).stdout.trim()).toBe(victim.tag);
+      expect(docker(['inspect', '--format', '{{.State.Running}}', `av-${victim.name}`]).stdout.trim()).toBe('false');
     });
   });
 });

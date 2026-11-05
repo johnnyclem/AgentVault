@@ -901,10 +901,20 @@ describe('detached liveness watch', () => {
 });
 
 describe('(e) network bridge', () => {
-  it('starts, and warns through onWarning and StartedAgent.warnings', async () => {
-    const fake = new FakeRuntime(manifestFor({ isolation: { network: 'bridge', user: '10001:10001', readOnlyRootfs: true } }));
+  const bridgeManifest = (): ContainerManifest => manifestFor({ isolation: { network: 'bridge', user: '10001:10001', readOnlyRootfs: true } });
+
+  it('is never chosen by the IMAGE: a manifest asking for bridge is refused before anything is created', async () => {
+    // The manifest is written by whoever built the image. It may narrow isolation, never widen it.
+    const fake = new FakeRuntime(bridgeManifest());
+    const error = await expectRefusal(fake, req(fake), 'POLICY_VIOLATION');
+    expect(error.message).toMatch(/unrestricted network access/);
+    expect(error.message).toMatch(/explicitly/);
+  });
+
+  it('starts when the CALLER asks for bridge, and warns through onWarning and StartedAgent.warnings', async () => {
+    const fake = new FakeRuntime(bridgeManifest());
     const heard: string[] = [];
-    const started = await startAgent(req(fake, { onWarning: (m) => heard.push(m) }));
+    const started = await startAgent(req(fake, { network: 'bridge', onWarning: (m) => heard.push(m) }));
     expect(started.network).toBe('bridge');
     expect(started.warnings).toHaveLength(1);
     expect(heard).toEqual(started.warnings);
@@ -912,6 +922,11 @@ describe('(e) network bridge', () => {
     expect(heard[0]).toMatch(/no credential protection/i);
     expect(specNamed(fake, `av-${AGENT}`).network).toBe('bridge');
     expect(fake.mutations.filter((m) => m.includes('Network'))).toEqual([]);
+  });
+
+  it('a caller can still narrow a bridge manifest to none', async () => {
+    const fake = new FakeRuntime(bridgeManifest());
+    expect((await startAgent(req(fake, { network: 'none' }))).network).toBe('none');
   });
 
   it('warns for an explicit request too, and never for none', async () => {

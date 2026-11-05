@@ -391,8 +391,11 @@ export interface StartAgentRequest {
   /** Env the user typed (`--env K=V`). Subject to the secret-name denylist. */
   explicitEnv?: Record<string, string>;
   /**
-   * The host environment (process.env). ONLY names the manifest declares in
-   * `env` are copied from it; nothing else is forwarded.
+   * Host variables a library caller has DECIDED the agent may receive. Only names
+   * the manifest declares in `env` are copied from it. The manifest is written by
+   * whoever built the image, so never hand this the whole process environment on
+   * the image's say-so: the CLI passes nothing here and forwards only what the user
+   * typed with `--env`.
    */
   hostEnv?: Record<string, string | undefined>;
   extraMounts?: ContainerMount[];

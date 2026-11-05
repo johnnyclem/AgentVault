@@ -503,6 +503,7 @@ describe('run: plain image', () => {
 
     expect(h.runtime.methods).toEqual([
       'inspectImage', // the CLI reads the manifest to choose the name and network
+      'list', // ...and checks the name is not another image's agent
       'ensureAvailable', // lifecycle
       'inspectImage',
       'list',
@@ -742,14 +743,14 @@ describe('run: credentials fail closed (property e)', () => {
 
   it('names the missing secrets, starts nothing and creates nothing when none can be resolved', async () => {
     const h = harness({}, withSecretImage());
-    expect(await run(runCommand(h.deps), [IMAGE, '-d'])).toBe(1);
+    expect(await run(runCommand(h.deps), [IMAGE, '-d', '--yes'])).toBe(1);
 
     expect(h.stderr()).toContain('Error: The agent needs credentials that are not available: anthropic. Nothing was started.');
     expect(h.stderr()).toContain('agentvault secrets add');
     expect(startAgent).not.toHaveBeenCalled();
     // Only reads happened: no network, volume, container or image was touched.
     expect(h.runtime.mutations).toEqual([]);
-    expect(h.runtime.methods).toEqual(['inspectImage']);
+    expect(h.runtime.methods).toEqual(['inspectImage', 'list']);
     // There is no store, so there is nothing a passphrase could unlock: do not ask for one.
     expect(h.passphrases).toEqual([]);
   });
@@ -757,7 +758,7 @@ describe('run: credentials fail closed (property e)', () => {
   it('with an environment variable set but without --secrets-from-env it still refuses (the variable is not used silently)', async () => {
     const h = harness({}, withSecretImage());
     h.deps.env = { AGENTVAULT_HOME: h.home, ANTHROPIC_API_KEY: CANARY };
-    expect(await run(runCommand(h.deps), [IMAGE, '-d'])).toBe(1);
+    expect(await run(runCommand(h.deps), [IMAGE, '-d', '--yes'])).toBe(1);
     expect(startAgent).not.toHaveBeenCalled();
     expect(h.all()).not.toContain(CANARY);
   });
@@ -767,7 +768,7 @@ describe('run: credentials fail closed (property e)', () => {
     h.deps.env = { AGENTVAULT_HOME: h.home, ANTHROPIC_API_KEY: CANARY };
     vi.mocked(startAgent).mockResolvedValueOnce(started({ network: 'proxy', proxyContainerName: `av-${AGENT}-proxy` }));
 
-    expect(await run(runCommand(h.deps), [IMAGE, '-d', '--secrets-from-env'])).toBe(0);
+    expect(await run(runCommand(h.deps), [IMAGE, '-d', '--secrets-from-env', '--yes'])).toBe(0);
 
     const request = vi.mocked(startAgent).mock.calls[0]?.[0];
     expect(request?.network).toBe('proxy');
@@ -784,7 +785,7 @@ describe('run: credentials fail closed (property e)', () => {
     await new SecretStore({ home: h.home }).set('anthropic', CANARY, PASS);
     vi.mocked(startAgent).mockResolvedValueOnce(started({ network: 'proxy' }));
 
-    expect(await run(runCommand(h.deps), [IMAGE, '-d'])).toBe(0);
+    expect(await run(runCommand(h.deps), [IMAGE, '-d', '--yes'])).toBe(0);
 
     expect(h.passphrases).toEqual([{ purpose: 'secrets', confirm: false, message: expect.any(String) as string }]);
     expect(vi.mocked(startAgent).mock.calls[0]?.[0].proxyPlan?.secrets).toEqual({ anthropic: CANARY });
@@ -798,7 +799,7 @@ describe('run: credentials fail closed (property e)', () => {
     h.deps.env = { AGENTVAULT_HOME: h.home, ANTHROPIC_API_KEY: CANARY };
     vi.mocked(startAgent).mockResolvedValueOnce(started({ network: 'proxy' }));
 
-    await run(runCommand(h.deps), [IMAGE, '-d', '--secrets-from-env']);
+    await run(runCommand(h.deps), [IMAGE, '-d', '--secrets-from-env', '--yes']);
 
     expect(h.passphrases).toEqual([]);
     expect(vi.mocked(startAgent).mock.calls[0]?.[0].proxyPlan?.secrets).toEqual({ anthropic: CANARY });
@@ -809,7 +810,7 @@ describe('run: credentials fail closed (property e)', () => {
     runtime.images.set(IMAGE, imageFor(manifestFor({ secrets: ['anthropic', 'openai'], isolation: { network: 'proxy', user: '10001:10001', readOnlyRootfs: true } })));
     const h = harness({}, runtime);
     await new SecretStore({ home: h.home }).set('anthropic', CANARY, PASS);
-    expect(await run(runCommand(h.deps), [IMAGE, '-d', '--secrets-from-env'])).toBe(1);
+    expect(await run(runCommand(h.deps), [IMAGE, '-d', '--secrets-from-env', '--yes'])).toBe(1);
     expect(h.stderr()).toContain('credentials that are not available: openai.');
     expect(h.stderr()).not.toContain('anthropic.');
     expect(startAgent).not.toHaveBeenCalled();
@@ -820,7 +821,7 @@ describe('run: credentials fail closed (property e)', () => {
   it('a wrong store passphrase is an integrity error, not a silent "missing"', async () => {
     const h = harness({ getPassphrase: () => Promise.resolve('not the passphrase') }, withSecretImage());
     await new SecretStore({ home: h.home }).set('anthropic', CANARY, PASS);
-    expect(await run(runCommand(h.deps), [IMAGE, '-d'])).toBe(1);
+    expect(await run(runCommand(h.deps), [IMAGE, '-d', '--yes'])).toBe(1);
     expect(h.stderr()).toContain('wrong passphrase');
     expect(h.stderr()).not.toContain('not the passphrase');
     expect(startAgent).not.toHaveBeenCalled();
@@ -1333,7 +1334,7 @@ describe('renderError', () => {
     h.runtime.images.set(IMAGE, imageFor(SECRET_MANIFEST()));
     await new SecretStore({ home: h.home }).set('anthropic', CANARY, PASS);
     vi.mocked(startAgent).mockRejectedValueOnce(new ContainerError('COMMAND_FAILED', `leaky: ${PASS} / ${CANARY}`));
-    expect(await run(runCommand(h.deps), [IMAGE, '-d'])).toBe(1);
+    expect(await run(runCommand(h.deps), [IMAGE, '-d', '--yes'])).toBe(1);
     expect(h.stderr()).toContain('leaky: [redacted] / [redacted]');
     expect(h.all()).not.toContain(PASS);
     expect(h.all()).not.toContain(CANARY);
@@ -1366,5 +1367,205 @@ describe('createPassphraseProvider', () => {
   it('treats an empty variable as unset', async () => {
     const provider = createPassphraseProvider({ AGENTVAULT_SNAPSHOT_PASSPHRASE: '' }, false);
     await expect(provider(request)).rejects.toThrow('A passphrase is required');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The image manifest is a REQUEST, never a grant. The agentvault.manifest label is written by whoever built
+// the image. An adversarial review showed a hand-built label could, with a plain `run <image> -d`, forward
+// the user's real GITHUB_TOKEN into the agent, pick the unrestricted bridge network (an end-to-end exfiltration
+// of a canary key), attach every stored credential to the sidecar, and take over another agent's data by name.
+// ---------------------------------------------------------------------------
+
+describe('run: the image manifest is a request, never a grant', () => {
+  const HOST_TOKEN = 'ghp_HOST-CANARY-0123456789';
+  const HOST_AWS = 'aws-HOST-CANARY-abcdefghij';
+
+  function withManifest(manifest: ContainerManifest, env: NodeJS.ProcessEnv = {}): Harness {
+    const runtime = new FakeRuntime();
+    runtime.images.set(IMAGE, imageFor(manifest));
+    const h = harness({}, runtime);
+    h.deps.env = { AGENTVAULT_HOME: h.home, ...env };
+    return h;
+  }
+
+  describe('host environment', () => {
+    const greedy = (): ContainerManifest => manifestFor({ env: ['GITHUB_TOKEN', 'AWS_SECRET_ACCESS_KEY'] });
+
+    it('is NOT copied into the agent just because the image names it', async () => {
+      const h = withManifest(greedy(), { GITHUB_TOKEN: HOST_TOKEN, AWS_SECRET_ACCESS_KEY: HOST_AWS });
+      expect(await run(runCommand(h.deps), [IMAGE, '-d'])).toBe(0);
+      const env = h.runtime.started()[0]?.env ?? {};
+      expect(env).not.toHaveProperty('GITHUB_TOKEN');
+      expect(env).not.toHaveProperty('AWS_SECRET_ACCESS_KEY');
+      expect(JSON.stringify(h.runtime.started())).not.toContain(HOST_TOKEN);
+      expect(JSON.stringify(h.runtime.started())).not.toContain(HOST_AWS);
+    });
+
+    it('is listed by NAME, with the way to provide it, and no value is ever printed', async () => {
+      const h = withManifest(greedy(), { GITHUB_TOKEN: HOST_TOKEN, AWS_SECRET_ACCESS_KEY: HOST_AWS });
+      await run(runCommand(h.deps), [IMAGE, '-d']);
+      expect(h.stderr()).toMatch(/reads GITHUB_TOKEN, AWS_SECRET_ACCESS_KEY/);
+      expect(h.stderr()).toContain('--env GITHUB_TOKEN');
+      expect(h.all()).not.toContain(HOST_TOKEN);
+      expect(h.all()).not.toContain(HOST_AWS);
+    });
+
+    it('reaches the agent only for names the USER typed with --env', async () => {
+      const h = withManifest(greedy(), { GITHUB_TOKEN: HOST_TOKEN, AWS_SECRET_ACCESS_KEY: HOST_AWS });
+      await run(runCommand(h.deps), [IMAGE, '-d', '--env', 'GITHUB_TOKEN']);
+      const env = h.runtime.started()[0]?.env ?? {};
+      expect(env['GITHUB_TOKEN']).toBe(HOST_TOKEN);
+      expect(env).not.toHaveProperty('AWS_SECRET_ACCESS_KEY');
+      // Names already provided are not nagged about.
+      expect(h.stderr()).not.toMatch(/reads GITHUB_TOKEN/);
+    });
+
+    it('says nothing when the image declares no variables', async () => {
+      const h = withManifest(manifestFor());
+      await run(runCommand(h.deps), [IMAGE, '-d']);
+      expect(h.stderr()).not.toMatch(/reads /);
+    });
+  });
+
+  describe('network', () => {
+    const bridgey = (): ContainerManifest => manifestFor({ isolation: { network: 'bridge', user: '10001:10001', readOnlyRootfs: true } });
+
+    it('an image cannot choose the unrestricted bridge network: refused, nothing created, the way to opt in is named', async () => {
+      const h = withManifest(bridgey());
+      expect(await run(runCommand(h.deps), [IMAGE, '-d'])).toBe(1);
+      expect(h.stderr()).toContain('--network bridge');
+      expect(h.stderr()).toMatch(/unrestricted/i);
+      expect(startAgent).not.toHaveBeenCalled();
+      expect(h.runtime.mutations).toEqual([]);
+    });
+
+    it('the user can still choose bridge explicitly (and is warned, as before)', async () => {
+      const h = withManifest(bridgey());
+      expect(await run(runCommand(h.deps), [IMAGE, '-d', '--network', 'bridge'])).toBe(0);
+      expect(h.runtime.started()[0]?.network).toBe('bridge');
+      expect(h.stderr()).toContain('unrestricted network access');
+    });
+
+    it('an image may still narrow: manifest none stays none', async () => {
+      const h = withManifest(manifestFor());
+      expect(await run(runCommand(h.deps), [IMAGE, '-d'])).toBe(0);
+      expect(h.runtime.started()[0]?.network).toBe('none');
+    });
+  });
+
+  describe('stored credentials', () => {
+    const asks = (...secrets: string[]): ContainerManifest =>
+      manifestFor({ secrets, isolation: { network: 'proxy', user: '10001:10001', readOnlyRootfs: true } });
+    const keys = { ANTHROPIC_API_KEY: CANARY, OPENAI_API_KEY: `${CANARY}-openai` };
+
+    it('credentials the image asks for are refused without approval, naming them and the flags, before anything is read or created', async () => {
+      const h = withManifest(asks('anthropic', 'openai'), keys);
+      expect(await run(runCommand(h.deps), [IMAGE, '-d', '--secrets-from-env'])).toBe(1);
+      expect(h.stderr()).toContain('anthropic, openai');
+      expect(h.stderr()).toContain('--service anthropic');
+      expect(h.stderr()).toContain('--yes');
+      expect(startAgent).not.toHaveBeenCalled();
+      expect(h.runtime.mutations).toEqual([]);
+      expect(h.passphrases).toEqual([]); // the store is not even unlocked
+      expect(h.all()).not.toContain(CANARY);
+    });
+
+    it('--yes approves what the image asked for', async () => {
+      const h = withManifest(asks('anthropic'), keys);
+      vi.mocked(startAgent).mockResolvedValueOnce(started({ network: 'proxy' })); // the fake sidecar never reports ready
+      expect(await run(runCommand(h.deps), [IMAGE, '-d', '--secrets-from-env', '--yes'])).toBe(0);
+      expect(vi.mocked(startAgent).mock.calls[0]?.[0].proxyPlan?.config.routes.map((r) => r.name)).toEqual(['anthropic']);
+    });
+
+    it('--service <name> is the user naming it, so it needs no further approval', async () => {
+      const h = withManifest(asks('anthropic'), keys);
+      vi.mocked(startAgent).mockResolvedValueOnce(started({ network: 'proxy' }));
+      expect(await run(runCommand(h.deps), [IMAGE, '-d', '--secrets-from-env', '--service', 'anthropic'])).toBe(0);
+    });
+
+    it('approval covers only the services named: a second one the image asked for is still refused', async () => {
+      const h = withManifest(asks('anthropic', 'openai'), keys);
+      expect(await run(runCommand(h.deps), [IMAGE, '-d', '--secrets-from-env', '--service', 'anthropic'])).toBe(1);
+      expect(h.stderr()).toContain('openai');
+      expect(h.stderr()).not.toMatch(/image asks .*anthropic/);
+    });
+
+    it('on a terminal the user is asked, with the services named; yes proceeds', async () => {
+      const questions: string[] = [];
+      const h = withManifest(asks('anthropic'), keys);
+      h.deps.interactive = true;
+      h.deps.confirm = (question) => {
+        questions.push(question);
+        return Promise.resolve(true);
+      };
+      vi.mocked(startAgent).mockResolvedValueOnce(started({ network: 'proxy' }));
+      expect(await run(runCommand(h.deps), [IMAGE, '-d', '--secrets-from-env'])).toBe(0);
+      expect(questions).toHaveLength(1);
+      expect(questions[0]).toContain('anthropic');
+    });
+
+    it('on a terminal, no is no: exit 1, nothing created, nothing read', async () => {
+      const h = withManifest(asks('anthropic'), keys);
+      h.deps.interactive = true;
+      h.deps.confirm = () => Promise.resolve(false);
+      expect(await run(runCommand(h.deps), [IMAGE, '-d', '--secrets-from-env'])).toBe(1);
+      expect(startAgent).not.toHaveBeenCalled();
+      expect(h.runtime.mutations).toEqual([]);
+    });
+
+    it('a service that opens a path to the HOST (ollama) is never enabled from a manifest, not even with --yes', async () => {
+      const h = withManifest(asks('ollama'));
+      expect(await run(runCommand(h.deps), [IMAGE, '-d', '--yes'])).toBe(1);
+      expect(h.stderr()).toContain('--service ollama');
+      expect(startAgent).not.toHaveBeenCalled();
+      expect(h.runtime.mutations).toEqual([]);
+    });
+
+    it('...but the user can enable it by naming it', async () => {
+      const h = withManifest(asks('ollama'));
+      vi.mocked(startAgent).mockResolvedValueOnce(started({ network: 'proxy' }));
+      expect(await run(runCommand(h.deps), [IMAGE, '-d', '--service', 'ollama'])).toBe(0);
+    });
+  });
+
+  describe('taking over an existing agent by name', () => {
+    function withExisting(existingImage: string): Harness {
+      const h = withManifest(manifestFor());
+      h.runtime.seedAgent(AGENT, 'exited');
+      h.runtime.inspectResult = { Config: { Image: existingImage } };
+      return h;
+    }
+
+    it('an image from a DIFFERENT repository does not silently adopt the stopped agent and its data', async () => {
+      const h = withExisting('agentvault/victim:1');
+      expect(await run(runCommand(h.deps), [IMAGE, '-d'])).toBe(1);
+      expect(h.stderr()).toContain('agentvault/victim:1');
+      expect(h.stderr()).toContain(IMAGE);
+      expect(h.stderr()).toContain(`--name ${AGENT}`);
+      expect(startAgent).not.toHaveBeenCalled();
+      expect(h.runtime.mutations).toEqual([]);
+    });
+
+    it('--name is the user taking responsibility, so it proceeds', async () => {
+      const h = withExisting('agentvault/victim:1');
+      expect(await run(runCommand(h.deps), [IMAGE, '-d', '--name', AGENT])).toBe(0);
+    });
+
+    it('a new version of the SAME repository (the normal rebuild-and-rerun loop) needs nothing', async () => {
+      const h = withExisting('agentvault/alpha:0.9');
+      expect(await run(runCommand(h.deps), [IMAGE, '-d'])).toBe(0);
+    });
+
+    it('compares repositories, not tags, and not registry ports', async () => {
+      const h = withExisting('localhost:5000/agentvault/alpha:0.9');
+      h.runtime.images.set('localhost:5000/agentvault/alpha:1', imageFor(manifestFor()));
+      expect(await run(runCommand(h.deps), ['localhost:5000/agentvault/alpha:1', '-d'])).toBe(0);
+    });
+
+    it('a name that is free needs nothing', async () => {
+      const h = withManifest(manifestFor());
+      expect(await run(runCommand(h.deps), [IMAGE, '-d'])).toBe(0);
+    });
   });
 });
