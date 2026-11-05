@@ -90,6 +90,9 @@ const MEMORY_RE = /^[1-9][0-9]{0,11}[bkmgBKMG]?$/;
 const ADD_HOST_RE = /^[A-Za-z0-9][A-Za-z0-9.-]{0,252}:(host-gateway|[0-9A-Fa-f:.]{2,45})$/;
 const PLATFORM_RE = /^[a-z0-9_.-]+(\/[a-z0-9_.-]+){1,2}$/i;
 const SINCE_RE = /^[A-Za-z0-9][A-Za-z0-9.:+-]{0,63}$/;
+/** Bridge driver option: do not assign the gateway IPv4 address to the host side of the bridge. */
+const INHIBIT_BRIDGE_IPV4 = 'com.docker.network.bridge.inhibit_ipv4=true';
+
 const BUILTIN_NETWORKS = ['bridge', 'host', 'none'];
 
 const QUICK_TIMEOUT_MS = 30_000;
@@ -731,7 +734,10 @@ export class DockerRuntime implements ContainerRuntime {
       return;
     }
     const args = ['network', 'create', '--driver=bridge'];
-    if (options.internal) args.push('--internal');
+    // `--internal` removes the route out, but the bridge still carries the gateway address and the HOST answers on it, so
+    // an agent could reach every host service bound to 0.0.0.0 (dev servers, databases, Ollama). Not assigning that
+    // address closes it; containers still reach each other (and the sidecar by alias) over the bridge.
+    if (options.internal) args.push('--internal', `--opt=${INHIBIT_BRIDGE_IPV4}`);
     for (const [key, value] of labels) args.push(`--label=${key}=${value}`);
     args.push(name);
     const created = await this.invoke(args, { timeoutMs: QUICK_TIMEOUT_MS });

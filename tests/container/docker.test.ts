@@ -1060,10 +1060,25 @@ describe('DockerRuntime networks', () => {
       'create',
       '--driver=bridge',
       '--internal',
+      '--opt=com.docker.network.bridge.inhibit_ipv4=true',
       '--label=agentvault.agent=demo',
       '--label=agentvault.managed=true',
       'av-demo-net',
     ]);
+  });
+
+  it('an internal network is created WITHOUT the host\'s gateway address, so the agent cannot reach host services through it', async () => {
+    // `--internal` stops routing to the outside, but the bridge still carries the gateway IP and the host answers on
+    // it: any service on the host bound to 0.0.0.0 (dev servers, databases, Ollama) was reachable from the agent.
+    const rec = sequence(failed(REAL_ERR.networkNotFound), {});
+    await new DockerRuntime({ runner: rec.runner }).ensureNetwork('av-demo-net', { internal: true });
+    expect(rec.calls[1]?.args).toContain('--opt=com.docker.network.bridge.inhibit_ipv4=true');
+  });
+
+  it('the sidecar\'s egress network keeps its gateway: it has to reach the internet through it', async () => {
+    const rec = sequence(failed(REAL_ERR.networkNotFound), {});
+    await new DockerRuntime({ runner: rec.runner }).ensureNetwork('av-demo-egress', { internal: false });
+    expect(rec.calls[1]?.args.join(' ')).not.toContain('inhibit_ipv4');
   });
 
   it('creates a non-internal network without --internal', async () => {

@@ -9,10 +9,12 @@
  * already pulled. Every Docker resource is named through dockerTestEnv('avt-a-').
  */
 
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { createServer } from 'node:net';
+import type { Server, Socket } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { DockerRuntime } from '../../src/container/docker.js';
 import { containerManifestSchema, manifestFromLabels, manifestToLabel } from '../../src/container/manifest.js';
@@ -43,6 +45,31 @@ const usable = d.available && imagePresent(BUSYBOX);
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Like dockerCli but asynchronous. A probe that connects BACK to a listener in this very process must not block
+ * the event loop (spawnSync would, and the connection could never be accepted).
+ */
+function dockerAsync(args: string[]): Promise<{ status: number | null; stdout: string; stderr: string }> {
+  return new Promise((resolve) => {
+    const child = spawn('docker', args);
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString()));
+    child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
+    child.on('close', (status) => resolve({ status, stdout, stderr }));
+  });
+}
+
+/** An address of this machine that is not loopback. */
+function hostAddress(): string {
+  for (const addresses of Object.values(os.networkInterfaces())) {
+    for (const address of addresses ?? []) {
+      if (address.family === 'IPv4' && !address.internal) return address.address;
+    }
+  }
+  return '192.0.2.2';
+}
 
 function manifestFor(over: Partial<ContainerManifest> = {}): ContainerManifest {
   return containerManifestSchema.parse({
@@ -568,6 +595,38 @@ describe.skipIf(!usable)('DockerRuntime against a real daemon', () => {
       expect(r.stdout.trim()).toBe('pong');
       const dns = await sh(onInternalNet(), `nslookup ${PROXY_ALIAS}`);
       expect(dns.exitCode, combined(dns)).toBe(0);
+    });
+
+    it('cannot reach a service listening on the HOST through the bridge gateway (and a plain --internal network can: the probe is valid)', async () => {
+      // A listener on every host interface: the kind of thing a dev server, a database or Ollama is.
+      const sockets = new Set<Socket>();
+      const server: Server = createServer((socket) => {
+        sockets.add(socket);
+        socket.on('close', () => sockets.delete(socket));
+        socket.end('HTTP/1.0 200 OK\r\ncontent-type: text/plain\r\n\r\nhost-service\n');
+      });
+      await new Promise<void>((resolve) => server.listen(0, '0.0.0.0', resolve));
+      try {
+        const port = (server.address() as { port: number }).port;
+        const addressWithin = (network: string): string =>
+          dockerCli(['network', 'inspect', network, '--format', '{{(index .IPAM.Config 0).Subnet}}']).stdout.trim().replace(/\.0\/\d+$/, '.1');
+
+        // Control: an ordinary internal network. If the host is not reachable here the test proves nothing.
+        const control = d.name('ctl');
+        expect(dockerCli(['network', 'create', '--internal', control]).status).toBe(0);
+        const controlReach = await dockerAsync(['run', '--rm', '--network', control, BUSYBOX, 'sh', '-c', `wget -T 3 -q -O- http://${addressWithin(control)}:${port}/`]);
+        expect(controlReach.stdout, `control: a plain --internal network is expected to reach the host listener (exit ${controlReach.status}: ${controlReach.stderr.trim()})`).toContain('host-service');
+
+        // AgentVault's internal network: the same probe, from an agent-shaped container, gets nothing.
+        const reach = await sh(onInternalNet(), `wget -T 3 -q -O- http://${addressWithin(net)}:${port}/`);
+        expect(combined(reach)).not.toContain('host-service');
+        // ...and the host's own address has no route from here at all.
+        const viaHostIp = await sh(onInternalNet(), `wget -T 3 -q -O- http://${hostAddress()}:${port}/`);
+        expect(combined(viaHostIp)).not.toContain('host-service');
+      } finally {
+        for (const socket of sockets) socket.destroy();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
     });
 
     it('once connected to the bridge the sidecar is still reachable from the internal side, and itself reaches out', async (ctx) => {
