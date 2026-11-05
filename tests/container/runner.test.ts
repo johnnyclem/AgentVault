@@ -328,12 +328,13 @@ describe('execaRunner: inheritStdio and option consistency', () => {
   });
 
   it.each([
-    ['input + stdinFile', { input: 'x', stdinFile: '/dev/null' }],
-    ['input + inheritStdio', { input: 'x', inheritStdio: true }],
-    ['stdinFile + inheritStdio', { stdinFile: '/dev/null', inheritStdio: true }],
-    ['stdoutFile + inheritStdio', { stdoutFile: '/tmp/never-created-by-avt-a', inheritStdio: true }],
-  ])('rejects contradictory options (%s) as a programmer error', async (_label, options) => {
-    await expect(execaRunner('node', ['-e', '0'], options)).rejects.toThrow(/mutually exclusive|cannot be combined/);
-    expect(fs.existsSync('/tmp/never-created-by-avt-a')).toBe(false);
+    ['input + stdinFile', (_never: string) => ({ input: 'x', stdinFile: '/dev/null' })],
+    ['input + inheritStdio', (_never: string) => ({ input: 'x', inheritStdio: true })],
+    ['stdinFile + inheritStdio', (_never: string) => ({ stdinFile: '/dev/null', inheritStdio: true })],
+    ['stdoutFile + inheritStdio', (never: string) => ({ stdoutFile: never, inheritStdio: true })],
+  ])('rejects contradictory options (%s) as a programmer error', async (_label, makeOptions) => {
+    const never = path.join(dir, 'never-created');
+    await expect(execaRunner('node', ['-e', '0'], makeOptions(never))).rejects.toThrow(/mutually exclusive|cannot be combined/);
+    expect(fs.existsSync(never)).toBe(false);
   });
 });
