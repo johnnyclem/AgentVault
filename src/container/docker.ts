@@ -65,7 +65,14 @@ export const LABEL_KEY_RE = /^[a-z0-9][a-z0-9._-]{0,127}$/;
 /** The only capabilities a helper container may add back after --cap-drop=ALL. */
 export const ALLOWED_HELPER_CAPS: readonly string[] = ['DAC_READ_SEARCH', 'CHOWN', 'FOWNER', 'DAC_OVERRIDE'];
 
-export const TMPFS_OPTIONS = 'rw,nosuid,nodev,size=128m';
+/**
+ * mode=1777 is not cosmetic. When the image already has a directory at the
+ * mount point (a `useradd -m` home is 0700 on Debian 12), Docker mounts the
+ * tmpfs root:root with THAT directory's mode, and a non-root agent can then
+ * not use its own HOME (verified on a real daemon). Docker also adds noexec
+ * to --tmpfs mounts on its own; we keep that default.
+ */
+export const TMPFS_OPTIONS = 'rw,nosuid,nodev,size=128m,mode=1777';
 export const LOG_MAX_SIZE = '10m';
 export const LOG_MAX_FILE = '3';
 

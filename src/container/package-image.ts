@@ -214,7 +214,11 @@ export function stageBuildContext(sourceDir: string, contextDir: string, options
       } else if (st.isSymbolicLink()) {
         skip(rel, false, SKIP_SYMLINK);
       } else if (st.isDirectory()) {
-        walk(abs, rel);
+        if (fs.existsSync(path.join(abs, OUTPUT_MARKER))) {
+          skip(rel, true, 'AgentVault packaging output');
+        } else {
+          walk(abs, rel);
+        }
       } else if (st.isFile()) {
         if (candidates.length + 1 > maxFiles) throw capError('files', maxFiles, maxBytes);
         plannedBytes += st.size;

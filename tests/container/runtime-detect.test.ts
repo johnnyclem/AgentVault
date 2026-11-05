@@ -202,6 +202,19 @@ describe('runtime detection matrix', () => {
     expect(messageOf(() => detectContainerRuntime(dir))).toMatch(/Cannot detect a runtime/);
   });
 
+  it('a lone JavaScript entry file without package.json is a node agent with nothing to install', () => {
+    write('index.js');
+    write('tools.py');
+    const d = detectContainerRuntime(dir);
+    expect(d).toMatchObject({ runtime: 'node', install: 'none', packageManager: 'none', entrypoint: ['node', 'index.js'] });
+  });
+
+  it('a lone JavaScript entry plus Python project files is ambiguous', () => {
+    write('index.js');
+    write('requirements.txt');
+    expect(messageOf(() => detectContainerRuntime(dir))).toMatch(/Cannot tell whether.*index\.js.*requirements\.txt/);
+  });
+
   it('forced node without package.json works for a dependency-free script', () => {
     write('index.js');
     const d = detectContainerRuntime(dir, { runtimeKind: 'node' });
@@ -298,6 +311,14 @@ describe('node entrypoint derivation', () => {
     pkg({ main: 'gone.js' });
     const d2 = detectContainerRuntime(dir);
     expect(d2.warnings.join('\n')).toMatch(/gone\.js" does not exist/);
+  });
+
+  it.each(['src/@app/main.js', 'lib/', './', 'my dir/app.js', '-weird.js'])('falls through an unsupported main %j with a warning instead of failing', (main) => {
+    pkg({ main });
+    write('index.js');
+    const d = detectContainerRuntime(dir);
+    expect(d.entrypoint).toEqual(['node', 'index.js']);
+    expect(d.warnings.join('\n')).toMatch(/Ignoring package\.json main/);
   });
 
   it('uses detectAgent for the agent-specific entry (goose.js) and the fallbacks', () => {
@@ -399,6 +420,12 @@ describe('entrypoint override (--entrypoint)', () => {
   ])('refuses the path %j', (bad, pattern) => {
     expect(codeOf(() => detectContainerRuntime(dir, { entrypoint: ['node', bad] }))).toBe('INVALID_INPUT');
     expect(messageOf(() => detectContainerRuntime(dir, { entrypoint: ['node', bad] }))).toMatch(pattern);
+  });
+
+  it('refuses a directory-looking path', () => {
+    fs.mkdirSync(path.join(dir, 'lib'));
+    expect(codeOf(() => detectContainerRuntime(dir, { entrypoint: ['node', 'lib/'] }))).toBe('INVALID_INPUT');
+    expect(codeOf(() => detectContainerRuntime(dir, { entrypoint: ['-x/run'] }))).toBe('INVALID_INPUT');
   });
 
   it('never echoes a raw control character in an error', () => {

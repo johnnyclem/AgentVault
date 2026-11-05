@@ -130,16 +130,19 @@ type EntryCheck =
   | { kind: 'typescript'; rel: string }
   | { kind: 'excluded'; rel: string; reason: string }
   | { kind: 'missing'; rel: string }
-  | { kind: 'not-file'; rel: string };
+  | { kind: 'not-file'; rel: string }
+  | { kind: 'unsupported'; rel: string; why: string };
 
 function invalid(message: string): never {
   throw new ContainerError('INVALID_INPUT', message);
 }
 
 /**
- * Validate one source-relative entrypoint path. Unsafe paths throw; paths that
- * are merely unusable (missing, TypeScript, excluded, a directory) are returned
- * so derived candidates can fall through to the next one.
+ * Validate one source-relative entrypoint path. Unsafe paths (control
+ * characters, absolute, "..", symlink escapes) throw. Paths that are merely
+ * unusable (missing, TypeScript, excluded, a directory, unsupported
+ * characters) are returned so derived candidates can fall through to the next
+ * one while an explicit --entrypoint turns them into errors.
  */
 function checkEntryPath(realSource: string, raw: unknown): EntryCheck {
   if (typeof raw !== 'string' || raw.length === 0 || raw.length > 512) {
@@ -152,14 +155,14 @@ function checkEntryPath(realSource: string, raw: unknown): EntryCheck {
   if (raw.split('/').includes('..')) invalid(`Invalid entrypoint path ${shown}: ".." is not allowed`);
 
   const rel = path.posix.normalize(raw);
-  if (rel === '.' || rel.endsWith('/')) invalid(`Invalid entrypoint path ${shown}: must name a file`);
-  if (rel.startsWith('-')) invalid(`Invalid entrypoint path ${shown}: must not start with "-"`);
+  if (rel === '.' || rel.endsWith('/')) return { kind: 'not-file', rel };
+  if (rel.startsWith('-')) return { kind: 'unsupported', rel, why: 'must not start with "-"' };
   const segments = rel.split('/');
   for (const segment of segments) {
     try {
       sanitizePathPart(segment);
     } catch {
-      invalid(`Invalid entrypoint path ${shown}: each segment must be 1-128 characters of [A-Za-z0-9._-]`);
+      return { kind: 'unsupported', rel, why: 'each path segment must be 1-128 characters of [A-Za-z0-9._-]' };
     }
   }
   if (TYPESCRIPT_RE.test(rel)) return { kind: 'typescript', rel };
@@ -196,6 +199,8 @@ function describeUnusable(check: Exclude<EntryCheck, { kind: 'ok' }>): string {
       return `"${check.rel}" does not exist`;
     case 'not-file':
       return `"${check.rel}" is not a regular file`;
+    case 'unsupported':
+      return `"${check.rel}": ${check.why}`;
   }
 }
 
@@ -404,19 +409,21 @@ export function detectContainerRuntime(sourceDir: string, options: DetectOptions
     ...['requirements.txt', 'pyproject.toml'].filter((f) => probe(realSource, f) === 'file'),
     ...PYTHON_ENTRY_CANDIDATES.filter((f) => probe(realSource, f) === 'file'),
   ];
+  // Without a package.json, a plain JavaScript entry file is still a node signal.
+  const nodeSignals = hasPackageJson ? ['package.json'] : NODE_ENTRY_FALLBACKS.filter((f) => probe(realSource, f) === 'file');
 
   let runtime: RuntimeKind;
   if (options.runtimeKind !== undefined) {
     if (options.runtimeKind !== 'node' && options.runtimeKind !== 'python') invalid(`Invalid runtime ${JSON.stringify(String(options.runtimeKind))}: expected "node" or "python"`);
     runtime = options.runtimeKind;
-  } else if (hasPackageJson && pyStrong.length > 0) {
-    return invalid(`Cannot tell whether this is a node or python agent: found package.json and ${pyStrong.join(', ')}. Pass --runtime node or --runtime python`);
-  } else if (hasPackageJson) {
+  } else if (nodeSignals.length > 0 && pyStrong.length > 0) {
+    return invalid(`Cannot tell whether this is a node or python agent: found ${nodeSignals.join(', ')} and ${pyStrong.join(', ')}. Pass --runtime node or --runtime python`);
+  } else if (nodeSignals.length > 0) {
     runtime = 'node';
   } else if (pyStrong.length > 0 || hasTopLevelPython(realSource)) {
     runtime = 'python';
   } else {
-    return invalid('Cannot detect a runtime: found no package.json, requirements.txt, pyproject.toml or Python file. Pass --runtime node or --runtime python');
+    return invalid('Cannot detect a runtime: found no package.json, requirements.txt, pyproject.toml, Python file or index.js/main.js. Pass --runtime node or --runtime python');
   }
 
   const pkg = hasPackageJson && runtime === 'node' ? readPackageJson(realSource) : {};

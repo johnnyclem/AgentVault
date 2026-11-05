@@ -195,7 +195,7 @@ describe('buildRunArgs: mandatory isolation flags', () => {
     '--restart=no',
     '--log-opt=max-size=10m',
     '--log-opt=max-file=3',
-    '--tmpfs=/tmp:rw,nosuid,nodev,size=128m',
+    '--tmpfs=/tmp:rw,nosuid,nodev,size=128m,mode=1777',
   ])('emits %s', (flag) => {
     expect(args).toContain(flag);
   });
@@ -273,8 +273,8 @@ describe('buildRunArgs: optional flags', () => {
   it('emits one --tmpfs per path', () => {
     const args = buildRunArgs(agentSpec({ tmpfs: ['/tmp', '/home/agent'] }));
     expect(args.filter((a) => a.startsWith('--tmpfs='))).toEqual([
-      '--tmpfs=/tmp:rw,nosuid,nodev,size=128m',
-      '--tmpfs=/home/agent:rw,nosuid,nodev,size=128m',
+      '--tmpfs=/tmp:rw,nosuid,nodev,size=128m,mode=1777',
+      '--tmpfs=/home/agent:rw,nosuid,nodev,size=128m,mode=1777',
     ]);
   });
 

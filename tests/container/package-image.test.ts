@@ -280,6 +280,13 @@ describe('option validation', () => {
     expect(fs.existsSync(outputDir)).toBe(false);
   });
 
+  it('refuses a manifest whose label would be enormous', async () => {
+    const outputDir = path.join(root, 'huge-out');
+    const err = await failure(pkgOptions({ outputDir, entrypoint: ['node', 'index.js', ...Array.from({ length: 20 }, () => 'x'.repeat(4000))] }));
+    expect(err.message).toMatch(/Manifest label exceeds/);
+    expect(fs.existsSync(outputDir)).toBe(false);
+  });
+
   it('deduplicates env, secrets and volumes', async () => {
     const r = await packageContainer(pkgOptions({ env: ['A', 'A', 'B'], secrets: ['x', 'x'], volumes: ['/d', '/d'] }));
     expect(r.manifest.env).toEqual(['A', 'B']);
@@ -409,6 +416,14 @@ describe('build context staging', () => {
     expect(listTree(second.contextDir)).toEqual(['index.js', 'package-lock.json', 'package.json']);
     expect(second.skipped).toContainEqual({ path: 'build-out/', reason: 'output directory' });
     expect(second.manifest.source.contentHash).toBe(first.manifest.source.contentHash);
+  });
+
+  it('does not stage the output of an earlier packaging run that lives elsewhere in the source', async () => {
+    nodeProject();
+    await packageContainer(pkgOptions({ outputDir: path.join(src, 'out-one') }));
+    const second = await packageContainer(pkgOptions({ outputDir: path.join(src, 'out-two') }));
+    expect(listTree(second.contextDir)).toEqual(['index.js', 'package-lock.json', 'package.json']);
+    expect(second.skipped).toContainEqual({ path: 'out-one/', reason: 'AgentVault packaging output' });
   });
 
   it('stages a nested tree', async () => {
