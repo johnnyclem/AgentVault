@@ -6,6 +6,7 @@
  * tests and run against a real daemon in container-integration.test.ts.
  */
 
+import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -21,7 +22,7 @@ import { ensurePrivateDir, resolveDeps } from '../../../cli/commands/cli-support
 import type { ContainerCliDeps, PassphraseRequest } from '../../../cli/commands/cli-support.js';
 import { executeSnapshotCreate, snapshotCommand } from '../../../cli/commands/snapshot.js';
 import { containerManifestSchema, manifestToLabel } from '../../../src/container/manifest.js';
-import { createSnapshot, restoreSnapshot, verifySnapshot } from '../../../src/container/snapshot.js';
+import { SnapshotInterruptedError, createSnapshot, restoreSnapshot, verifySnapshot } from '../../../src/container/snapshot.js';
 import type { SnapshotManifest } from '../../../src/container/snapshot.js';
 import { ContainerError, LABEL_AGENT, LABEL_MANAGED, LABEL_MANIFEST, LABEL_ROLE } from '../../../src/container/types.js';
 import type { ContainerInfo, ContainerRuntime, ImageInfo } from '../../../src/container/types.js';
@@ -167,7 +168,8 @@ function snapshotManifest(over: Partial<SnapshotManifest> & { encrypted?: boolea
   const { encrypted = true, ...rest } = over;
   return {
     format: 'agentvault-container-snapshot',
-    version: 1,
+    version: 2,
+    snapshotId: '1'.repeat(32),
     createdAt: '2026-11-05T07:00:00.000Z',
     agent: AGENT,
     image: { ref: IMAGE },
@@ -369,7 +371,7 @@ describe('snapshot restore', () => {
     const h = harness();
     const dir = writeSnapshotDir(h.cwd, 'snap', snapshotManifest({ encrypted: false }));
     vi.mocked(restoreSnapshot).mockResolvedValueOnce(restored);
-    await run(snapshotCommand(h.deps), ['restore', dir]);
+    expect(await run(snapshotCommand(h.deps), ['restore', dir, '--allow-unencrypted'])).toBe(0);
     expect(h.passphrases).toEqual([]);
     expect(vi.mocked(restoreSnapshot).mock.calls[0]?.[0]).not.toHaveProperty('passphrase');
   });
@@ -534,8 +536,9 @@ describe('snapshot verify', () => {
     const h = harness();
     const dir = writeSnapshotDir(h.cwd, 'snap', snapshotManifest({ encrypted: false }));
     vi.mocked(verifySnapshot).mockResolvedValueOnce({ ...verified(true), volumes: [{ key: 'data', entries: 3, plaintextBytes: 2048, encrypted: false, plaintextVerified: true }] });
-    await run(snapshotCommand(h.deps), ['verify', dir]);
+    expect(await run(snapshotCommand(h.deps), ['verify', dir, '--allow-unencrypted'])).toBe(0);
     expect(h.passphrases).toEqual([]);
+    expect(vi.mocked(verifySnapshot).mock.calls[0]?.[0]).not.toHaveProperty('passphrase');
   });
 
   it('a snapshot that fails verification exits 1', async () => {
@@ -579,5 +582,312 @@ describe('snapshot list', () => {
     const h = harness();
     await run(snapshotCommand(h.deps), ['list']);
     expect(h.stdout()).toContain('No snapshots in');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Adversarial-review fixes
+// ---------------------------------------------------------------------------
+
+/** The hook the CLI gives `run` for SIGINT/SIGTERM/SIGHUP, as a test double that lets a test "press Ctrl-C". */
+function signalHook(): { install: (handler: () => void) => () => void; press(): void; installed(): number; uninstalled(): number } {
+  const handlers: Array<() => void> = [];
+  let uninstalled = 0;
+  return {
+    install: (handler) => {
+      handlers.push(handler);
+      return () => {
+        uninstalled += 1;
+      };
+    },
+    press: () => handlers.forEach((handler) => handler()),
+    installed: () => handlers.length,
+    uninstalled: () => uninstalled,
+  };
+}
+
+/** A library call that never finishes by itself: it rejects the way the library does once its signal aborts. */
+function untilAborted(message: string): (request: { signal?: AbortSignal }) => Promise<never> {
+  return (request) =>
+    new Promise((_resolve, reject) => {
+      request.signal?.addEventListener('abort', () => reject(new SnapshotInterruptedError(message)), { once: true });
+    });
+}
+
+/** A spool left by a process that no longer exists. */
+function deadSpool(parent: string): string {
+  const dir = path.join(parent, `avt-snapshot-${spawnSync(process.execPath, ['-e', '0']).pid}-AbC123`);
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(path.join(dir, 'data.tar'), 'CANARY-PLAINTEXT');
+  return dir;
+}
+
+describe('interrupt-leaves-plaintext: signals abort the work, then the command exits non-zero', () => {
+  const restored = { volumes: [{ key: 'data', volume: `av-${AGENT}-data`, entries: 3, bytes: 2048 }], entries: 3, warnings: [] as string[] };
+
+  it('create: the handler is installed for the work, an abort reaches the library, the command exits 1 and the handler is removed', async () => {
+    const hook = signalHook();
+    const h = harness({ installSignalHandler: hook.install });
+    vi.mocked(createSnapshot).mockImplementationOnce(untilAborted('Interrupted. The unfinished snapshot was deleted and nothing was kept.'));
+
+    const done = run(snapshotCommand(h.deps), ['create', AGENT]);
+    await vi.waitFor(() => expect(hook.installed()).toBe(1));
+    const signal = vi.mocked(createSnapshot).mock.calls[0]?.[0].signal;
+    expect(signal?.aborted).toBe(false);
+    hook.press();
+    expect(signal?.aborted).toBe(true);
+
+    expect(await done).toBe(1);
+    expect(h.stderr()).toContain('Error: Interrupted. The unfinished snapshot was deleted and nothing was kept.');
+    expect(hook.uninstalled()).toBe(1);
+    expect(h.stdout()).not.toContain('written to');
+  });
+
+  it('restore: same', async () => {
+    const hook = signalHook();
+    const h = harness({ installSignalHandler: hook.install });
+    const dir = writeSnapshotDir(h.cwd, 'snap', snapshotManifest());
+    vi.mocked(restoreSnapshot).mockImplementationOnce(untilAborted('Interrupted. Volume "av-alpha-data" was removed again: no partial data remains.'));
+
+    const done = run(snapshotCommand(h.deps), ['restore', dir]);
+    await vi.waitFor(() => expect(hook.installed()).toBe(1));
+    hook.press();
+
+    expect(await done).toBe(1);
+    expect(vi.mocked(restoreSnapshot).mock.calls[0]?.[0].signal?.aborted).toBe(true);
+    expect(h.stderr()).toContain('Interrupted. Volume "av-alpha-data" was removed again');
+    expect(hook.uninstalled()).toBe(1);
+  });
+
+  it('verify: same', async () => {
+    const hook = signalHook();
+    const h = harness({ installSignalHandler: hook.install });
+    const dir = writeSnapshotDir(h.cwd, 'snap', snapshotManifest());
+    vi.mocked(verifySnapshot).mockImplementationOnce(untilAborted('Interrupted. The decrypted scratch copy was deleted; the snapshot was not changed.'));
+
+    const done = run(snapshotCommand(h.deps), ['verify', dir]);
+    await vi.waitFor(() => expect(hook.installed()).toBe(1));
+    hook.press();
+
+    expect(await done).toBe(1);
+    expect(vi.mocked(verifySnapshot).mock.calls[0]?.[0].signal?.aborted).toBe(true);
+    expect(hook.uninstalled()).toBe(1);
+  });
+
+  it('the handler is removed after a normal finish and after an ordinary failure too', async () => {
+    const hook = signalHook();
+    const h = harness({ installSignalHandler: hook.install });
+    const dir = writeSnapshotDir(h.cwd, 'snap', snapshotManifest());
+    vi.mocked(restoreSnapshot).mockResolvedValueOnce(restored);
+    expect(await run(snapshotCommand(h.deps), ['restore', dir])).toBe(0);
+    vi.mocked(restoreSnapshot).mockRejectedValueOnce(new ContainerError('COMMAND_FAILED', 'boom'));
+    expect(await run(snapshotCommand(h.deps), ['restore', dir])).toBe(1);
+    expect([hook.installed(), hook.uninstalled()]).toEqual([2, 2]);
+  });
+
+  it('pressing Ctrl-C twice is harmless', async () => {
+    const hook = signalHook();
+    const h = harness({ installSignalHandler: hook.install });
+    const dir = writeSnapshotDir(h.cwd, 'snap', snapshotManifest());
+    vi.mocked(verifySnapshot).mockImplementationOnce(untilAborted('Interrupted.'));
+    const done = run(snapshotCommand(h.deps), ['verify', dir]);
+    await vi.waitFor(() => expect(hook.installed()).toBe(1));
+    hook.press();
+    hook.press();
+    expect(await done).toBe(1);
+  });
+});
+
+describe('interrupt-leaves-plaintext: every command sweeps what a killed run left behind', () => {
+  it.each([
+    ['create', (_h: Harness) => ['create', AGENT]],
+    ['restore', (h: Harness) => ['restore', writeSnapshotDir(h.cwd, 'snap', snapshotManifest())]],
+    ['verify', (h: Harness) => ['verify', writeSnapshotDir(h.cwd, 'snap', snapshotManifest())]],
+    ['list', (_h: Harness) => ['list']],
+  ])('%s removes a dead process\'s spool in the scratch directory and says so', async (_name, args) => {
+    const h = harness();
+    vi.mocked(createSnapshot).mockResolvedValue({ dir: path.join(h.home, 's'), manifest: snapshotManifest(), warnings: [] });
+    vi.mocked(restoreSnapshot).mockResolvedValue({ volumes: [], entries: 0, warnings: [] });
+    vi.mocked(verifySnapshot).mockResolvedValue({ manifest: snapshotManifest(), volumes: [], fullyVerified: true, warnings: [] });
+    const stale = deadSpool(path.join(h.home, 'tmp'));
+    const live = path.join(h.home, 'tmp', `avt-snapshot-${process.pid}-LiVe00`);
+    fs.mkdirSync(live);
+
+    await run(snapshotCommand(h.deps), args(h));
+
+    expect(fs.existsSync(stale)).toBe(false);
+    expect(fs.existsSync(live)).toBe(true);
+    expect(h.stderr()).toContain('removed 1 leftover(s) of an earlier snapshot run that was interrupted');
+    expect(h.stderr()).toContain(stale);
+  });
+
+  it('create also sweeps the --output directory, and removes an interrupted snapshot in the default one', async () => {
+    const h = harness();
+    vi.mocked(createSnapshot).mockResolvedValue({ dir: path.join(h.home, 's'), manifest: snapshotManifest(), warnings: [] });
+    const out = path.join(h.cwd, 'backups');
+    const inOutput = path.join(out, 'alpha-20261105T000000Z');
+    const inDefault = path.join(h.home, 'snapshots', 'alpha-20261104T000000Z');
+    for (const dir of [inOutput, inDefault]) {
+      fs.mkdirSync(dir, { recursive: true });
+      deadSpool(dir);
+    }
+    await run(snapshotCommand(h.deps), ['create', AGENT, '--output', 'backups']);
+    expect(fs.existsSync(inOutput)).toBe(false);
+    expect(fs.existsSync(inDefault)).toBe(false);
+  });
+});
+
+describe('snapshot-restore-accepts-plaintext-swap-silently: an unencrypted snapshot is never taken on trust', () => {
+  const restored = { volumes: [{ key: 'data', volume: `av-${AGENT}-data`, entries: 3, bytes: 2048 }], entries: 3, warnings: [] as string[] };
+  const plainVerified = {
+    manifest: snapshotManifest({ encrypted: false }),
+    volumes: [{ key: 'data', entries: 3, plaintextBytes: 2048, encrypted: false, plaintextVerified: true }],
+    fullyVerified: true,
+    warnings: [] as string[],
+  };
+
+  it('restore refuses, says Encrypted: NO and names the way out; nothing is asked and nothing is called', async () => {
+    const h = harness();
+    const dir = writeSnapshotDir(h.cwd, 'snap', snapshotManifest({ encrypted: false }));
+    expect(await run(snapshotCommand(h.deps), ['restore', dir])).toBe(1);
+    expect(h.stderr()).toContain('Encrypted: NO');
+    expect(h.stderr()).toContain('not encrypted');
+    expect(h.stderr()).toContain('--allow-unencrypted');
+    expect(h.passphrases).toEqual([]);
+    expect(restoreSnapshot).not.toHaveBeenCalled();
+    expect(h.stdout()).not.toContain('Restored');
+  });
+
+  it('verify refuses too', async () => {
+    const h = harness();
+    const dir = writeSnapshotDir(h.cwd, 'snap', snapshotManifest({ encrypted: false }));
+    expect(await run(snapshotCommand(h.deps), ['verify', dir])).toBe(1);
+    expect(h.stderr()).toContain('Encrypted: NO');
+    expect(h.stderr()).toContain('--allow-unencrypted');
+    expect(verifySnapshot).not.toHaveBeenCalled();
+    expect(h.stdout()).not.toContain('intact');
+  });
+
+  it('verify --ciphertext-only does not get around it', async () => {
+    const h = harness();
+    const dir = writeSnapshotDir(h.cwd, 'snap', snapshotManifest({ encrypted: false }));
+    expect(await run(snapshotCommand(h.deps), ['verify', dir, '--ciphertext-only'])).toBe(1);
+    expect(verifySnapshot).not.toHaveBeenCalled();
+  });
+
+  it('when AGENTVAULT_SNAPSHOT_PASSPHRASE is set the refusal says that an encrypted snapshot was expected', async () => {
+    const h = harness();
+    h.deps.env = { AGENTVAULT_HOME: h.home, AGENTVAULT_SNAPSHOT_PASSPHRASE: OTHER_PASS };
+    const dir = writeSnapshotDir(h.cwd, 'snap', snapshotManifest({ encrypted: false }));
+    expect(await run(snapshotCommand(h.deps), ['restore', dir])).toBe(1);
+    expect(h.stderr()).toContain('suggests you expected an encrypted snapshot');
+    expect(h.all()).not.toContain(OTHER_PASS);
+  });
+
+  it('restore --allow-unencrypted proceeds, warns, and ends with Encrypted: NO', async () => {
+    const h = harness();
+    const dir = writeSnapshotDir(h.cwd, 'snap', snapshotManifest({ encrypted: false }));
+    vi.mocked(restoreSnapshot).mockResolvedValueOnce(restored);
+    expect(await run(snapshotCommand(h.deps), ['restore', dir, '--allow-unencrypted'])).toBe(0);
+    expect(h.stderr()).toContain('Warning: Encrypted: NO.');
+    expect(h.stdout()).toContain('Encrypted: NO');
+    expect(h.passphrases).toEqual([]);
+    expect(vi.mocked(restoreSnapshot).mock.calls[0]?.[0]).not.toHaveProperty('passphrase');
+  });
+
+  it('verify --allow-unencrypted proceeds, warns, and ends with Encrypted: NO', async () => {
+    const h = harness();
+    const dir = writeSnapshotDir(h.cwd, 'snap', snapshotManifest({ encrypted: false }));
+    vi.mocked(verifySnapshot).mockResolvedValueOnce(plainVerified);
+    expect(await run(snapshotCommand(h.deps), ['verify', dir, '--allow-unencrypted'])).toBe(0);
+    expect(h.stderr()).toContain('Warning: Encrypted: NO.');
+    expect(h.stdout()).toContain('Encrypted: NO');
+  });
+
+  it('an encrypted snapshot needs no flag and is reported as Encrypted: yes', async () => {
+    const h = harness();
+    const dir = writeSnapshotDir(h.cwd, 'snap', snapshotManifest());
+    vi.mocked(restoreSnapshot).mockResolvedValueOnce(restored);
+    vi.mocked(verifySnapshot).mockResolvedValueOnce({ ...plainVerified, manifest: snapshotManifest() });
+    expect(await run(snapshotCommand(h.deps), ['restore', dir])).toBe(0);
+    expect(h.stdout()).toContain('Encrypted: yes');
+    expect(h.stderr()).not.toContain('Encrypted: NO');
+    h.out.length = 0;
+    expect(await run(snapshotCommand(h.deps), ['verify', dir])).toBe(0);
+    expect(h.stdout()).toContain('Encrypted: yes');
+  });
+
+  it('--allow-unencrypted is a plain switch: it takes no value, so a secret cannot be put on a command line through it', () => {
+    const h = harness();
+    const group = snapshotCommand(h.deps);
+    for (const name of ['restore', 'verify']) {
+      const option = group.commands.find((c) => c.name() === name)?.options.find((o) => o.long === '--allow-unencrypted');
+      expect(option, name).toBeDefined();
+      expect(option?.required).toBe(false);
+      expect(option?.optional).toBe(false);
+      expect(option?.description).toMatch(/NOT encrypted/);
+    }
+    // and --no-encrypt on create is unchanged
+    expect(group.commands.find((c) => c.name() === 'create')?.options.map((o) => o.long)).toContain('--no-encrypt');
+  });
+
+  it('create --no-encrypt still works exactly as before', async () => {
+    const h = harness();
+    vi.mocked(createSnapshot).mockResolvedValueOnce({ dir: path.join(h.home, 's'), manifest: snapshotManifest({ encrypted: false }), warnings: [] });
+    expect(await run(snapshotCommand(h.deps), ['create', AGENT, '--no-encrypt'])).toBe(0);
+    expect(h.passphrases).toEqual([]);
+    expect(h.stderr()).toContain('will NOT be encrypted');
+  });
+});
+
+describe('snapshot-restore-rm-usability-traps (a): a volume the restore check refuses is not blamed on the passphrase', () => {
+  it('create reports it as a refused rule, with its own words, not under the generic INTEGRITY hint', async () => {
+    const h = harness();
+    vi.mocked(createSnapshot).mockRejectedValueOnce(
+      new ContainerError('INTEGRITY', 'Volume "data" cannot be snapshotted because the archive could not be restored safely later. Unsafe tar archive entry "./tmp": setuid, setgid or sticky mode bits')
+    );
+    expect(await run(snapshotCommand(h.deps), ['create', AGENT])).toBe(1);
+    expect(h.stderr()).toContain('setuid, setgid or sticky mode bits');
+    expect(h.stderr()).not.toContain('wrong passphrase');
+    expect(h.stderr()).toContain('A security rule refused this request');
+  });
+
+  it('verify and restore keep the INTEGRITY hint: there a wrong passphrase really is a possible cause', async () => {
+    const h = harness();
+    const dir = writeSnapshotDir(h.cwd, 'snap', snapshotManifest());
+    vi.mocked(verifySnapshot).mockRejectedValueOnce(new ContainerError('INTEGRITY', 'wrong passphrase or the file was modified'));
+    expect(await run(snapshotCommand(h.deps), ['verify', dir])).toBe(1);
+    expect(h.stderr()).toContain('A wrong passphrase looks the same as a damaged or modified file');
+  });
+});
+
+describe('snapshot list shows an incomplete directory', () => {
+  it('as incomplete, with how to see why and how to delete it', async () => {
+    const h = harness();
+    const dir = path.join(h.home, 'snapshots');
+    writeSnapshotDir(dir, 'alpha-20261104T000000Z', snapshotManifest({ createdAt: '2026-11-04T00:00:00.000Z' }));
+    fs.mkdirSync(path.join(dir, 'alpha-20261105T000000Z'));
+    fs.writeFileSync(path.join(dir, 'alpha-20261105T000000Z', 'data.tar.enc'), 'partial');
+    fs.mkdirSync(path.join(dir, 'Documents'));
+
+    expect(await run(snapshotCommand(h.deps), ['list'])).toBe(0);
+    expect(h.out.find((l) => l.startsWith('alpha-20261105T000000Z'))).toMatch(/^alpha-20261105T000000Z\s+-\s+incomplete/);
+    expect(h.stdout()).toContain('1 incomplete');
+    expect(h.stdout()).toContain('snapshot verify');
+    expect(h.stdout()).toContain(`rm -r "${path.join(dir, 'alpha-20261105T000000Z')}"`);
+    expect(h.stdout()).not.toContain('Documents');
+  });
+
+  it('in JSON, with a status on every entry', async () => {
+    const h = harness();
+    const dir = path.join(h.home, 'snapshots');
+    writeSnapshotDir(dir, 'alpha-20261104T000000Z', snapshotManifest());
+    fs.mkdirSync(path.join(dir, 'alpha-20261105T000000Z'));
+    await run(snapshotCommand(h.deps), ['list', '--json']);
+    const rows = JSON.parse(h.stdout()) as Array<{ name: string; status: string }>;
+    expect(rows.map((r) => [r.name, r.status])).toEqual([
+      ['alpha-20261104T000000Z', 'complete'],
+      ['alpha-20261105T000000Z', 'incomplete'],
+    ]);
   });
 });

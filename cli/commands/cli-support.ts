@@ -396,9 +396,14 @@ export function ensurePrivateDir(dir: string): string {
   return resolved;
 }
 
+/** <AgentVault home>/tmp, without creating it: where snapshot spools are (so a sweep can look without making it). */
+export function snapshotScratchPath(env: NodeJS.ProcessEnv): string {
+  return path.join(agentvaultHome(env), 'tmp');
+}
+
 /** <AgentVault home>/tmp: disk-backed scratch space for snapshot spools (os.tmpdir() is often RAM). */
 export function snapshotScratchDir(env: NodeJS.ProcessEnv): string {
-  return ensurePrivateDir(path.join(agentvaultHome(env), 'tmp'));
+  return ensurePrivateDir(snapshotScratchPath(env));
 }
 
 /** <AgentVault home>/snapshots: where `snapshot create` writes by default. */

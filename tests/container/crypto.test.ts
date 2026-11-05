@@ -527,6 +527,144 @@ describe('file edge cases', () => {
   });
 });
 
+describe('context binding (extra GCM AAD supplied by the caller)', () => {
+  const CONTEXT = '["agentvault-container-snapshot",2,"agent-a","snap-1","data"]';
+
+  it('round-trips with the same context, buffer and file', async () => {
+    const plain = crypto.randomBytes(70_000);
+    const blob = await encryptBuffer(plain, PASS, { context: CONTEXT });
+    expect((await decryptBuffer(blob, PASS, { context: CONTEXT })).equals(plain)).toBe(true);
+
+    const enc = p('enc');
+    const dec = p('dec');
+    await encryptFile(write('plain', plain), enc, PASS, { context: CONTEXT });
+    await decryptFile(enc, dec, PASS, { context: CONTEXT });
+    expect(fs.readFileSync(dec).equals(plain)).toBe(true);
+  });
+
+  it('a different, missing or extra context fails exactly like a wrong passphrase', async () => {
+    const plain = Buffer.from('bound to its place');
+    const bound = await encryptBuffer(plain, PASS, { context: CONTEXT });
+    const unbound = await encryptBuffer(plain, PASS);
+
+    await expectIntegrity(decryptBuffer(bound, PASS, { context: `${CONTEXT} ` }));
+    await expectIntegrity(decryptBuffer(bound, PASS, { context: '["x"]' }));
+    await expectIntegrity(decryptBuffer(bound, PASS)); // reader forgot the context
+    await expectIntegrity(decryptBuffer(unbound, PASS, { context: CONTEXT })); // reader invented one
+
+    const enc = write('enc', bound);
+    const dec = p('dec');
+    await expectIntegrity(decryptFile(enc, dec, PASS, { context: '["x"]' }));
+    expect(fs.existsSync(dec)).toBe(false);
+  });
+
+  it('a context is not the same as a longer header: the length is part of what is authenticated', async () => {
+    const blob = await encryptBuffer(Buffer.from('p'), PASS, { context: 'ab' });
+    await expectIntegrity(decryptBuffer(blob, PASS, { context: 'a' }));
+    await expectIntegrity(decryptBuffer(blob, PASS, { context: 'abc' }));
+  });
+
+  it('refuses an empty or oversized context instead of silently weakening the binding', async () => {
+    await expect(encryptBuffer(Buffer.from('x'), PASS, { context: '' })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    await expect(encryptBuffer(Buffer.from('x'), PASS, { context: 'a'.repeat(70_000) })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    const blob = await encryptBuffer(Buffer.from('x'), PASS);
+    await expect(decryptBuffer(blob, PASS, { context: '' })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+  });
+
+  it('is part of the documented format: AAD = prefix | u32be(length) | context (UTF-8)', async () => {
+    const plain = crypto.randomBytes(1000);
+    const context = 'ünïcode context';
+    const blob = await encryptBuffer(plain, PASS, { context });
+    const headerLength = blob.readUInt32BE(7);
+    const prefix = blob.subarray(0, 11 + headerLength);
+    const header = JSON.parse(blob.subarray(11, 11 + headerLength).toString('utf8')) as { iter: number; salt: string; iv: string };
+    const key = crypto.pbkdf2Sync(PASS, Buffer.from(header.salt, 'base64'), header.iter, 32, 'sha256');
+    const ctx = Buffer.from(context, 'utf8');
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(ctx.length);
+
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(header.iv, 'base64'));
+    decipher.setAAD(Buffer.concat([prefix, length, ctx]));
+    decipher.setAuthTag(blob.subarray(blob.length - 16));
+    const out = Buffer.concat([decipher.update(blob.subarray(prefix.length, blob.length - 16)), decipher.final()]);
+    expect(out.equals(plain)).toBe(true);
+  });
+
+  it('adds nothing to the file: the stored layout is identical with and without a context', async () => {
+    const plain = Buffer.from('same size');
+    const a = await encryptBuffer(plain, PASS, { context: CONTEXT });
+    const b = await encryptBuffer(plain, PASS);
+    expect(a.length).toBe(b.length);
+    expect(a.includes(Buffer.from(CONTEXT))).toBe(false);
+  });
+});
+
+describe('cancellation of the file operations', () => {
+  it('encryptFile with an already-aborted signal writes nothing', async () => {
+    const dir = p('dir');
+    fs.mkdirSync(dir);
+    const src = path.join(dir, 'plain');
+    fs.writeFileSync(src, 'x');
+    const controller = new AbortController();
+    controller.abort();
+    await expect(encryptFile(src, path.join(dir, 'out.enc'), PASS, { signal: controller.signal })).rejects.toBeDefined();
+    expect(fs.readdirSync(dir)).toEqual(['plain']);
+  });
+
+  it('encryptFile aborted between chunks stops, leaves no temp file and no destination', async () => {
+    const dir = p('dir');
+    fs.mkdirSync(dir);
+    const src = path.join(dir, 'plain');
+    fs.writeFileSync(src, crypto.randomBytes(6 * 1024 * 1024));
+    const controller = new AbortController();
+    // Abort as soon as the key is derived, i.e. when streaming is about to start.
+    const original = internals.deriveKey;
+    vi.spyOn(internals, 'deriveKey').mockImplementation(async (...args) => {
+      const key = await original(...args);
+      controller.abort();
+      return key;
+    });
+    await expect(encryptFile(src, path.join(dir, 'out.enc'), PASS, { signal: controller.signal })).rejects.toBeDefined();
+    expect(fs.readdirSync(dir)).toEqual(['plain']);
+  });
+
+  it('decryptFile aborted while streaming stops and removes the partial plaintext', async () => {
+    const dir = p('dir');
+    fs.mkdirSync(dir);
+    const enc = path.join(dir, 'in.enc');
+    const out = path.join(dir, 'out');
+    fs.writeFileSync(enc, await encryptBuffer(crypto.randomBytes(96 * 1024 * 1024), PASS));
+    const controller = new AbortController();
+    // Abort the moment the first decrypted bytes reach the destination: the loop, not the start, must notice.
+    const watcher = setInterval(() => {
+      if (fs.existsSync(out) && fs.statSync(out).size > 0) controller.abort();
+    }, 1);
+    try {
+      await expect(decryptFile(enc, out, PASS, { signal: controller.signal })).rejects.toBeDefined();
+    } finally {
+      clearInterval(watcher);
+    }
+    expect(controller.signal.aborted).toBe(true);
+    expect(fs.readdirSync(dir)).toEqual(['in.enc']);
+  });
+
+  it('decryptFile aborted before it starts writing leaves nothing behind', async () => {
+    const dir = p('dir');
+    fs.mkdirSync(dir);
+    const enc = path.join(dir, 'in.enc');
+    fs.writeFileSync(enc, await encryptBuffer(crypto.randomBytes(6 * 1024 * 1024), PASS));
+    const controller = new AbortController();
+    const original = internals.deriveKey;
+    vi.spyOn(internals, 'deriveKey').mockImplementation(async (...args) => {
+      const key = await original(...args);
+      controller.abort();
+      return key;
+    });
+    await expect(decryptFile(enc, path.join(dir, 'out'), PASS, { signal: controller.signal })).rejects.toBeDefined();
+    expect(fs.readdirSync(dir)).toEqual(['in.enc']);
+  });
+});
+
 describe('independent reference implementation (the format is implementable from the spec)', () => {
   function referenceEncrypt(plaintext: Buffer, passphrase: string): Buffer {
     const salt = crypto.randomBytes(32);

@@ -16,6 +16,14 @@
  * header byte can change without failing authentication. A fresh random salt
  * and IV are drawn per file and live in the header (audit H-2: never lose them).
  *
+ * Optional context: a caller may pass a `context` string that is appended to
+ * the AAD as `u32 length | UTF-8 bytes`. It is NOT stored in the file: the
+ * reader must supply the very same string or authentication fails. That is what
+ * lets a snapshot bind each volume file to its agent, snapshot id and volume key,
+ * so a ciphertext cannot be moved to another place in a manifest that no key
+ * protects. With no context the AAD is the prefix alone, byte for byte as before
+ * (the secret store passes none and its files are unchanged).
+ *
  * Security stance:
  *  - No header field ever selects behaviour. alg and kdf are compared with
  *    pinned constants, iterations must lie in [KDF_ITERATIONS_MIN,
@@ -67,6 +75,7 @@ const LENGTH_FIELD_BYTES = 4;
 /** NIST SP 800-38D: one (key, IV) pair may protect at most 2^39 - 256 bits. */
 export const MAX_PLAINTEXT_BYTES = 2 ** 36 - 32;
 export const MIN_PASSPHRASE_CHARS = 8;
+export const MAX_CONTEXT_BYTES = 64 * 1024;
 
 const CHUNK_BYTES = 1024 * 1024;
 const INTEGRITY_MESSAGE = 'wrong passphrase or the file was modified';
@@ -91,6 +100,25 @@ export function assertPassphrase(passphrase: unknown): asserts passphrase is str
     // Never echo the value: it is the secret.
     throw invalid(`The passphrase must be a string of at least ${MIN_PASSPHRASE_CHARS} characters`);
   }
+}
+
+function contextBytes(context: string | undefined): Buffer | undefined {
+  if (context === undefined) return undefined;
+  const bytes = Buffer.from(context, 'utf8');
+  // An empty context would authenticate as little as none while looking bound.
+  if (bytes.length === 0 || bytes.length > MAX_CONTEXT_BYTES) {
+    throw invalid(`The context must be between 1 and ${MAX_CONTEXT_BYTES} bytes`);
+  }
+  return bytes;
+}
+
+/** What GCM authenticates besides the ciphertext: the prefix, then the caller's context if there is one. */
+function buildAad(prefix: Buffer, context: string | undefined): Buffer {
+  const bytes = contextBytes(context);
+  if (bytes === undefined) return prefix;
+  const length = Buffer.alloc(LENGTH_FIELD_BYTES);
+  length.writeUInt32BE(bytes.length, 0);
+  return Buffer.concat([prefix, length, bytes]);
 }
 
 function assertIterations(iterations: number): void {
@@ -199,19 +227,22 @@ function buildPrefix(iterations: number, salt: Buffer, iv: Buffer): Buffer {
 }
 
 interface SealContext {
+  /** The AAD: the prefix written to the file, plus the caller's context (not written). */
+  aad: Buffer;
   prefix: Buffer;
   key: Buffer;
   iv: Buffer;
 }
 
-async function newSealContext(passphrase: string, iterations: number): Promise<SealContext> {
+async function newSealContext(passphrase: string, iterations: number, context: string | undefined): Promise<SealContext> {
   assertPassphrase(passphrase);
   assertIterations(iterations);
   const salt = randomBytes(SALT_BYTES);
   const iv = randomBytes(IV_BYTES);
   const prefix = buildPrefix(iterations, salt, iv);
+  const aad = buildAad(prefix, context);
   const key = await internals.deriveKey(passphrase, salt, iterations);
-  return { prefix, key, iv };
+  return { aad, prefix, key, iv };
 }
 
 // ---------------------------------------------------------------------------
@@ -221,6 +252,19 @@ async function newSealContext(passphrase: string, iterations: number): Promise<S
 export interface EncryptOptions {
   /** PBKDF2 iterations, within [KDF_ITERATIONS_MIN, KDF_ITERATIONS_MAX]. */
   iterations?: number;
+  /** Extra GCM AAD the reader must repeat (see the file header). 1 to MAX_CONTEXT_BYTES bytes. */
+  context?: string;
+}
+
+export interface DecryptOptions {
+  /** The context the file was encrypted with; omit it only for a file encrypted without one. */
+  context?: string;
+}
+
+/** Cancellation for the streaming file operations (buffers are in memory and finish at once). */
+export interface FileOperationOptions {
+  /** Aborting rejects with the signal's reason and leaves no partial file behind. */
+  signal?: AbortSignal;
 }
 
 /** Encrypt a small payload (the whole thing is held in memory). */
@@ -229,16 +273,18 @@ export async function encryptBuffer(
   passphrase: string,
   options: EncryptOptions = {}
 ): Promise<Buffer> {
-  const { prefix, key, iv } = await newSealContext(passphrase, options.iterations ?? KDF_ITERATIONS_DEFAULT);
+  const { aad, prefix, key, iv } = await newSealContext(passphrase, options.iterations ?? KDF_ITERATIONS_DEFAULT, options.context);
   const cipher = createCipheriv(AVENC_ALG, key, iv, { authTagLength: TAG_BYTES });
-  cipher.setAAD(prefix);
+  cipher.setAAD(aad);
   const body = Buffer.concat([cipher.update(plaintext), cipher.final()]);
   return Buffer.concat([prefix, body, cipher.getAuthTag()]);
 }
 
 /** Decrypt a payload produced by encryptBuffer(). Throws INTEGRITY on any failure. */
-export async function decryptBuffer(blob: Buffer | Uint8Array, passphrase: string): Promise<Buffer> {
+export async function decryptBuffer(blob: Buffer | Uint8Array, passphrase: string, options: DecryptOptions = {}): Promise<Buffer> {
   assertPassphrase(passphrase);
+  const context = options.context;
+  contextBytes(context); // reject an unusable context before touching the data
   const data = Buffer.from(blob.buffer, blob.byteOffset, blob.byteLength);
   const fixed = AVENC_MAGIC.length + LENGTH_FIELD_BYTES;
   if (data.length < fixed + 1 + TAG_BYTES) throw integrity('too_short');
@@ -255,7 +301,7 @@ export async function decryptBuffer(blob: Buffer | Uint8Array, passphrase: strin
 
   const key = await internals.deriveKey(passphrase, header.salt, header.iterations);
   const decipher = createDecipheriv(AVENC_ALG, key, header.iv, { authTagLength: TAG_BYTES });
-  decipher.setAAD(prefix);
+  decipher.setAAD(buildAad(prefix, context));
   decipher.setAuthTag(tag);
   try {
     return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
@@ -310,7 +356,7 @@ export async function encryptFile(
   src: string,
   dest: string,
   passphrase: string,
-  options: EncryptOptions = {}
+  options: EncryptOptions & FileOperationOptions = {}
 ): Promise<EncryptFileResult> {
   assertPassphrase(passphrase);
   const iterations = options.iterations ?? KDF_ITERATIONS_DEFAULT;
@@ -321,9 +367,11 @@ export async function encryptFile(
   if (!stat.isFile()) throw invalid('The file to encrypt must be a regular file');
   if (stat.size > MAX_PLAINTEXT_BYTES) throw invalid('The file is too large for a single AES-GCM message (limit 64 GiB)');
 
-  const { prefix, key, iv } = await newSealContext(passphrase, iterations);
+  const { signal } = options;
+  signal?.throwIfAborted();
+  const { aad, prefix, key, iv } = await newSealContext(passphrase, iterations, options.context);
   const cipher = createCipheriv(AVENC_ALG, key, iv, { authTagLength: TAG_BYTES });
-  cipher.setAAD(prefix);
+  cipher.setAAD(aad);
   const plainHash: Hash = createHash('sha256');
   const cipherHash: Hash = createHash('sha256');
   let plaintextBytes = 0;
@@ -334,6 +382,7 @@ export async function encryptFile(
     ciphertextBytes += prefix.length;
     yield prefix;
     for await (const chunk of fs.createReadStream(src, { highWaterMark: CHUNK_BYTES })) {
+      signal?.throwIfAborted();
       const plain = chunk as Buffer;
       plaintextBytes += plain.length;
       if (plaintextBytes > MAX_PLAINTEXT_BYTES) throw invalid('The file grew past the AES-GCM message limit while encrypting');
@@ -403,9 +452,17 @@ async function writeAll(handle: fs.promises.FileHandle, data: Buffer): Promise<v
  * after that. On ANY failure `dest` is deleted. Callers must not read, hash
  * for trust, validate or extract `dest` until this promise resolves.
  */
-export async function decryptFile(src: string, dest: string, passphrase: string): Promise<DecryptFileResult> {
+export async function decryptFile(
+  src: string,
+  dest: string,
+  passphrase: string,
+  options: DecryptOptions & FileOperationOptions = {}
+): Promise<DecryptFileResult> {
   assertPassphrase(passphrase);
+  contextBytes(options.context); // reject an unusable context before touching the data
   if (path.resolve(src) === path.resolve(dest)) throw invalid('Refusing to decrypt a file onto itself');
+  const { signal } = options;
+  signal?.throwIfAborted();
 
   const input = await fs.promises.open(src, 'r');
   try {
@@ -428,8 +485,9 @@ export async function decryptFile(src: string, dest: string, passphrase: string)
 
     const key = await internals.deriveKey(passphrase, header.salt, header.iterations);
     const decipher = createDecipheriv(AVENC_ALG, key, header.iv, { authTagLength: TAG_BYTES });
-    decipher.setAAD(prefix);
+    decipher.setAAD(buildAad(prefix, options.context));
     decipher.setAuthTag(tag);
+    signal?.throwIfAborted();
 
     let out: fs.promises.FileHandle;
     try {
@@ -446,6 +504,7 @@ export async function decryptFile(src: string, dest: string, passphrase: string)
       const end = stat.size - TAG_BYTES;
       let position = prefixLength;
       while (position < end) {
+        signal?.throwIfAborted();
         const want = Math.min(CHUNK_BYTES, end - position);
         const { bytesRead } = await input.read(buffer, 0, want, position);
         if (bytesRead === 0) throw integrity('truncated');

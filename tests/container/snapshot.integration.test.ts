@@ -16,7 +16,7 @@ import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { encryptFile } from '../../src/container/crypto.js';
 import { DockerRuntime } from '../../src/container/docker.js';
-import { createSnapshot, restoreSnapshot, verifySnapshot } from '../../src/container/snapshot.js';
+import { SNAPSHOT_VERSION, SnapshotInterruptedError, createSnapshot, restoreSnapshot, verifySnapshot, volumeBinding } from '../../src/container/snapshot.js';
 import type { SnapshotManifest } from '../../src/container/snapshot.js';
 import { validateTarArchive } from '../../src/container/tar-validate.js';
 import { ContainerError, LABEL_AGENT, LABEL_VOLUME_KEY } from '../../src/container/types.js';
@@ -376,11 +376,16 @@ describe.skipIf(!usable)('snapshot create / verify / restore on a real daemon', 
 
     const dir = path.join(gnu, 'snapshot');
     fs.mkdirSync(dir);
-    const enc = await encryptFile(tarFile, path.join(dir, 'data.tar.enc'), PASS);
+    const snapshotId = 'e'.repeat(32);
+    const createdAt = new Date().toISOString();
+    const enc = await encryptFile(tarFile, path.join(dir, 'data.tar.enc'), PASS, {
+      context: volumeBinding({ snapshotId, createdAt, agent: 'forger', image: null, volumes: [{ key: 'data' }] }, 'data'),
+    });
     const manifest: SnapshotManifest = {
       format: 'agentvault-container-snapshot',
-      version: 1,
-      createdAt: new Date().toISOString(),
+      version: SNAPSHOT_VERSION,
+      snapshotId,
+      createdAt,
       agent: 'forger',
       image: null,
       volumes: [
@@ -427,5 +432,183 @@ describe.skipIf(!usable)('snapshot create / verify / restore on a real daemon', 
     const tar = fs.readFileSync(path.join(created.dir, 'cache.tar'));
     expect(created.manifest.volumes[0]?.plaintextSha256).toBe(createHash('sha256').update(tar).digest('hex'));
     expect(created.manifest.volumes[0]?.entries).toBe(2); // ./ and ./cache.dat
+  });
+});
+
+describe.skipIf(!usable)('failures and interruptions on a real daemon', () => {
+  let source: string;
+
+  beforeAll(async () => {
+    source = await newAgentWithData('rsrc');
+  });
+
+  /** Ask the real restore helper to write some awkward partial data and then fail, the way a killed helper would. */
+  function crashingRestore(partial: string): ContainerRuntime {
+    return new Proxy(runtime, {
+      get(target, prop) {
+        if (prop === 'runForeground') {
+          return (spec: ContainerSpec, io?: { stdinFile?: string; stdoutFile?: string }) =>
+            target.runForeground(spec.command?.[0] === 'tar' && spec.command[1] === '-xf' ? { ...spec, command: ['sh', '-c', partial] } : spec, io);
+        }
+        const value: unknown = Reflect.get(target, prop, target);
+        return typeof value === 'function' ? (value as (...a: unknown[]) => unknown).bind(target) : value;
+      },
+    }) as ContainerRuntime;
+  }
+
+  // Partial data a restore could have left: owned by the agent's uid, an unreadable file in an unwritable directory, a link.
+  const PARTIAL =
+    'mkdir -p /v/big /v/locked && echo partial > /v/big/part1 && echo x > /v/locked/f && ln -s big /v/link ' +
+    '&& chown -R 10001:10001 /v && chmod 0000 /v/locked/f && chmod 0500 /v/locked && exit 137';
+
+  it('a volume that a stopped container still references cannot be removed: it is emptied instead, and the error says so', async () => {
+    const created = await createSnapshot({ runtime, agent: source, outputDir: path.join(work, 'rf-out'), passphrase: PASS });
+    const target = d.agent('rfhold');
+    const volume = resourceNames(target).volume('data');
+    await runtime.ensureVolume(volume, { [LABEL_AGENT]: target, [LABEL_VOLUME_KEY]: 'data' });
+    // A container that was created (never even started) is enough for Docker to refuse `volume rm`.
+    const holder = docker(['create', `--name=${d.name('holder')}`, `-v=${volume}:/held`, BUSYBOX, 'true']);
+    expect(holder.status, holder.stderr).toBe(0);
+    expect(docker(['volume', 'rm', volume]).stderr).toMatch(/in use/);
+
+    const err = await expectCode(
+      restoreSnapshot({ runtime: crashingRestore(PARTIAL), snapshotDir: created.dir, agent: target, passphrase: PASS }),
+      'COMMAND_FAILED'
+    );
+    expect(err.message).toMatch(/exit code 137/);
+    expect(err.message).toContain(`"${volume}" could not be removed`);
+    expect(err.message).toContain('was emptied instead: no partial data remains');
+
+    // The files are really gone, hidden ones and the unreadable one included, and the volume is still there for the agent.
+    expect(volumeExists(volume)).toBe(true);
+    expect(inVolume(volume, 'ls -A /v | wc -l', { readOnly: true }).stdout.trim()).toBe('0');
+    expect(leftoverHelpers(target)).toEqual([]);
+    // A retry now works instead of being refused as non-empty.
+    await restoreSnapshot({ runtime, snapshotDir: created.dir, agent: target, passphrase: PASS });
+    expect(inVolume(volume, 'cat /v/readable.txt', { readOnly: true }).stdout).toBe(CANARY);
+  });
+
+  it('a volume nothing references is removed again', async () => {
+    const created = await createSnapshot({ runtime, agent: source, outputDir: path.join(work, 'rf2-out'), passphrase: PASS });
+    const target = d.agent('rfgone');
+    const err = await expectCode(
+      restoreSnapshot({ runtime: crashingRestore(PARTIAL), snapshotDir: created.dir, agent: target, passphrase: PASS }),
+      'COMMAND_FAILED'
+    );
+    expect(err.message).toContain('was removed again: no partial data remains');
+    expect(volumeExists(resourceNames(target).volume('data'))).toBe(false);
+  });
+
+  it('restoring under a running agent is refused with or without force; once it is stopped the restore works', async () => {
+    const created = await createSnapshot({ runtime, agent: source, outputDir: path.join(work, 'run-out'), passphrase: PASS });
+    const target = d.agent('running');
+    const container = `av-${target}`;
+    const started = docker([
+      'run', '-d', `--name=${container}`, '--network=none', '--label=agentvault.managed=true', `--label=agentvault.agent=${target}`,
+      '--label=agentvault.role=agent', BUSYBOX, 'sleep', '300',
+    ]);
+    expect(started.status, started.stderr).toBe(0);
+    try {
+      for (const force of [false, true]) {
+        const err = await expectCode(
+          restoreSnapshot({ runtime, snapshotDir: created.dir, agent: target, passphrase: PASS, ...(force ? { force: true } : {}) }),
+          'POLICY_VIOLATION'
+        );
+        expect(err.message).toContain(`Stop it first with "agentvault stop ${target}"`);
+      }
+      expect(volumeExists(resourceNames(target).volume('data'))).toBe(false);
+    } finally {
+      docker(['rm', '-f', container]);
+    }
+    await restoreSnapshot({ runtime, snapshotDir: created.dir, agent: target, passphrase: PASS });
+    expect(volumeExists(resourceNames(target).volume('data'))).toBe(true);
+  });
+
+  describe('Ctrl-C in the middle of a big volume', () => {
+    let big: string;
+
+    beforeAll(async () => {
+      big = d.agent('big');
+      const names = resourceNames(big);
+      await runtime.ensureVolume(names.volume('data'), { [LABEL_AGENT]: big, [LABEL_VOLUME_KEY]: 'data' });
+      const r = inVolume(names.volume('data'), 'head -c 300000000 /dev/urandom > /v/big.bin && echo hello > /v/small.txt');
+      expect(r.status, r.stderr).toBe(0);
+    });
+
+    async function waitForHelper(agent: string, kind: string): Promise<string> {
+      const deadline = Date.now() + 60_000;
+      for (;;) {
+        const found = leftoverHelpers(agent).find((n) => n.startsWith(`av-${agent}-${kind}-`));
+        if (found !== undefined) return found;
+        if (Date.now() > deadline) throw new Error(`no ${kind} helper appeared`);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    }
+
+    async function waitGone(agent: string): Promise<void> {
+      const deadline = Date.now() + 30_000;
+      while (leftoverHelpers(agent).length > 0) {
+        if (Date.now() > deadline) throw new Error(`helpers still running: ${leftoverHelpers(agent).join(', ')}`);
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    }
+
+    function filesUnder(dir: string): string[] {
+      if (!fs.existsSync(dir)) return [];
+      return fs.readdirSync(dir, { recursive: true, withFileTypes: true }).map((e) => path.join(e.parentPath, e.name));
+    }
+
+    it('snapshot create: the helper is removed, no plaintext and no half-written snapshot remains', async () => {
+      const outputDir = path.join(work, 'abort-create-out');
+      const controller = new AbortController();
+      const pending = createSnapshot({ runtime, agent: big, outputDir, passphrase: PASS, signal: controller.signal });
+      const helper = await waitForHelper(big, 'snap');
+      controller.abort();
+      const err = await pending.then(
+        () => undefined,
+        (e: unknown) => e
+      );
+      expect(err).toBeInstanceOf(SnapshotInterruptedError);
+      expect((err as Error).message).toContain('unfinished snapshot was deleted');
+      await waitGone(big);
+      expect(leftoverHelpers(big)).not.toContain(helper);
+      expect(filesUnder(outputDir)).toEqual([]);
+    });
+
+    it('snapshot restore: the helper is removed, the target volume is taken back, the decrypted spool is deleted', async () => {
+      const created = await createSnapshot({ runtime, agent: big, outputDir: path.join(work, 'abort-restore-out'), passphrase: PASS });
+      const target = d.agent('bigrst');
+      const tempDir = path.join(work, 'abort-restore-tmp');
+      fs.mkdirSync(tempDir);
+      const controller = new AbortController();
+      const pending = restoreSnapshot({ runtime, snapshotDir: created.dir, agent: target, passphrase: PASS, tempDir, signal: controller.signal });
+      await waitForHelper(target, 'rst');
+      controller.abort();
+      const err = await pending.then(
+        () => undefined,
+        (e: unknown) => e
+      );
+      expect(err).toBeInstanceOf(SnapshotInterruptedError);
+      expect((err as Error).message).toMatch(/was removed again: no partial data remains/);
+      await waitGone(target);
+      expect(volumeExists(resourceNames(target).volume('data'))).toBe(false);
+      expect(filesUnder(tempDir)).toEqual([]);
+    });
+
+    it('snapshot verify: the decrypted spool is deleted', async () => {
+      const created = await createSnapshot({ runtime, agent: big, outputDir: path.join(work, 'abort-verify-out'), passphrase: PASS });
+      const tempDir = path.join(work, 'abort-verify-tmp');
+      fs.mkdirSync(tempDir);
+      const controller = new AbortController();
+      const pending = verifySnapshot({ snapshotDir: created.dir, passphrase: PASS, tempDir, signal: controller.signal });
+      const deadline = Date.now() + 60_000;
+      while (filesUnder(tempDir).length < 2) {
+        if (Date.now() > deadline) throw new Error('no spool appeared');
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      controller.abort();
+      await expect(pending).rejects.toBeInstanceOf(SnapshotInterruptedError);
+      expect(filesUnder(tempDir)).toEqual([]);
+    });
   });
 });

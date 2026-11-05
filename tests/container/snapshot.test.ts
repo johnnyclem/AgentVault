@@ -10,18 +10,22 @@ import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { encryptFile } from '../../src/container/crypto.js';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { encryptFile, internals as cryptoInternals } from '../../src/container/crypto.js';
 import { buildRunArgs } from '../../src/container/docker.js';
 import {
   SNAPSHOT_FORMAT,
+  SNAPSHOT_VERSION,
+  SnapshotInterruptedError,
   createSnapshot,
+  internals as snapshotInternals,
   listSnapshots,
   readSnapshotManifest,
   restoreSnapshot,
   snapshotFileName,
   snapshotManifestSchema,
   verifySnapshot,
+  volumeBinding,
 } from '../../src/container/snapshot.js';
 import type { SnapshotManifest } from '../../src/container/snapshot.js';
 import { ContainerError, LABEL_AGENT, LABEL_VOLUME_KEY } from '../../src/container/types.js';
@@ -121,7 +125,7 @@ function sha256(buf: Buffer): string {
 // ---------------------------------------------------------------------------
 
 interface HelperCall {
-  kind: 'snapshot' | 'restore' | 'list';
+  kind: 'snapshot' | 'restore' | 'list' | 'empty';
   spec: ContainerSpec;
   io: { stdinFile?: string; stdoutFile?: string } | undefined;
   /** For restore: the exact bytes the helper would have read from stdin. */
@@ -148,6 +152,14 @@ interface FakeOptions {
   onSnapshot?: (call: HelperCall) => void;
   /** Fail the snapshot helper of this key. */
   failKey?: string;
+  /** Docker refuses to remove these volumes (a stopped container still references them). */
+  volumeInUse?: string[];
+  /** The emptying helper exits with this code and leaves the files in place. */
+  emptyExit?: number;
+  /** This kind of helper never finishes by itself: only removing the container ends it (exit 137). */
+  hang?: 'snapshot' | 'restore';
+  /** The first N `remove` calls fail with NOT_FOUND (the container is not created yet). */
+  removeContainerFailures?: number;
 }
 
 class FakeRuntime implements ContainerRuntime {
@@ -156,6 +168,11 @@ class FakeRuntime implements ContainerRuntime {
   readonly ensured: Array<{ name: string; labels: Record<string, string> | undefined }> = [];
   readonly removed: string[] = [];
   readonly events: string[] = [];
+  readonly removedContainers: Array<{ name: string; force: boolean | undefined }> = [];
+  /** Volumes a restore helper has written to and nobody has emptied since. */
+  readonly dirty = new Set<string>();
+  private readonly hanging = new Map<string, (result: CommandResult) => void>();
+  private removeContainerCalls = 0;
   existing: Set<string>;
 
   constructor(readonly options: FakeOptions = {}) {
@@ -205,8 +222,12 @@ class FakeRuntime implements ContainerRuntime {
 
   removeVolume(name: string): Promise<void> {
     this.events.push(`removeVolume ${name}`);
+    if ((this.options.volumeInUse ?? []).includes(name)) {
+      return Promise.reject(new ContainerError('COMMAND_FAILED', `volume is in use - [container ${'a'.repeat(12)}]`));
+    }
     this.removed.push(name);
     this.existing.delete(name);
+    this.dirty.delete(name);
     return Promise.resolve();
   }
 
@@ -219,12 +240,25 @@ class FakeRuntime implements ContainerRuntime {
     return Promise.resolve([]);
   }
 
+  remove(name: string, options?: { force?: boolean }): Promise<void> {
+    this.removeContainerCalls += 1;
+    this.removedContainers.push({ name, force: options?.force });
+    if (this.removeContainerCalls <= (this.options.removeContainerFailures ?? 0)) {
+      return Promise.reject(new ContainerError('NOT_FOUND', `No such container: ${name}`));
+    }
+    this.hanging.get(name)?.({ exitCode: 137, stdout: '', stderr: '', timedOut: false, spawnFailed: false });
+    return Promise.resolve();
+  }
+
   runForeground(spec: ContainerSpec, io?: { stdinFile?: string; stdoutFile?: string }): Promise<CommandResult> {
-    const verb = spec.command?.[0] === 'ls' ? 'list' : spec.command?.[1] === '-cf' ? 'snapshot' : 'restore';
+    const verb =
+      spec.command?.[0] === 'ls' ? 'list' : spec.command?.[0] === 'find' ? 'empty' : spec.command?.[1] === '-cf' ? 'snapshot' : 'restore';
     const call: HelperCall = { kind: verb, spec, io };
     this.calls.push(call);
     this.events.push(`${verb} ${spec.mounts[0]?.source ?? ''}`);
     const ok = (stdout = ''): CommandResult => ({ exitCode: 0, stdout, stderr: '', timedOut: false, spawnFailed: false });
+    // Registered before the hooks run, so a hook that aborts (and so removes the container) finds it.
+    const hung = this.options.hang === verb ? new Promise<CommandResult>((resolve) => this.hanging.set(spec.name, resolve)) : undefined;
 
     if (verb === 'snapshot') {
       this.options.onSnapshot?.(call);
@@ -233,6 +267,7 @@ class FakeRuntime implements ContainerRuntime {
       const tarKey = Object.keys(this.options.tars ?? {}).find((k) => source.endsWith(`-${k}`)) ?? key;
       const tar = this.options.tars?.[tarKey] ?? goodTar();
       if (io?.stdoutFile !== undefined) fs.writeFileSync(io.stdoutFile, tar, { mode: 0o600 });
+      if (hung !== undefined) return hung;
       if (this.options.failKey !== undefined && source.endsWith(`-${this.options.failKey}`)) {
         return Promise.resolve({ exitCode: 1, stdout: '', stderr: "tar: can't open './x': Permission denied", timedOut: false, spawnFailed: false });
       }
@@ -241,10 +276,17 @@ class FakeRuntime implements ContainerRuntime {
     if (verb === 'list') {
       const name = spec.mounts[0]?.source ?? '';
       if (this.options.listExit !== undefined) return Promise.resolve({ exitCode: this.options.listExit, stdout: '', stderr: 'ls: nope', timedOut: false, spawnFailed: false });
-      return Promise.resolve(ok((this.options.nonEmpty ?? []).includes(name) ? 'some-file\n' : ''));
+      return Promise.resolve(ok((this.options.nonEmpty ?? []).includes(name) || this.dirty.has(name) ? 'some-file\n' : ''));
+    }
+    if (verb === 'empty') {
+      if (this.options.emptyExit !== undefined) return Promise.resolve({ exitCode: this.options.emptyExit, stdout: '', stderr: 'find: cannot delete', timedOut: false, spawnFailed: false });
+      this.dirty.delete(spec.mounts[0]?.source ?? '');
+      return Promise.resolve(ok());
     }
     if (io?.stdinFile !== undefined) call.stdinBytes = fs.readFileSync(io.stdinFile);
+    this.dirty.add(spec.mounts[0]?.source ?? '');
     this.options.onRestore?.(call);
+    if (hung !== undefined) return hung;
     return Promise.resolve({ exitCode: this.options.restoreExit ?? 0, stdout: '', stderr: this.options.restoreExit ? 'tar: restore trouble' : '', timedOut: false, spawnFailed: false });
   }
 
@@ -270,9 +312,6 @@ class FakeRuntime implements ContainerRuntime {
     return this.nope();
   }
   stop(): never {
-    return this.nope();
-  }
-  remove(): never {
     return this.nope();
   }
   inspect(): never {
@@ -308,6 +347,8 @@ async function makeSnapshot(opts: { passphrase?: string; keys?: Record<string, B
 }
 
 /** Write a snapshot directory by hand, bypassing every create-time check (an attacker-built snapshot). */
+const FORGED_ID = 'f'.repeat(32);
+
 async function forgeSnapshot(opts: {
   tars: Record<string, Buffer>;
   passphrase?: string;
@@ -315,6 +356,7 @@ async function forgeSnapshot(opts: {
 }): Promise<string> {
   const dir = fresh('forged');
   const volumes: Array<Record<string, unknown>> = [];
+  const binding = { snapshotId: FORGED_ID, createdAt: FIXED().toISOString(), agent: 'forger', image: null, volumes: Object.keys(opts.tars).map((key) => ({ key })) };
   for (const [key, tar] of Object.entries(opts.tars)) {
     const plain = path.join(dir, `.${key}.plain`);
     fs.writeFileSync(plain, tar);
@@ -322,7 +364,7 @@ async function forgeSnapshot(opts: {
       fs.renameSync(plain, path.join(dir, `${key}.tar`));
       volumes.push({ key, file: `${key}.tar`, encrypted: false, plaintextSha256: sha256(tar), plaintextBytes: tar.length, entries: GOOD_ENTRIES });
     } else {
-      const enc = await encryptFile(plain, path.join(dir, `${key}.tar.enc`), opts.passphrase);
+      const enc = await encryptFile(plain, path.join(dir, `${key}.tar.enc`), opts.passphrase, { context: volumeBinding(binding, key) });
       fs.rmSync(plain);
       volumes.push({
         key,
@@ -338,8 +380,9 @@ async function forgeSnapshot(opts: {
   }
   const manifest: Record<string, unknown> = {
     format: SNAPSHOT_FORMAT,
-    version: 1,
-    createdAt: FIXED().toISOString(),
+    version: SNAPSHOT_VERSION,
+    snapshotId: FORGED_ID,
+    createdAt: binding.createdAt,
     agent: 'forger',
     image: null,
     volumes,
@@ -381,7 +424,8 @@ describe('createSnapshot', () => {
     expect(result.warnings.join(' ')).toMatch(/NOT encrypted/);
 
     const m = result.manifest;
-    expect(m).toMatchObject({ format: 'agentvault-container-snapshot', version: 1, agent: 'src-agent', image: null, encryption: null });
+    expect(m).toMatchObject({ format: 'agentvault-container-snapshot', version: 2, agent: 'src-agent', image: null, encryption: null });
+    expect(m.snapshotId).toMatch(/^[0-9a-f]{32}$/);
     expect(m.createdAt).toBe('2026-11-05T05:15:00.000Z');
     const tar = fs.readFileSync(path.join(result.dir, 'data.tar'));
     expect(m.volumes).toEqual([
@@ -674,7 +718,9 @@ describe('manifest schema (strict)', () => {
     ['an uppercase key', (_m: Record<string, unknown>, v: Record<string, unknown>) => ((v['key'] = 'Data'), (v['file'] = 'Data.tar.enc'))],
     ['an unknown field on a volume', (_m: Record<string, unknown>, v: Record<string, unknown>) => (v['extra'] = 1)],
     ['an unknown top-level field', (m: Record<string, unknown>) => (m['extra'] = 1)],
-    ['another version', (m: Record<string, unknown>) => (m['version'] = 2)],
+    ['another version', (m: Record<string, unknown>) => (m['version'] = 1)],
+    ['no snapshot id', (m: Record<string, unknown>) => delete m['snapshotId']],
+    ['a malformed snapshot id', (m: Record<string, unknown>) => (m['snapshotId'] = 'not-hex')],
     ['another format', (m: Record<string, unknown>) => (m['format'] = 'something-else')],
     ['a bad agent', (m: Record<string, unknown>) => (m['agent'] = '../agent')],
     ['a bad timestamp', (m: Record<string, unknown>) => (m['createdAt'] = 'yesterday')],
@@ -1205,5 +1251,538 @@ describe('restoreSnapshot', () => {
       await expectError(restoreSnapshot({ runtime, snapshotDir: dir, agent: 'new-agent', passphrase: PASS, tempDir }), 'COMMAND_FAILED');
       expect(fs.readdirSync(tempDir)).toEqual([]);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Adversarial-review fixes
+// ---------------------------------------------------------------------------
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+/** Rewrite manifest.json of a snapshot directory the way someone with write access (and no passphrase) could. */
+function editManifest(dir: string, edit: (m: Record<string, unknown>, volumes: Array<Record<string, unknown>>) => void): void {
+  const file = path.join(dir, 'manifest.json');
+  const manifest = JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>;
+  edit(manifest, manifest['volumes'] as Array<Record<string, unknown>>);
+  fs.writeFileSync(file, JSON.stringify(manifest, null, 2));
+}
+
+async function expectInterrupted(promise: Promise<unknown>, pattern?: RegExp): Promise<SnapshotInterruptedError> {
+  const err = await promise.then(
+    () => undefined,
+    (e: unknown) => e
+  );
+  expect(err, 'expected the operation to be interrupted').toBeInstanceOf(SnapshotInterruptedError);
+  if (pattern !== undefined) expect((err as Error).message).toMatch(pattern);
+  return err as SnapshotInterruptedError;
+}
+
+/** Abort the signal as soon as a key has been derived, i.e. while an encryption or decryption is under way. */
+function abortDuringCrypto(controller: AbortController): void {
+  const original = cryptoInternals.deriveKey;
+  vi.spyOn(cryptoInternals, 'deriveKey').mockImplementation(async (...args) => {
+    const key = await original(...args);
+    controller.abort();
+    return key;
+  });
+}
+
+describe('manifest-unauthenticated-volume-swap: encrypted volume files are bound to the manifest', () => {
+  const IMAGE = { ref: 'agentvault/src:1', id: 'sha256:abc' };
+
+  async function twoVolumes(): Promise<{ dir: string; manifest: SnapshotManifest }> {
+    const runtime = new FakeRuntime({ agent: 'src-agent', tars: { config: goodTar('CONFIG'), data: goodTar('DATA') } });
+    return createSnapshot({
+      runtime,
+      agent: 'src-agent',
+      outputDir: fresh('out'),
+      passphrase: PASS,
+      image: IMAGE,
+      containerPaths: { config: '/config', data: '/data' },
+      now: FIXED,
+    });
+  }
+
+  it('control: the untouched snapshot verifies, and still does after the directory is moved', async () => {
+    const { dir } = await twoVolumes();
+    expect((await verifySnapshot({ snapshotDir: dir, passphrase: PASS, tempDir: fresh('tmp') })).fullyVerified).toBe(true);
+    const moved = path.join(fresh('elsewhere'), 'renamed-snapshot');
+    fs.renameSync(dir, moved);
+    expect((await verifySnapshot({ snapshotDir: moved, passphrase: PASS, tempDir: fresh('tmp') })).fullyVerified).toBe(true);
+  });
+
+  /** The reviewer's attack: swap the two ciphertexts and the manifest fields that describe them. */
+  function swapVolumes(dir: string): void {
+    editManifest(dir, (_m, volumes) => {
+      const [a, b] = volumes as [Record<string, unknown>, Record<string, unknown>];
+      for (const field of ['plaintextSha256', 'plaintextBytes', 'ciphertextSha256', 'ciphertextBytes', 'entries']) {
+        [a[field], b[field]] = [b[field], a[field]];
+      }
+    });
+    const first = path.join(dir, 'config.tar.enc');
+    const second = path.join(dir, 'data.tar.enc');
+    const spare = path.join(dir, 'spare');
+    fs.renameSync(first, spare);
+    fs.renameSync(second, first);
+    fs.renameSync(spare, second);
+  }
+
+  it('swapping two volume files and their manifest fields fails verification', async () => {
+    const { dir } = await twoVolumes();
+    swapVolumes(dir);
+    // The ciphertext hashes now agree with the files, so only the binding can notice.
+    await expectError(verifySnapshot({ snapshotDir: dir, passphrase: PASS, tempDir: fresh('tmp') }), 'INTEGRITY', /wrong passphrase or the file was modified/);
+  });
+
+  it('swapping two volume files writes nothing on restore', async () => {
+    const { dir } = await twoVolumes();
+    swapVolumes(dir);
+    const runtime = new FakeRuntime({ existing: [] });
+    const tempDir = fresh('tmp');
+    await expectError(restoreSnapshot({ runtime, snapshotDir: dir, agent: 'new-agent', passphrase: PASS, tempDir }), 'INTEGRITY');
+    expect(runtime.ensured).toEqual([]);
+    expect(runtime.helpers('restore')).toEqual([]);
+    expect(fs.readdirSync(tempDir)).toEqual([]);
+  });
+
+  it.each<[string, (m: Record<string, unknown>, volumes: Array<Record<string, unknown>>) => void]>([
+    ['the agent name', (m) => (m['agent'] = 'victim-agent')],
+    ['the snapshot id', (m) => (m['snapshotId'] = '0'.repeat(32))],
+    ['the creation time', (m) => (m['createdAt'] = '2026-01-01T00:00:00.000Z')],
+    ['the image reference', (m) => (m['image'] = { ref: 'attacker/evil:latest', id: 'sha256:abc' })],
+    ['the image id', (m) => (m['image'] = { ref: IMAGE.ref, id: 'sha256:def' })],
+    ['a container path', (_m, volumes) => ((volumes[0] as Record<string, unknown>)['containerPath'] = '/elsewhere')],
+    [
+      'the set of volumes (one dropped, with its file)',
+      (_m, volumes) => {
+        volumes.splice(0, 1);
+      },
+    ],
+  ])('editing %s fails authentication', async (_label, edit) => {
+    const { dir } = await twoVolumes();
+    editManifest(dir, edit);
+    await expectError(verifySnapshot({ snapshotDir: dir, passphrase: PASS, tempDir: fresh('tmp') }), 'INTEGRITY', /wrong passphrase or the file was modified/);
+    const runtime = new FakeRuntime({ existing: [] });
+    await expectError(restoreSnapshot({ runtime, snapshotDir: dir, agent: 'new-agent', passphrase: PASS, tempDir: fresh('tmp') }), 'INTEGRITY');
+    expect(runtime.helpers('restore')).toEqual([]);
+  });
+
+  it('files of another snapshot cannot be lent to this one, even with the same agent, keys, time and passphrase', async () => {
+    const first = await twoVolumes();
+    const second = await twoVolumes();
+    // Only the random snapshot id differs.
+    for (const file of ['config.tar.enc', 'data.tar.enc']) fs.copyFileSync(path.join(second.dir, file), path.join(first.dir, file));
+    editManifest(first.dir, (_m, volumes) => {
+      const other = JSON.parse(fs.readFileSync(path.join(second.dir, 'manifest.json'), 'utf8')) as { volumes: Array<Record<string, unknown>> };
+      volumes.splice(0, volumes.length, ...other.volumes);
+    });
+    await expectError(verifySnapshot({ snapshotDir: first.dir, passphrase: PASS, tempDir: fresh('tmp') }), 'INTEGRITY');
+  });
+
+  it('volumeBinding is order independent for volumes and distinguishes every field', () => {
+    const base = { snapshotId: 'a'.repeat(32), createdAt: '2026-11-05T05:15:00.000Z', agent: 'x', image: null, volumes: [{ key: 'b' }, { key: 'a', containerPath: '/a' }] };
+    const reversed = { ...base, volumes: [...base.volumes].reverse() };
+    expect(volumeBinding(base, 'a')).toBe(volumeBinding(reversed, 'a'));
+    const variants = [
+      volumeBinding(base, 'b'),
+      volumeBinding({ ...base, snapshotId: 'b'.repeat(32) }, 'a'),
+      volumeBinding({ ...base, createdAt: '2026-11-05T05:15:01.000Z' }, 'a'),
+      volumeBinding({ ...base, agent: 'y' }, 'a'),
+      volumeBinding({ ...base, image: { ref: 'i:1' } }, 'a'),
+      volumeBinding({ ...base, volumes: [{ key: 'b' }, { key: 'a' }] }, 'a'),
+      volumeBinding({ ...base, volumes: [{ key: 'a', containerPath: '/a' }] }, 'a'),
+    ];
+    expect(new Set([volumeBinding(base, 'a'), ...variants]).size).toBe(variants.length + 1);
+  });
+
+  it('an unencrypted snapshot carries no binding (nothing to authenticate it with)', async () => {
+    const { dir } = await makeSnapshot();
+    editManifest(dir, (m) => (m['agent'] = 'someone-else'));
+    expect((await verifySnapshot({ snapshotDir: dir })).manifest.agent).toBe('someone-else');
+  });
+});
+
+describe('interrupt-leaves-plaintext: an encrypted create never leaves a plaintext file outside a private PID-named spool', () => {
+  it('the helper writes the tar into a 0700 spool named after this process, not next to the ciphertext', async () => {
+    const seen: Array<{ file: string; mode: number }> = [];
+    const runtime = new FakeRuntime({
+      agent: 'src-agent',
+      tars: { data: goodTar() },
+      onSnapshot: (call) => seen.push({ file: call.io?.stdoutFile ?? '', mode: fs.statSync(path.dirname(call.io?.stdoutFile ?? '')).mode & 0o777 }),
+    });
+    const { dir } = await createSnapshot({ runtime, agent: 'src-agent', outputDir: fresh('out'), passphrase: PASS, now: FIXED });
+    expect(seen).toHaveLength(1);
+    const relative = path.relative(dir, seen[0]?.file ?? '').split(path.sep);
+    expect(relative).toHaveLength(2);
+    expect(relative[0]).toMatch(new RegExp(`^avt-snapshot-${process.pid}-[A-Za-z0-9]{6}$`));
+    expect(relative[1]).toBe('data.tar');
+    expect(seen[0]?.mode).toBe(0o700);
+    expect(fs.readdirSync(dir).sort()).toEqual(['data.tar.enc', 'manifest.json']);
+  });
+
+  it('the plaintext of one volume is gone before the next volume is read', async () => {
+    const spoolWasEmpty: boolean[] = [];
+    const runtime = new FakeRuntime({
+      agent: 'src-agent',
+      tars: { alpha: goodTar('a'), beta: goodTar('b') },
+      onSnapshot: (call) => spoolWasEmpty.push(fs.readdirSync(path.dirname(call.io?.stdoutFile ?? '')).length === 0),
+    });
+    await createSnapshot({ runtime, agent: 'src-agent', outputDir: fresh('out'), passphrase: PASS, now: FIXED });
+    // The first tar had been encrypted and deleted when the second helper started.
+    expect(spoolWasEmpty).toEqual([true, true]);
+  });
+
+  it('an unencrypted create writes its tar straight to the final name, but is still marked with its owner while it runs and leaves nothing of that behind', async () => {
+    const during: string[][] = [];
+    const runtime = new FakeRuntime({
+      agent: 'src-agent',
+      tars: { data: goodTar() },
+      onSnapshot: (call) => during.push(fs.readdirSync(path.dirname(call.io?.stdoutFile ?? '')).sort()),
+    });
+    const { dir } = await createSnapshot({ runtime, agent: 'src-agent', outputDir: fresh('out'), now: FIXED });
+    expect(during).toHaveLength(1);
+    expect(during[0]).toEqual([expect.stringMatching(new RegExp(`^avt-snapshot-${process.pid}-[A-Za-z0-9]{6}$`))]);
+    expect(fs.readdirSync(dir).sort()).toEqual(['data.tar', 'manifest.json']);
+  });
+
+  it('an already aborted signal does nothing at all', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const outputDir = fresh('out');
+    const runtime = new FakeRuntime({ agent: 'src-agent', tars: { data: goodTar() } });
+    await expectInterrupted(createSnapshot({ runtime, agent: 'src-agent', outputDir, passphrase: PASS, signal: controller.signal }));
+    expect(runtime.events).toEqual([]);
+    expect(fs.readdirSync(outputDir)).toEqual([]);
+  });
+
+  it('abort while the helper runs removes the helper container and every file', async () => {
+    const controller = new AbortController();
+    const outputDir = fresh('out');
+    const runtime = new FakeRuntime({ agent: 'src-agent', tars: { data: goodTar() }, hang: 'snapshot', onSnapshot: () => controller.abort() });
+    const err = await expectInterrupted(
+      createSnapshot({ runtime, agent: 'src-agent', outputDir, passphrase: PASS, signal: controller.signal }),
+      /unfinished snapshot was deleted and nothing was kept/
+    );
+    expect(err.name).toBe('SnapshotInterruptedError');
+    const helper = runtime.helpers('snapshot')[0]?.spec.name;
+    expect(helper).toMatch(/^av-src-agent-snap-[0-9a-f]{8}$/);
+    expect(runtime.removedContainers).toEqual([{ name: helper, force: true }]);
+    expect(fs.readdirSync(outputDir)).toEqual([]);
+  });
+
+  it('keeps trying to remove a helper that docker had not created yet', async () => {
+    const controller = new AbortController();
+    const runtime = new FakeRuntime({
+      agent: 'src-agent',
+      tars: { data: goodTar() },
+      hang: 'snapshot',
+      removeContainerFailures: 2,
+      onSnapshot: () => controller.abort(),
+    });
+    await expectInterrupted(createSnapshot({ runtime, agent: 'src-agent', outputDir: fresh('out'), passphrase: PASS, signal: controller.signal }));
+    expect(runtime.removedContainers).toHaveLength(3);
+  });
+
+  it('abort after the helper wrote the plaintext tar deletes the spool and the snapshot directory', async () => {
+    const controller = new AbortController();
+    const outputDir = fresh('out');
+    let tarPath = '';
+    const runtime = new FakeRuntime({
+      agent: 'src-agent',
+      tars: { data: goodTar() },
+      onSnapshot: (call) => {
+        tarPath = call.io?.stdoutFile ?? '';
+        controller.abort(); // the fake finishes the helper normally: the plaintext tar exists when we notice
+      },
+    });
+    await expectInterrupted(createSnapshot({ runtime, agent: 'src-agent', outputDir, passphrase: PASS, signal: controller.signal }));
+    expect(tarPath).not.toBe('');
+    expect(fs.existsSync(tarPath)).toBe(false);
+    expect(fs.readdirSync(outputDir)).toEqual([]);
+  });
+
+  it('abort while the volume is being encrypted deletes everything too', async () => {
+    const controller = new AbortController();
+    const outputDir = fresh('out');
+    abortDuringCrypto(controller);
+    const runtime = new FakeRuntime({ agent: 'src-agent', tars: { data: goodTar() } });
+    await expectInterrupted(createSnapshot({ runtime, agent: 'src-agent', outputDir, passphrase: PASS, signal: controller.signal }));
+    expect(fs.readdirSync(outputDir)).toEqual([]);
+  });
+
+  it('abort during an UNENCRYPTED create also removes the half-written snapshot', async () => {
+    const controller = new AbortController();
+    const outputDir = fresh('out');
+    const runtime = new FakeRuntime({ agent: 'src-agent', tars: { data: goodTar() }, hang: 'snapshot', onSnapshot: () => controller.abort() });
+    await expectInterrupted(createSnapshot({ runtime, agent: 'src-agent', outputDir, signal: controller.signal }));
+    expect(fs.readdirSync(outputDir)).toEqual([]);
+  });
+
+  it('a failure that is not an abort is still reported as itself', async () => {
+    const controller = new AbortController();
+    const runtime = new FakeRuntime({ agent: 'src-agent', tars: { data: goodTar() }, snapshotExit: 1 });
+    await expectError(createSnapshot({ runtime, agent: 'src-agent', outputDir: fresh('out'), passphrase: PASS, signal: controller.signal }), 'COMMAND_FAILED', /exit code 1/);
+  });
+});
+
+describe('interrupt-leaves-plaintext: verify and restore', () => {
+  it('verify: abort while decrypting deletes the decrypted spool', async () => {
+    const { dir } = await makeSnapshot({ passphrase: PASS });
+    const tempDir = fresh('tmp');
+    const controller = new AbortController();
+    abortDuringCrypto(controller);
+    await expectInterrupted(verifySnapshot({ snapshotDir: dir, passphrase: PASS, tempDir, signal: controller.signal }), /snapshot was not changed/);
+    expect(fs.readdirSync(tempDir)).toEqual([]);
+    expect(fs.readdirSync(dir).sort()).toEqual(['data.tar.enc', 'manifest.json']);
+  });
+
+  it('verify: an already aborted signal creates no spool', async () => {
+    const { dir } = await makeSnapshot({ passphrase: PASS });
+    const tempDir = fresh('tmp');
+    const controller = new AbortController();
+    controller.abort();
+    await expectInterrupted(verifySnapshot({ snapshotDir: dir, passphrase: PASS, tempDir, signal: controller.signal }));
+    expect(fs.readdirSync(tempDir)).toEqual([]);
+  });
+
+  it('restore: the decrypted spool is named after this process', async () => {
+    const { dir } = await makeSnapshot({ passphrase: PASS });
+    const tempDir = fresh('tmp');
+    const spools: string[] = [];
+    const runtime = new FakeRuntime({ existing: [], onRestore: (call) => spools.push(path.basename(path.dirname(call.io?.stdinFile ?? ''))) });
+    await restoreSnapshot({ runtime, snapshotDir: dir, agent: 'new-agent', passphrase: PASS, tempDir });
+    expect(spools[0]).toMatch(new RegExp(`^avt-snapshot-${process.pid}-[A-Za-z0-9]{6}$`));
+  });
+
+  it('restore: abort while decrypting writes nothing to any volume and deletes the spool', async () => {
+    const { dir } = await makeSnapshot({ passphrase: PASS });
+    const tempDir = fresh('tmp');
+    const controller = new AbortController();
+    abortDuringCrypto(controller);
+    const runtime = new FakeRuntime({ existing: [] });
+    await expectInterrupted(
+      restoreSnapshot({ runtime, snapshotDir: dir, agent: 'new-agent', passphrase: PASS, tempDir, signal: controller.signal }),
+      /Nothing was written to any volume/
+    );
+    expect(runtime.ensured).toEqual([]);
+    expect(fs.readdirSync(tempDir)).toEqual([]);
+  });
+
+  it('restore: abort while the restore helper runs removes the helper, takes the volume back and says so', async () => {
+    const { dir } = await makeSnapshot({ passphrase: PASS });
+    const tempDir = fresh('tmp');
+    const controller = new AbortController();
+    const runtime = new FakeRuntime({ existing: [], hang: 'restore', onRestore: () => controller.abort() });
+    const err = await expectInterrupted(
+      restoreSnapshot({ runtime, snapshotDir: dir, agent: 'new-agent', passphrase: PASS, tempDir, signal: controller.signal }),
+      /"av-new-agent-data" was removed again: no partial data remains/
+    );
+    expect(err.message).toMatch(/decrypted scratch copy was deleted/);
+    const helper = runtime.helpers('restore')[0]?.spec.name;
+    expect(runtime.removedContainers).toEqual([{ name: helper, force: true }]);
+    expect(runtime.removed).toEqual(['av-new-agent-data']);
+    expect(fs.readdirSync(tempDir)).toEqual([]);
+  });
+});
+
+describe('failed-restore-leaves-half-restored-volume', () => {
+  it('a volume Docker will not remove is emptied with the restore helper and the error says so', async () => {
+    const { dir } = await makeSnapshot();
+    const runtime = new FakeRuntime({ existing: ['av-new-agent-data'], volumeInUse: ['av-new-agent-data'], restoreExit: 137 });
+    const err = await expectError(restoreSnapshot({ runtime, snapshotDir: dir, agent: 'new-agent' }), 'COMMAND_FAILED', /exit code 137/);
+    expect(err.message).toMatch(/"av-new-agent-data" could not be removed \(volume is in use.*\) and was emptied instead: no partial data remains/);
+    expect(err.details?.['volumeStates']).toEqual([{ key: 'data', volume: 'av-new-agent-data', state: 'emptied' }]);
+
+    // The data really is gone, and it was the restore helper's capability set that did it.
+    expect(runtime.dirty.size).toBe(0);
+    const empty = runtime.helpers('empty');
+    expect(empty).toHaveLength(1);
+    const restore = runtime.helpers('restore')[0]?.spec;
+    expect(empty[0]?.spec.command).toEqual(['find', '/v', '-mindepth', '1', '-delete']);
+    expect(empty[0]?.spec.capAdd).toEqual(restore?.capAdd);
+    expect(empty[0]?.spec.capAdd).toEqual(['CHOWN', 'FOWNER', 'DAC_OVERRIDE']);
+    expect(empty[0]?.spec).toMatchObject({ network: 'none', readOnlyRootfs: true, user: '0:0', role: 'helper', mounts: [{ source: 'av-new-agent-data', target: '/v', readOnly: false }] });
+    const argv = buildRunArgs(empty[0]?.spec as ContainerSpec);
+    expect(argv).toContain('--cap-drop=ALL');
+    expect(argv).not.toContain('--cap-add=DAC_READ_SEARCH');
+  });
+
+  it('a volume that can neither be removed nor emptied is reported as still holding partial data, with the command that fixes it', async () => {
+    const { dir } = await makeSnapshot();
+    const runtime = new FakeRuntime({ existing: ['av-new-agent-data'], volumeInUse: ['av-new-agent-data'], restoreExit: 137, emptyExit: 1 });
+    const err = await expectError(restoreSnapshot({ runtime, snapshotDir: dir, agent: 'new-agent' }), 'COMMAND_FAILED');
+    expect(err.message).toMatch(/STILL CONTAINS PARTIAL DATA/);
+    expect(err.message).toMatch(/could not be removed \(volume is in use/);
+    expect(err.message).toMatch(/could not be emptied \(the emptying helper failed \(exit code 1\)/);
+    expect(err.message).toContain('docker run --rm --network none -v av-new-agent-data:/v busybox:1.37 find /v -mindepth 1 -delete');
+    expect(err.message).toContain('agentvault rm new-agent --volumes');
+    expect(err.details?.['volumeStates']).toEqual([{ key: 'data', volume: 'av-new-agent-data', state: 'partial' }]);
+    expect(runtime.dirty.has('av-new-agent-data')).toBe(true);
+  });
+
+  it('an emptying helper that exits 0 but leaves files behind is not believed', async () => {
+    const { dir } = await makeSnapshot();
+    const runtime = new FakeRuntime({ existing: ['av-new-agent-data'], volumeInUse: ['av-new-agent-data'], restoreExit: 137 });
+    const original = runtime.runForeground.bind(runtime);
+    runtime.runForeground = (spec, io): Promise<CommandResult> =>
+      spec.command?.[0] === 'find' ? Promise.resolve({ exitCode: 0, stdout: '', stderr: '', timedOut: false, spawnFailed: false }) : original(spec, io);
+    const err = await expectError(restoreSnapshot({ runtime, snapshotDir: dir, agent: 'new-agent' }), 'COMMAND_FAILED');
+    expect(err.message).toMatch(/STILL CONTAINS PARTIAL DATA/);
+    expect(err.message).toMatch(/files remained after the emptying helper/);
+  });
+
+  it('a removable volume is removed and the message says so', async () => {
+    const { dir } = await makeSnapshot();
+    const runtime = new FakeRuntime({ existing: [], restoreExit: 1 });
+    const err = await expectError(restoreSnapshot({ runtime, snapshotDir: dir, agent: 'new-agent' }), 'COMMAND_FAILED');
+    expect(err.message).toMatch(/"av-new-agent-data" was removed again: no partial data remains/);
+    expect(err.details?.['volumeStates']).toEqual([{ key: 'data', volume: 'av-new-agent-data', state: 'removed' }]);
+    expect(runtime.helpers('empty')).toEqual([]);
+  });
+
+  it('reports every volume, each in its own state', async () => {
+    const { dir } = await makeSnapshot({ keys: { alpha: goodTar('a'), beta: goodTar('b') } });
+    let n = 0;
+    const base = new FakeRuntime({ existing: [], volumeInUse: ['av-new-agent-beta'] });
+    const failSecond: ContainerRuntime = Object.assign(Object.create(base) as ContainerRuntime, {
+      runForeground: (spec: ContainerSpec, io?: { stdinFile?: string }): Promise<CommandResult> => {
+        if (spec.command?.[0] === 'tar') {
+          n += 1;
+          if (n === 2) return Promise.resolve({ exitCode: 1, stdout: '', stderr: 'boom', timedOut: false, spawnFailed: false });
+        }
+        return base.runForeground(spec, io);
+      },
+    });
+    const err = await expectError(restoreSnapshot({ runtime: failSecond, snapshotDir: dir, agent: 'new-agent' }), 'COMMAND_FAILED');
+    expect(err.details?.['volumeStates']).toEqual([
+      { key: 'alpha', volume: 'av-new-agent-alpha', state: 'removed' },
+      { key: 'beta', volume: 'av-new-agent-beta', state: 'emptied' },
+    ]);
+  });
+
+  it('a volume that held data before (force) is left alone and reported as possibly mixed', async () => {
+    const { dir } = await makeSnapshot();
+    const runtime = new FakeRuntime({ existing: ['av-new-agent-data'], nonEmpty: ['av-new-agent-data'], restoreExit: 1 });
+    const err = await expectError(restoreSnapshot({ runtime, snapshotDir: dir, agent: 'new-agent', force: true }), 'COMMAND_FAILED');
+    expect(err.message).toMatch(/"av-new-agent-data" held data before and was left alone: it may now mix the old files with a partial restore/);
+    expect(err.details?.['volumeStates']).toEqual([{ key: 'data', volume: 'av-new-agent-data', state: 'mixed' }]);
+    expect(runtime.removed).toEqual([]);
+    expect(runtime.helpers('empty')).toEqual([]);
+  });
+
+  it('a refusal before any write carries no cleanup report', async () => {
+    const { dir } = await makeSnapshot();
+    const runtime = new FakeRuntime({ existing: ['av-new-agent-data'], nonEmpty: ['av-new-agent-data'] });
+    const err = await expectError(restoreSnapshot({ runtime, snapshotDir: dir, agent: 'new-agent' }), 'POLICY_VIOLATION');
+    expect(err.message).not.toMatch(/removed again|emptied|PARTIAL/);
+    expect(err.details?.['volumeStates']).toBeUndefined();
+  });
+});
+
+describe('snapshot-restore-rm-usability-traps (c): restoring under a running agent', () => {
+  it.each([[false], [true]])('is refused before anything is staged or written (force: %s)', async (force) => {
+    const { dir } = await makeSnapshot({ passphrase: PASS });
+    const tempDir = fresh('tmp');
+    const runtime = new FakeRuntime({ existing: [], running: true });
+    const err = await expectError(
+      restoreSnapshot({ runtime, snapshotDir: dir, agent: 'new-agent', passphrase: PASS, tempDir, ...(force ? { force: true } : {}) }),
+      'POLICY_VIOLATION',
+      /Agent new-agent is running .* Stop it first with "agentvault stop new-agent"/
+    );
+    expect(err.details).toMatchObject({ reason: 'agent_running', agent: 'new-agent' });
+    expect(runtime.ensured).toEqual([]);
+    expect(runtime.calls).toEqual([]);
+    expect(fs.readdirSync(tempDir)).toEqual([]);
+  });
+
+  it('is checked again right before the first write, because staging can take minutes', async () => {
+    const { dir } = await makeSnapshot();
+    const runtime = new FakeRuntime({ existing: [] });
+    let calls = 0;
+    runtime.list = (): Promise<ContainerInfo[]> => {
+      calls += 1;
+      return Promise.resolve(
+        calls === 1 ? [] : [{ id: 'x', name: 'av-new-agent', image: 'img', state: 'running', status: 'Up', role: 'agent', agent: 'new-agent', createdAt: '', labels: {} }]
+      );
+    };
+    await expectError(restoreSnapshot({ runtime, snapshotDir: dir, agent: 'new-agent' }), 'POLICY_VIOLATION', /is running/);
+    expect(runtime.ensured).toEqual([]);
+    expect(runtime.helpers('restore')).toEqual([]);
+  });
+
+  it('a stopped agent is fine', async () => {
+    const { dir } = await makeSnapshot();
+    await restoreSnapshot({ runtime: new FakeRuntime({ existing: [] }), snapshotDir: dir, agent: 'new-agent' });
+  });
+});
+
+describe('free space is checked before writing (a sparse volume expands to its full size in the tar)', () => {
+  it('restore refuses before decrypting when the scratch directory is too small', async () => {
+    const { dir } = await makeSnapshot({ passphrase: PASS });
+    const tempDir = fresh('tmp');
+    vi.spyOn(snapshotInternals, 'freeBytes').mockReturnValue(1024);
+    const runtime = new FakeRuntime({ existing: [] });
+    const err = await expectError(
+      restoreSnapshot({ runtime, snapshotDir: dir, agent: 'new-agent', passphrase: PASS, tempDir }),
+      'COMMAND_FAILED',
+      /Not enough free space in .* the decrypted copy of the snapshot/
+    );
+    expect(err.details).toMatchObject({ free: 1024 });
+    expect(runtime.ensured).toEqual([]);
+    expect(fs.readdirSync(tempDir)).toEqual([]);
+  });
+
+  it('verify refuses too, but only for what it would decrypt: --ciphertext-only needs no scratch space', async () => {
+    const { dir } = await makeSnapshot({ passphrase: PASS });
+    vi.spyOn(snapshotInternals, 'freeBytes').mockReturnValue(1024);
+    await expectError(verifySnapshot({ snapshotDir: dir, passphrase: PASS, tempDir: fresh('tmp') }), 'COMMAND_FAILED', /Not enough free space/);
+    expect((await verifySnapshot({ snapshotDir: dir, tempDir: fresh('tmp') })).fullyVerified).toBe(false);
+  });
+
+  it('create refuses before encrypting a tar the disk cannot hold twice, and leaves nothing behind', async () => {
+    const outputDir = fresh('out');
+    vi.spyOn(snapshotInternals, 'freeBytes').mockReturnValue(1024);
+    const runtime = new FakeRuntime({ agent: 'src-agent', tars: { data: goodTar() } });
+    await expectError(
+      createSnapshot({ runtime, agent: 'src-agent', outputDir, passphrase: PASS, now: FIXED }),
+      'COMMAND_FAILED',
+      /Not enough free space in .* the encrypted copy of volume "data"/
+    );
+    expect(fs.readdirSync(outputDir)).toEqual([]);
+  });
+
+  it('an unknowable free space does not block anything', async () => {
+    vi.spyOn(snapshotInternals, 'freeBytes').mockImplementation(() => {
+      throw new Error('statfs not supported');
+    });
+    const { dir } = await makeSnapshot({ passphrase: PASS });
+    expect((await verifySnapshot({ snapshotDir: dir, passphrase: PASS, tempDir: fresh('tmp') })).fullyVerified).toBe(true);
+  });
+});
+
+describe('listSnapshots shows what is incomplete', () => {
+  it('lists a directory that looks like ours but has no usable manifest as incomplete, and ignores every other directory', async () => {
+    const parent = fresh('list');
+    await createSnapshot({ runtime: new FakeRuntime({ agent: 'alpha', tars: { data: goodTar() } }), agent: 'alpha', outputDir: parent, now: FIXED });
+    fs.mkdirSync(path.join(parent, 'alpha-20261104T010101Z'));
+    fs.writeFileSync(path.join(parent, 'alpha-20261104T010101Z', 'data.tar'), 'partial');
+    fs.mkdirSync(path.join(parent, 'beta-20261104T010102Z-2'));
+    fs.mkdirSync(path.join(parent, 'broken-20261104T010103Z'));
+    fs.writeFileSync(path.join(parent, 'broken-20261104T010103Z', 'manifest.json'), '{"format": "wrong"}');
+    fs.mkdirSync(path.join(parent, 'Documents'));
+    fs.mkdirSync(path.join(parent, 'incomplete-no-manifest'));
+    fs.writeFileSync(path.join(parent, 'stray-file.txt'), 'x');
+
+    const listed = listSnapshots(parent);
+    expect(listed.map((e) => `${e.status}:${e.name}`)).toEqual([
+      'complete:alpha-20261105T051500Z',
+      'incomplete:alpha-20261104T010101Z',
+      'incomplete:beta-20261104T010102Z-2',
+      'incomplete:broken-20261104T010103Z',
+    ]);
+    expect(listed[3]).toEqual({ status: 'incomplete', dir: path.join(parent, 'broken-20261104T010103Z'), name: 'broken-20261104T010103Z' });
   });
 });

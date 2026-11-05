@@ -304,7 +304,18 @@ describe.skipIf(!usable)('container commands against a real daemon', () => {
       expect((await cli(['container', 'logs', second])).out).toContain('agent-ready lines=1');
     });
 
+    it('restoring under a running agent is refused, with or without --force, and the message says how to stop it', async () => {
+      for (const extra of [[], ['--force']]) {
+        const refused = await cli(['snapshot', 'restore', snapshotDir, '--to', second, ...extra]);
+        expect(refused.code).toBe(1);
+        expect(refused.err).toContain(`Agent ${second} is running`);
+        expect(refused.err).toContain(`agentvault stop ${second}`);
+      }
+    });
+
     it('restoring into a volume that holds data is refused with a message that names --force', async () => {
+      const stopped = await cli(['stop', second, '-t', '1']);
+      expect(stopped.code, stopped.err).toBe(0);
       const refused = await cli(['snapshot', 'restore', snapshotDir, '--to', second]);
       expect(refused.code).toBe(1);
       expect(refused.err).toContain('--force');
@@ -320,6 +331,23 @@ describe.skipIf(!usable)('container commands against a real daemon', () => {
       expect(tar.includes('run:hi')).toBe(true);
     });
 
+    it('restore and verify refuse that unencrypted snapshot, loudly, unless --allow-unencrypted is given', async () => {
+      const [entry] = fs.readdirSync(path.join(scratch, 'plain-snapshots'));
+      const plainDir = path.join(scratch, 'plain-snapshots', entry ?? '');
+      const refusedVerify = await cli(['snapshot', 'verify', plainDir]);
+      expect(refusedVerify.code).toBe(1);
+      expect(refusedVerify.err).toContain('Encrypted: NO');
+      expect(refusedVerify.err).toContain('--allow-unencrypted');
+      const refusedRestore = await cli(['snapshot', 'restore', plainDir, '--to', d.agent('plainrefused')]);
+      expect(refusedRestore.code).toBe(1);
+      expect(refusedRestore.err).toContain('Encrypted: NO');
+
+      const verified = await cli(['snapshot', 'verify', plainDir, '--allow-unencrypted']);
+      expect(verified.code, verified.err).toBe(0);
+      expect(verified.out).toContain('Encrypted: NO');
+      expect(verified.err).toContain('Encrypted: NO');
+    });
+
     it('rm without --volumes removes the containers and keeps the data; rm --volumes -y deletes it', async () => {
       const removed = await cli(['rm', first.name]);
       expect(removed.code, removed.err).toBe(0);
@@ -333,7 +361,7 @@ describe.skipIf(!usable)('container commands against a real daemon', () => {
       expect(wiped.out).toContain(`Deleted volumes av-${first.name}-data`);
       expect(dockerNames(['volume', 'ls', '--format', '{{.Name}}'])).not.toContain(`av-${first.name}-data`);
 
-      // The second agent is still running: rm stops it gracefully, then removes it and its data on request.
+      // The second agent was stopped above: rm removes it and, on request, its data.
       const gone = await cli(['rm', second, '--volumes', '-y']);
       expect(gone.code, gone.err).toBe(0);
       expect(dockerNames(['ps', '-a', '--format', '{{.Names}}']).filter((n) => n.startsWith('av-avt-k-'))).toEqual([]);
