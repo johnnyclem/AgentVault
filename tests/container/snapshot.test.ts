@@ -166,6 +166,11 @@ class FakeRuntime implements ContainerRuntime {
     return Promise.resolve({ serverVersion: 'fake' });
   }
 
+  removeImage(ref: string): Promise<void> {
+    this.events.push(`removeImage ${ref}`);
+    return Promise.resolve();
+  }
+
   inspectImage(ref: string): Promise<ImageInfo | null> {
     this.events.push(`inspectImage ${ref}`);
     const present = (this.options.images ?? ['busybox:1.37']).includes(ref);

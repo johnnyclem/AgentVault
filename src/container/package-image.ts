@@ -61,7 +61,7 @@ const PLATFORM_RE = /^[a-z0-9]+\/[a-z0-9]+(\/[a-z0-9]+)?$/;
 // ---------------------------------------------------------------------------
 
 /** The slice of ContainerRuntime that packaging uses. */
-export type PackagingRuntime = Pick<ContainerRuntime, 'buildImage' | 'inspectImage' | 'runner'>;
+export type PackagingRuntime = Pick<ContainerRuntime, 'buildImage' | 'inspectImage' | 'removeImage' | 'runner'>;
 
 export interface ContainerPackageOptions {
   sourceDir: string;
@@ -532,8 +532,13 @@ export async function packageContainer(options: ContainerPackageOptions): Promis
   try {
     await verifyBuiltImage(options.runtime, built.tag, manifest);
   } catch (err) {
-    // Do not leave a tag that points at an image we could not vouch for.
-    await options.runtime.runner('docker', ['rmi', '--', built.tag], { timeoutMs: 30_000 });
+    // Do not leave a tag that points at an image we could not vouch for. This is
+    // best effort: failing to untag must not hide the verification error.
+    try {
+      await options.runtime.removeImage(built.tag);
+    } catch {
+      // the verification error below is the one the caller needs to see
+    }
     throw err;
   }
   result.imageTag = built.tag;

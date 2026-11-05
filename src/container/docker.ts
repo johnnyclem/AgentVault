@@ -563,7 +563,7 @@ export interface ForegroundIo {
   stdinFile?: string;
   stdoutFile?: string;
   inheritStdio?: boolean;
-  /** Not in the ContainerRuntime contract: kill the run after this long (exit 124). */
+  /** Kill the run after this long (exit 124). Part of the ContainerRuntime contract. */
   timeoutMs?: number;
 }
 
@@ -797,6 +797,11 @@ export class DockerRuntime implements ContainerRuntime {
     assertDockerName(name, 'volume name');
     const all = validateLabels({ ...labels, [LABEL_MANAGED]: 'true' });
     await this.invokeOk(['volume', 'create', ...all.map(([k, v]) => `--label=${k}=${v}`), name], { timeoutMs: QUICK_TIMEOUT_MS });
+  }
+
+  async removeImage(ref: string): Promise<void> {
+    assertImageRef(ref);
+    await this.invokeOk(['image', 'rm', '--', ref], { timeoutMs: QUICK_TIMEOUT_MS });
   }
 
   async removeVolume(name: string): Promise<void> {

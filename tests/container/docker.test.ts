@@ -822,6 +822,7 @@ describe('DockerRuntime validates names before building argv', () => {
     ['connectNetwork alias', (rt, bad) => rt.connectNetwork('c', 'net', [bad])],
     ['ensureVolume', (rt, bad) => rt.ensureVolume(bad)],
     ['removeVolume', (rt, bad) => rt.removeVolume(bad)],
+    ['removeImage', (rt, bad) => rt.removeImage(bad)],
     ['listVolumes agent', (rt, bad) => rt.listVolumes({ agent: bad })],
     ['list agent', (rt, bad) => rt.list({ agent: bad })],
     ['logs', (rt, bad) => rt.logs(bad)],
@@ -1173,6 +1174,15 @@ describe('DockerRuntime volumes', () => {
       'COMMAND_FAILED',
       /in use/
     );
+  });
+
+  it('removeImage runs `image rm --` and surfaces NOT_FOUND', async () => {
+    const ok = runtimeWith();
+    await ok.runtime.removeImage('agentvault/demo:1.0.0');
+    // `--` so that a ref can never be parsed as a flag
+    expect(ok.calls[0]?.args).toEqual(['image', 'rm', '--', 'agentvault/demo:1.0.0']);
+    const missing = runtimeWith(() => failed('Error response from daemon: No such image: agentvault/demo:1.0.0'));
+    expectError(await rejection(missing.runtime.removeImage('agentvault/demo:1.0.0')), 'NOT_FOUND');
   });
 
   it('listVolumes asks the daemon for exact labels and parses a real row', async () => {

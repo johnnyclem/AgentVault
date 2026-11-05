@@ -256,6 +256,8 @@ export interface ContainerRuntime {
 
   inspectImage(ref: string): Promise<ImageInfo | null>;
   buildImage(request: BuildRequest): Promise<BuildResult>;
+  /** Untag/remove an image. NOT_FOUND if it does not exist. */
+  removeImage(ref: string): Promise<void>;
 
   /** Idempotent. `internal` => `docker network create --internal`. */
   ensureNetwork(name: string, options: { internal: boolean; labels?: Record<string, string> }): Promise<void>;
@@ -277,7 +279,17 @@ export interface ContainerRuntime {
    */
   runForeground(
     spec: ContainerSpec,
-    io?: { stdinFile?: string; stdoutFile?: string; inheritStdio?: boolean }
+    io?: {
+      stdinFile?: string;
+      stdoutFile?: string;
+      inheritStdio?: boolean;
+      /**
+       * Kill the run after this long (exit code 124, timedOut). Helper
+       * containers (snapshot, restore, emptiness probe) should always set it:
+       * without one a wedged docker call blocks forever.
+       */
+      timeoutMs?: number;
+    }
   ): Promise<CommandResult>;
 
   list(filter?: { agent?: string; all?: boolean }): Promise<ContainerInfo[]>;

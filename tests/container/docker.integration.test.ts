@@ -186,6 +186,17 @@ describe.skipIf(!usable)('DockerRuntime against a real daemon', () => {
       expect(info?.user).toBe('');
     });
 
+    it('removeImage untags an image, then reports NOT_FOUND', async () => {
+      const context = fs.mkdtempSync(path.join(scratch, 'ctx-rmi-'));
+      fs.writeFileSync(path.join(context, 'Dockerfile'), `FROM ${BUSYBOX}\nLABEL a.b="removable"\n`);
+      const tag = `${d.name('rmi')}:latest`;
+      await runtime.buildImage({ contextDir: context, tag });
+      await expect(runtime.inspectImage(tag)).resolves.not.toBeNull();
+      await runtime.removeImage(tag);
+      await expect(runtime.inspectImage(tag)).resolves.toBeNull();
+      expectCode(await rejection(runtime.removeImage(tag)), 'NOT_FOUND');
+    });
+
     it('inspectImage returns null for an image that does not exist', async () => {
       await expect(runtime.inspectImage(`${d.name('nope')}:latest`)).resolves.toBeNull();
     });

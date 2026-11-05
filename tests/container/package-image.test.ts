@@ -64,6 +64,8 @@ function ok(stdout = ''): CommandResult {
 interface FakeOptions {
   info?: (labelFromFile: string) => ImageInfo | null;
   buildError?: Error;
+  /** Make removeImage (the best-effort untag after a failed verification) throw. */
+  removeError?: Error;
 }
 
 function fakeRuntime(options: FakeOptions = {}) {
@@ -71,6 +73,9 @@ function fakeRuntime(options: FakeOptions = {}) {
   const runner = vi.fn(async (_file: string, _args: readonly string[]) => ok());
   const runtime: PackagingRuntime = {
     runner,
+    removeImage: vi.fn(async (_ref: string) => {
+      if (options.removeError) throw options.removeError;
+    }),
     buildImage: vi.fn(async (request: BuildRequest) => {
       builds.push(request);
       if (options.buildError) throw options.buildError;
@@ -665,6 +670,7 @@ describe('build + verification', () => {
     expect(r.imageTag).toBe('agentvault/my-agent:1.0.0');
     expect(fake.runtime.inspectImage).toHaveBeenCalledWith('agentvault/my-agent:1.0.0');
     expect(fake.runner).not.toHaveBeenCalled();
+    expect(fake.runtime.removeImage).not.toHaveBeenCalled();
   });
 
   it('omits platform and noCache when not requested', async () => {
@@ -705,7 +711,19 @@ describe('build + verification', () => {
     const err = await failure({ sourceDir: src, runtime: fake.runtime });
     expect(err.code).toBe(code);
     expect(err.message).toMatch(message);
-    expect(fake.runner).toHaveBeenCalledWith('docker', ['rmi', '--', 'agentvault/my-agent:1.0.0'], expect.anything());
+    expect(fake.runtime.removeImage).toHaveBeenCalledWith('agentvault/my-agent:1.0.0');
+  });
+
+  it('reports the verification error even when untagging the image also fails', async () => {
+    const fake = fakeRuntime({
+      removeError: new ContainerError('COMMAND_FAILED', 'docker image rm failed: boom'),
+      info: (label) => ({ id: 'x', repoTags: [], repoDigests: [], labels: { [LABEL_MANIFEST]: label }, user: '1000:1000', sizeBytes: 1 }),
+    });
+    const err = await failure({ sourceDir: src, runtime: fake.runtime });
+    expect(fake.runtime.removeImage).toHaveBeenCalledTimes(1);
+    expect(err.code).toBe('INTEGRITY');
+    expect(err.message).toMatch(/expected 10001:10001/);
+    expect(err.message).not.toMatch(/image rm failed/);
   });
 
   it('rejects and untags an image that cannot be found after the build', async () => {
@@ -714,7 +732,7 @@ describe('build + verification', () => {
     const err = await failure({ sourceDir: src, runtime: fake.runtime });
     expect(err.code).toBe('INTEGRITY');
     expect(err.message).toMatch(/not found after the build/);
-    expect(fake.runner).toHaveBeenCalledWith('docker', ['rmi', '--', 'agentvault/my-agent:1.0.0'], expect.anything());
+    expect(fake.runtime.removeImage).toHaveBeenCalledWith('agentvault/my-agent:1.0.0');
   });
 
   it('propagates a build failure and keeps the generated files for debugging', async () => {
