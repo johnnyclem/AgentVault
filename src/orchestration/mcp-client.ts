@@ -4,8 +4,9 @@ import { EventEmitter } from 'node:events';
 /**
  * AgentVault's own secrets, kept out of every server's environment, from
  * AgentVault's environment and from MCPServerConfig.env alike: the key the
- * webapp signs memory_repo writes with (the PEM or its path) and the wallet
- * secrets. Polytician reaches memory_repo through the webapp's API and needs
+ * webapp signs memory_repo writes with (the PEM or its path), the wallet
+ * secrets and the passphrases that unlock the container secret store and
+ * encrypt container snapshots. Polytician reaches memory_repo through the webapp's API and needs
  * none of them, and a key that reached a child process could not be revoked
  * by rotating the API token.
  */
@@ -16,6 +17,8 @@ export const WITHHELD_SERVER_ENV = [
   'AGENTVAULT_PRIVATE_KEY',
   'AGENTVAULT_PASSWORD',
   'AGENTVAULT_BUNDLE_SECRET',
+  'AGENTVAULT_SECRETS_PASSPHRASE',
+  'AGENTVAULT_SNAPSHOT_PASSPHRASE',
 ] as const;
 
 /** The environment a server is started with: AgentVault's, then config.env over it, without WITHHELD_SERVER_ENV. */
