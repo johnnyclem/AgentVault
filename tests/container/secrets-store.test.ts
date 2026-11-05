@@ -168,6 +168,11 @@ describe('SecretStore on disk', () => {
       await store.set(NAME, CANARY, PASS);
       // the directory must be usable and private whatever the umask says
       expect(fs.statSync(path.dirname(store.file)).mode & 0o777).toBe(0o700);
+      // ...and so must every missing ANCESTOR the store had to create. A recursive
+      // mkdir leaves those at 0700 & ~umask; under umask 0o277 that is 0500, which
+      // blocks creating the next level for any non-root user (root ignores modes,
+      // so this assertion, not the EACCES, is what catches it on a root-run box).
+      expect(fs.statSync(path.dirname(path.dirname(store.file))).mode & 0o777).toBe(0o700);
       expect(fs.statSync(store.file).mode & 0o777).toBe(fileMode);
       await store.set('second', 'value', PASS);
       expect(fs.statSync(store.file).mode & 0o077).toBe(0);

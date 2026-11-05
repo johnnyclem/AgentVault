@@ -132,10 +132,30 @@ export class SecretStore {
   }
 
   private ensureDirectory(): void {
-    const dir = path.dirname(this.file);
-    const created = fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    // Only tighten a directory we just made; never chmod one the user chose to put the file in.
-    if (created !== undefined) fs.chmodSync(dir, 0o700);
+    // Create each missing level on its own and make it private straight away.
+    // `mkdir -p` (recursive) would leave the intermediate levels at 0700 & ~umask,
+    // and under a restrictive umask (0o277) such a level has no owner-write bit,
+    // so creating the next level inside it fails with EACCES for any non-root
+    // user. Only directories created here are chmod-ed; one that already exists
+    // (the user chose to put the file there) is never touched.
+    const missing: string[] = [];
+    let probe = path.dirname(this.file);
+    while (!fs.existsSync(probe)) {
+      missing.push(probe);
+      const parent = path.dirname(probe);
+      if (parent === probe) break; // a root that does not exist: mkdir below reports the real error
+      probe = parent;
+    }
+    for (const dir of missing.reverse()) {
+      try {
+        fs.mkdirSync(dir, { mode: 0o700 });
+      } catch (err) {
+        // another process created it between our check and now: theirs, so leave it alone
+        if ((err as NodeJS.ErrnoException).code === 'EEXIST') continue;
+        throw err;
+      }
+      fs.chmodSync(dir, 0o700);
+    }
   }
 
   /** Create or replace a secret. Creates the store (with this passphrase) if it does not exist. */
