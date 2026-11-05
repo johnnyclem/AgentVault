@@ -300,9 +300,18 @@ describe('node entrypoint derivation', () => {
     expect(detectContainerRuntime(dir).entrypoint).toEqual(['node', 'bin/other.js']);
   });
 
-  it('falls through a missing main with a warning, and through an excluded dist/ path', () => {
+  it('uses a compiled main under dist/ (the usual tsc output directory)', () => {
     pkg({ main: 'dist/index.js' });
     write('dist/index.js');
+    write('index.js');
+    const d = detectContainerRuntime(dir);
+    expect(d.entrypoint).toEqual(['node', 'dist/index.js']);
+    expect(d.entryFile).toBe('dist/index.js');
+  });
+
+  it('falls through a missing main with a warning, and through an excluded path', () => {
+    pkg({ main: 'node_modules/dep/index.js' });
+    write('node_modules/dep/index.js');
     write('index.js');
     const d = detectContainerRuntime(dir);
     expect(d.entrypoint).toEqual(['node', 'index.js']);
@@ -437,8 +446,10 @@ describe('entrypoint override (--entrypoint)', () => {
     expect(messageOf(() => detectContainerRuntime(dir, { entrypoint: ['node', 'nope.js'] }))).toMatch(/does not exist/);
     fs.mkdirSync(path.join(dir, 'lib'));
     expect(messageOf(() => detectContainerRuntime(dir, { entrypoint: ['node', 'lib'] }))).toMatch(/not a regular file/);
+    write('node_modules/dep/app.js');
+    expect(messageOf(() => detectContainerRuntime(dir, { entrypoint: ['node', 'node_modules/dep/app.js'] }))).toMatch(/never copied/);
     write('dist/app.js');
-    expect(messageOf(() => detectContainerRuntime(dir, { entrypoint: ['node', 'dist/app.js'] }))).toMatch(/never copied/);
+    expect(detectContainerRuntime(dir, { entrypoint: ['node', 'dist/app.js'] }).entryFile).toBe('dist/app.js');
     write('.env', 'X=1');
     expect(messageOf(() => detectContainerRuntime(dir, { entrypoint: ['node', '.env'] }))).toMatch(/never copied/);
   });
@@ -598,14 +609,14 @@ describe('name, version and base sanitisation', () => {
 
 describe('exclusionReason', () => {
   it.each([
-    '.env', '.env.local', '.env.production', '.ENV', '.git', 'node_modules', '.agentvault', 'dist', '.venv', 'venv', '__pycache__',
+    '.env', '.env.local', '.env.production', '.ENV', '.git', 'node_modules', '.agentvault', '.venv', 'venv', '__pycache__',
     'server.pem', 'KEY.PEM', 'tls.key', 'cert.p12', 'cert.pfx', 'id_rsa', 'id_rsa.pub', 'id_ed25519', 'id_ed25519.pub',
     '.npmrc', '.pypirc', '.netrc', '.DS_Store', 'debug.log', '.ssh', '.aws', '.git-credentials',
   ])('excludes %s', (name) => {
     expect(exclusionReason(name)).toBeDefined();
   });
 
-  it.each(['index.js', 'package.json', 'requirements.txt', 'main.py', 'src', 'environment.js', '.envrc.js', 'key.txt', 'logger.js', 'Dockerfile'])(
+  it.each(['index.js', 'package.json', 'requirements.txt', 'main.py', 'src', 'dist', 'environment.js', '.envrc.js', 'key.txt', 'logger.js', 'Dockerfile'])(
     'keeps %s',
     (name) => {
       expect(exclusionReason(name)).toBeUndefined();

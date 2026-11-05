@@ -141,6 +141,38 @@ describe('packageContainer (generate only)', () => {
     expect(r.stats.files).toBe(3);
   });
 
+  describe('dist/ (compiled TypeScript output)', () => {
+    it('stages compiled code under dist/ and runs it', async () => {
+      nodeProject({ main: 'dist/index.js' });
+      write('dist/index.js', 'console.log("compiled")\n');
+      write('dist/lib/util.js', 'module.exports = 1\n');
+      const r = await packageContainer(pkgOptions());
+      expect(listTree(r.contextDir)).toEqual(['dist/index.js', 'dist/lib/util.js', 'index.js', 'package-lock.json', 'package.json']);
+      expect(fs.readFileSync(r.dockerfilePath, 'utf8')).toContain('"dist/index.js"');
+      expect(r.skipped.map((s) => s.path)).not.toContain('dist/');
+    });
+
+    it('does not nest AgentVault output inside the context on a re-run (default dist/container)', async () => {
+      nodeProject({ main: 'dist/index.js' });
+      write('dist/index.js');
+      const first = await packageContainer(pkgOptions());
+      const second = await packageContainer(pkgOptions());
+      expect(listTree(second.contextDir)).toEqual(listTree(first.contextDir));
+      expect(listTree(second.contextDir).some((p) => p.includes('container/') || p.includes('Dockerfile'))).toBe(false);
+      expect(second.skipped).toContainEqual({ path: 'dist/container/', reason: 'output directory' });
+    });
+
+    it('skips a previous default output even when this run writes elsewhere', async () => {
+      nodeProject({ main: 'dist/index.js' });
+      write('dist/index.js');
+      await packageContainer(pkgOptions()); // leaves <src>/dist/container behind
+      const elsewhere = path.join(outside, 'out');
+      const r = await packageContainer(pkgOptions({ outputDir: elsewhere }));
+      expect(listTree(r.contextDir)).toEqual(['dist/index.js', 'index.js', 'package-lock.json', 'package.json']);
+      expect(r.skipped).toContainEqual({ path: 'dist/container/', reason: 'AgentVault packaging output' });
+    });
+  });
+
   it('does not call the runtime when build is false', async () => {
     nodeProject();
     const fake = fakeRuntime();
@@ -329,7 +361,7 @@ describe('build context staging', () => {
       '.env', '.env.local', '.env.production', 'config/.env', 'server.pem', 'tls/private.key', 'cert.p12', 'cert.pfx',
       'id_rsa', 'id_rsa.pub', 'id_ed25519', '.npmrc', '.pypirc', '.netrc', '.DS_Store', 'debug.log', 'logs/app.log',
       '.git/config', '.git/objects/ab/cdef', 'node_modules/dep/index.js', '.agentvault/hypervault.json',
-      'dist/bundle.js', '.venv/bin/python', 'venv/pyvenv.cfg', '__pycache__/x.pyc', 'pkg/__pycache__/y.pyc',
+      '.venv/bin/python', 'venv/pyvenv.cfg', '__pycache__/x.pyc', 'pkg/__pycache__/y.pyc',
       '.ssh/id_rsa', '.aws/credentials', '.dockerignore', '.git-credentials',
     ];
     for (const rel of planted) write(rel, `TOKEN=${CANARY}\n`);
@@ -340,7 +372,7 @@ describe('build context staging', () => {
     }
     for (const bytes of allBytes(r.contextDir)) expect(bytes.includes(CANARY)).toBe(false);
     const skippedPaths = r.skipped.map((s) => s.path);
-    for (const expected of ['.env', '.env.local', 'server.pem', 'tls/', 'node_modules/', '.git/', 'dist/', '.agentvault/', '.venv/', '__pycache__/', 'pkg/__pycache__/']) {
+    for (const expected of ['.env', '.env.local', 'server.pem', 'tls/', 'node_modules/', '.git/', '.agentvault/', '.venv/', '__pycache__/', 'pkg/__pycache__/']) {
       if (expected === 'tls/') continue; // tls/ itself is kept; only private.key inside is skipped
       expect(skippedPaths, expected).toContain(expected);
     }

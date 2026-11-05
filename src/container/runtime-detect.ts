@@ -70,7 +70,7 @@ const TYPESCRIPT_RE = /\.(ts|tsx|mts|cts)$/i;
 // ---------------------------------------------------------------------------
 
 const EXCLUDED_NAMES = new Set([
-  '.git', 'node_modules', '.agentvault', 'dist', '.venv', 'venv', '__pycache__',
+  '.git', 'node_modules', '.agentvault', '.venv', 'venv', '__pycache__',
   '.ssh', '.aws', '.gnupg', '.docker', '.kube',
   '.npmrc', '.pypirc', '.netrc', '.ds_store', '.git-credentials', '.pgpass', '.envrc', '.dockerignore',
 ]);
@@ -84,7 +84,7 @@ const EXCLUDED_PREFIXES = ['id_rsa', 'id_ed25519', 'id_ecdsa', 'id_dsa'];
 export function exclusionReason(baseName: string): string | undefined {
   const n = baseName.toLowerCase();
   if (n === '.env' || n.startsWith('.env.')) return 'environment file (may hold secrets)';
-  if (EXCLUDED_NAMES.has(n)) return 'excluded name (secrets, VCS data or build output)';
+  if (EXCLUDED_NAMES.has(n)) return 'excluded name (secrets, VCS data or local environments)';
   if (EXCLUDED_SUFFIXES.some((s) => n.endsWith(s))) return 'excluded file type (key material or log)';
   if (EXCLUDED_PREFIXES.some((p) => n.startsWith(p))) return 'SSH private key';
   return undefined;
@@ -123,7 +123,7 @@ export function sanitizeVersion(raw: unknown): string {
 // ---------------------------------------------------------------------------
 
 const TS_MESSAGE =
-  'AgentVault does not compile TypeScript in Phase 1. Build it to JavaScript first (directories named "dist" are never copied into the image, so emit the JavaScript elsewhere, for example "build/") or pass --entrypoint with a JavaScript file';
+  'AgentVault does not compile TypeScript in Phase 1. Build it to JavaScript first (for example with tsc into dist/), then set package.json "main" or pass --entrypoint with the compiled file';
 
 type EntryCheck =
   | { kind: 'ok'; rel: string }

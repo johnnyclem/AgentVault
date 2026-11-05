@@ -53,7 +53,7 @@ describe.skipIf(!d.available)('packageContainer against a real Docker daemon', (
     put('.npmrc', `//registry.npmjs.org/:_authToken=${CANARY}\n`);
     put('node_modules/planted/index.js', `module.exports = "${CANARY}"`);
     put('.git/config', CANARY);
-    put('dist/bundle.js', CANARY);
+    put('.venv/lib/planted.py', CANARY);
     put('.agentvault/state.json', CANARY);
     fs.symlinkSync('/etc/passwd', path.join(src, 'link.txt'));
     fs.symlinkSync('/etc/hostname', path.join(src, 'escape.js'));

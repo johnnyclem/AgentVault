@@ -13,10 +13,14 @@
  * Security stance:
  *  - Symlinks, sockets, FIFOs and devices are skipped and reported, never
  *    followed: `index.js -> /etc/passwd` cannot leak a host file.
- *  - `.env*`, key material, VCS data, node_modules and `dist` never enter the
+ *  - `.env*`, key material, VCS data and node_modules never enter the
  *    context. Secrets reach an agent only through the credential proxy; the
  *    manifest records `env` / `secrets` NAMES, never values, and no value is
  *    read here.
+ *  - `dist/` is NOT excluded (it is where `tsc` usually emits the compiled
+ *    agent). AgentVault's own output directory is: the one being written is
+ *    skipped by path and any directory carrying OUTPUT_MARKER is skipped
+ *    wherever it sits, so a default `dist/container` never nests into itself.
  *  - A built image is accepted only if it carries the exact manifest label and
  *    runs as a numeric non-root user; otherwise its tag is removed.
  *  - The output directory is only (re)used when it is empty or was created by
