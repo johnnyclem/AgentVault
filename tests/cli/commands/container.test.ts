@@ -199,6 +199,16 @@ class FakeRuntime implements ContainerRuntime {
     }
     return Promise.resolve();
   }
+  /** Labels per volume name for volumes the test planted (unlabelled or someone else's); managed ones come from `volumes`. */
+  foreignVolumes = new Map<string, Record<string, string>>();
+  inspectVolume(name: string): Promise<{ name: string; labels: Record<string, string> } | null> {
+    this.record('inspectVolume', [name]);
+    const foreign = this.foreignVolumes.get(name);
+    if (foreign !== undefined) return Promise.resolve({ name, labels: { ...foreign } });
+    const managed = this.volumes.find((v) => v.name === name);
+    if (managed === undefined) return Promise.resolve(null);
+    return Promise.resolve({ name, labels: { [LABEL_MANAGED]: 'true', [LABEL_AGENT]: managed.agent, [LABEL_VOLUME_KEY]: managed.key } });
+  }
   removeVolume(name: string): Promise<void> {
     this.record('removeVolume', [name]);
     this.volumes = this.volumes.filter((v) => v.name !== name);
@@ -507,7 +517,7 @@ describe('run: plain image', () => {
       'ensureAvailable', // lifecycle
       'inspectImage',
       'list',
-      'listVolumes',
+      'inspectVolume',
       'ensureVolume',
       'start',
     ]);
@@ -899,9 +909,40 @@ describe('run: --volume', () => {
     await run(runCommand(h.deps), [IMAGE, '-d', '--volume', 'cache:/cache']);
     expect(h.runtime.callsOf('ensureVolume')).toContainEqual([
       `av-${AGENT}-cache`,
-      { [LABEL_AGENT]: AGENT, [LABEL_VOLUME_KEY]: 'cache' },
+      { [LABEL_MANAGED]: 'true', [LABEL_AGENT]: AGENT, [LABEL_VOLUME_KEY]: 'cache' },
     ]);
     expect(h.runtime.started()[0]?.mounts).toContainEqual({ kind: 'volume', source: `av-${AGENT}-cache`, target: '/cache' });
+  });
+
+  describe('a volume of that name that is not this agent\'s', () => {
+    it('unlabelled (somebody else\'s): refused, never used, never removed, nothing started', async () => {
+      const h = harness();
+      h.runtime.foreignVolumes.set(`av-${AGENT}-cache`, {});
+      expect(await run(runCommand(h.deps), [IMAGE, '-d', '--volume', 'cache:/cache'])).toBe(1);
+      expect(h.stderr()).toContain(`av-${AGENT}-cache`);
+      expect(h.stderr()).toMatch(/not created by AgentVault/);
+      expect(startAgent).not.toHaveBeenCalled();
+      expect(h.runtime.callsOf('removeVolume')).toEqual([]);
+      expect(h.runtime.callsOf('ensureVolume')).toEqual([]);
+    });
+
+    it('another agent\'s (the names combine into the same Docker name): refused, naming the owner', async () => {
+      const h = harness();
+      h.runtime.seedVolume(`av-${AGENT}-cache`, 'someone-else', 'other-key');
+      expect(await run(runCommand(h.deps), [IMAGE, '-d', '--volume', 'cache:/cache'])).toBe(1);
+      expect(h.stderr()).toContain('"someone-else"');
+      expect(startAgent).not.toHaveBeenCalled();
+      expect(h.runtime.callsOf('removeVolume')).toEqual([]);
+    });
+
+    it('when a later volume is refused, the one already created for this run is taken away again, and only that one', async () => {
+      const h = harness();
+      h.runtime.foreignVolumes.set(`av-${AGENT}-second`, {});
+      expect(await run(runCommand(h.deps), [IMAGE, '-d', '--volume', 'first:/first', '--volume', 'second:/second'])).toBe(1);
+      expect(startAgent).not.toHaveBeenCalled();
+      expect(h.runtime.callsOf('removeVolume')).toEqual([[`av-${AGENT}-first`]]);
+      expect(h.runtime.volumes.map((v) => v.name)).toEqual([]);
+    });
   });
 
   it('a bind mount is validated, announced as weakening isolation, and passed read-only when asked', async () => {

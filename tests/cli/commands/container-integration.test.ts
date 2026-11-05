@@ -504,7 +504,7 @@ describe.skipIf(!usable)('container commands against a real daemon', () => {
         source: { type: 'node', contentHash: 'a'.repeat(64) },
         ...manifest,
       });
-      const dockerfile = `FROM node:22-slim\nUSER 10001:10001\nCMD ["node","-e","setInterval(() => {}, 1000)"]\n`;
+      const dockerfile = `FROM node:22-slim\nRUN mkdir -p /data /home/agent && chown 10001:10001 /data /home/agent\nUSER 10001:10001\nCMD ["node","-e","setInterval(() => {}, 1000)"]\n`;
       const built = docker(['build', '-q', '-t', tag, '--label', `agentvault.manifest=${manifestToLabel(parsed)}`, '-'], dockerfile);
       expect(built.status, built.stderr).toBe(0);
       return { name, tag };
@@ -550,10 +550,65 @@ describe.skipIf(!usable)('container commands against a real daemon', () => {
       expect(result.out + result.err).not.toContain(CANARY);
     });
 
+    it('two (agent, volume) pairs that derive the same Docker volume cannot reach each other\'s data', async () => {
+      // "avt-k" + key "own-xxxxxx-data" and "avt-k-own-xxxxxx" + key "data" are both av-avt-k-own-xxxxxx-data.
+      const owner = forgedImage('own', {});
+      expect((await cli(['run', owner.tag, '-d'])).code).toBe(0);
+      expect(docker(['exec', `av-${owner.name}`, 'sh', '-c', 'echo PRECIOUS-DATA > /data/memory.db']).status).toBe(0);
+      expect((await cli(['rm', owner.name])).code).toBe(0); // documented: rm keeps the data
+      const volume = `av-${owner.name}-data`;
+
+      const parts = owner.name.split('-');
+      const collider = forgedImage('collide', { name: parts.slice(0, 2).join('-'), volumes: [`/${parts.slice(2).join('-')}-data`] });
+      const result = await cli(['run', collider.tag, '-d']);
+      expect(result.code).toBe(1);
+      expect(result.err).toContain(`"${owner.name}"`);
+      expect(result.err).toMatch(/combine into the same Docker name/);
+
+      // The owner's data is intact and still its own.
+      const labels = docker(['volume', 'inspect', '--format', '{{json .Labels}}', volume]).stdout;
+      expect(labels).toContain(`"agentvault.agent":"${owner.name}"`);
+      const content = docker(['run', '--rm', '-v', `${volume}:/v:ro`, 'busybox:1.37', 'cat', '/v/memory.db']);
+      expect(content.stdout.trim()).toBe('PRECIOUS-DATA');
+    });
+
+    it('a volume of that name made by hand (no AgentVault labels) is refused, and survives a failed start', async () => {
+      const agent = forgedImage('handmade', {});
+      const volume = `av-${agent.name}-data`;
+      expect(docker(['volume', 'create', volume]).status).toBe(0);
+      docker(['run', '--rm', '-v', `${volume}:/v`, 'busybox:1.37', 'sh', '-c', 'echo MINE > /v/keep.txt']);
+
+      // Before the fix a later failure (here an out-of-range --cpus) made the rollback delete this volume.
+      for (const extra of [[], ['--cpus', '1024']]) {
+        const result = await cli(['run', agent.tag, '-d', ...extra]);
+        expect(result.code).toBe(1);
+        expect(result.err).toMatch(/not created by AgentVault/);
+        expect(containersOf(agent.name)).toEqual([]);
+      }
+      expect(docker(['run', '--rm', '-v', `${volume}:/v:ro`, 'busybox:1.37', 'cat', '/v/keep.txt']).stdout.trim()).toBe('MINE');
+    });
+
+    it('a network that merely has our name is neither adopted by `run` nor deleted by `rm`', async () => {
+      const agent = forgedImage('foreignnet', { secrets: ['anthropic'], isolation: { network: 'proxy', user: '10001:10001', readOnlyRootfs: true } });
+      const network = `av-${agent.name}-net`;
+      expect(docker(['network', 'create', '--internal', network]).status).toBe(0); // somebody else's: no AgentVault labels
+
+      const refused = await cli(['run', agent.tag, '-d', '--yes', '--secrets-from-env'], { env: { ANTHROPIC_API_KEY: CANARY } });
+      expect(refused.code).toBe(1);
+      expect(refused.err).toMatch(/not created by AgentVault/);
+      expect(refused.out + refused.err).not.toContain(CANARY);
+      expect(containersOf(agent.name)).toEqual([]); // no sidecar was left holding the key
+
+      // `rm` derives the same name; it must leave a network it did not create alone.
+      await cli(['rm', agent.name, '-y']);
+      expect(docker(['network', 'inspect', '--format', '{{.Name}}', network]).stdout.trim()).toBe(network);
+      docker(['network', 'rm', network]);
+    });
+
     it('claiming another agent\'s name does not take over its stopped container and data', async () => {
       const victim = forgedImage('victim', {});
       expect((await cli(['run', victim.tag, '-d'])).code).toBe(0);
-      docker(['exec', `av-${victim.name}`, 'sh', '-c', 'echo VICTIM-DATA > /data/memory.db']);
+      expect(docker(['exec', `av-${victim.name}`, 'sh', '-c', 'echo VICTIM-DATA > /data/memory.db']).status).toBe(0);
       expect((await cli(['stop', victim.name])).code).toBe(0);
 
       // A different image (different repository) whose label claims the victim's name.

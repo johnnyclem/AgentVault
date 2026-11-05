@@ -1054,7 +1054,7 @@ describe('DockerRuntime networks', () => {
     const runtime = new DockerRuntime({ runner: rec.runner });
     const calls = rec.calls;
     await runtime.ensureNetwork('av-demo-net', { internal: true, labels: { [LABEL_AGENT]: 'demo' } });
-    expect(calls[0]?.args).toEqual(['network', 'inspect', '--format={{.Internal}}', 'av-demo-net']);
+    expect(calls[0]?.args).toEqual(['network', 'inspect', '--format={{.Internal}} {{index .Labels "agentvault.managed"}}', 'av-demo-net']);
     expect(calls[1]?.args).toEqual([
       'network',
       'create',
@@ -1076,30 +1076,30 @@ describe('DockerRuntime networks', () => {
 
   it('is idempotent: an existing network with the same flag is left alone', async () => {
     for (const internal of [true, false]) {
-      const rec = recorder(() => ({ stdout: `${internal}\n` }));
+      const rec = recorder(() => ({ stdout: `${internal} true\n` }));
       await new DockerRuntime({ runner: rec.runner }).ensureNetwork('av-demo-net', { internal });
       expect(rec.calls).toHaveLength(1);
     }
   });
 
   it('refuses an existing NON-internal network when internal was requested (would void the lockdown)', async () => {
-    const rec = recorder(() => ({ stdout: 'false\n' }));
+    const rec = recorder(() => ({ stdout: 'false true\n' }));
     const error = await rejection(new DockerRuntime({ runner: rec.runner }).ensureNetwork('av-demo-net', { internal: true }));
     expectError(error, 'POLICY_VIOLATION', /already exists with internal=false/);
     expect(rec.calls).toHaveLength(1);
   });
 
   it('also refuses an existing internal network when a non-internal one was requested', async () => {
-    const rec = recorder(() => ({ stdout: 'true\n' }));
+    const rec = recorder(() => ({ stdout: 'true true\n' }));
     expectError(await rejection(new DockerRuntime({ runner: rec.runner }).ensureNetwork('av-demo-net', { internal: false })), 'POLICY_VIOLATION');
   });
 
   it('re-checks the flag when it loses a creation race', async () => {
-    const rec = sequence(failed(REAL_ERR.networkNotFound), failed(REAL_ERR.networkExists), { stdout: 'false\n' });
+    const rec = sequence(failed(REAL_ERR.networkNotFound), failed(REAL_ERR.networkExists), { stdout: 'false true\n' });
     const error = await rejection(new DockerRuntime({ runner: rec.runner }).ensureNetwork('av-demo-net', { internal: true }));
     expectError(error, 'POLICY_VIOLATION');
     expect(rec.calls).toHaveLength(3);
-    const ok = sequence(failed(REAL_ERR.networkNotFound), failed(REAL_ERR.networkExists), { stdout: 'true\n' });
+    const ok = sequence(failed(REAL_ERR.networkNotFound), failed(REAL_ERR.networkExists), { stdout: 'true true\n' });
     await new DockerRuntime({ runner: ok.runner }).ensureNetwork('av-demo-net', { internal: true });
   });
 
@@ -1115,16 +1115,38 @@ describe('DockerRuntime networks', () => {
   });
 
   it('rejects unexpected inspect output instead of guessing', async () => {
-    const rec = recorder(() => ({ stdout: 'maybe\n' }));
+    const rec = recorder(() => ({ stdout: 'maybe true\n' }));
     expectError(await rejection(new DockerRuntime({ runner: rec.runner }).ensureNetwork('n1', { internal: true })), 'COMMAND_FAILED', /Unexpected output/);
   });
 
-  it('removeNetwork runs network rm and throws NOT_FOUND when it is absent', async () => {
-    const ok = recorder();
+  it('removeNetwork removes a network AgentVault created, and throws NOT_FOUND when it is absent', async () => {
+    const ok = sequence({ stdout: 'true true\n' }, {});
     await new DockerRuntime({ runner: ok.runner }).removeNetwork('av-demo-net');
-    expect(ok.calls[0]?.args).toEqual(['network', 'rm', 'av-demo-net']);
+    expect(ok.calls.map((c) => c.args[1])).toEqual(['inspect', 'rm']);
+    expect(ok.calls[1]?.args).toEqual(['network', 'rm', 'av-demo-net']);
     const missing = recorder(() => failed(REAL_ERR.networkNotFound));
     expectError(await rejection(new DockerRuntime({ runner: missing.runner }).removeNetwork('av-demo-net')), 'NOT_FOUND');
+  });
+
+  describe('a network AgentVault did not create (no managed label)', () => {
+    it('is never removed: the call reports NOT_FOUND and `network rm` is not even run', async () => {
+      const rec = recorder(() => ({ stdout: 'true \n' }));
+      expectError(await rejection(new DockerRuntime({ runner: rec.runner }).removeNetwork('av-demo-net')), 'NOT_FOUND', /not created by AgentVault/);
+      expect(rec.calls.map((c) => c.args[1])).toEqual(['inspect']);
+    });
+
+    it('is never adopted: ensureNetwork refuses it instead of attaching an agent to a network someone else controls', async () => {
+      for (const internal of [true, false]) {
+        const rec = recorder(() => ({ stdout: `${internal} \n` }));
+        expectError(await rejection(new DockerRuntime({ runner: rec.runner }).ensureNetwork('av-demo-net', { internal })), 'POLICY_VIOLATION', /not created by AgentVault/);
+        expect(rec.calls).toHaveLength(1);
+      }
+    });
+
+    it('a managed=false label is not managed either', async () => {
+      const rec = recorder(() => ({ stdout: 'true false\n' }));
+      expectError(await rejection(new DockerRuntime({ runner: rec.runner }).ensureNetwork('av-demo-net', { internal: true })), 'POLICY_VIOLATION');
+    });
   });
 
   it('connectNetwork passes each alias as --alias and puts network before container', async () => {
@@ -1162,6 +1184,39 @@ describe('DockerRuntime volumes', () => {
     await runtime.ensureVolume('av-demo-data', { [LABEL_MANAGED]: 'false' });
     expect(calls[0]?.args).toContain('--label=agentvault.managed=true');
     expect(calls[0]?.args).not.toContain('--label=agentvault.managed=false');
+  });
+
+  describe('inspectVolume', () => {
+    it('returns the labels Docker holds, by exact name', async () => {
+      const { runtime, calls } = runtimeWith(() => ({ stdout: '{"agentvault.agent":"demo","agentvault.managed":"true","agentvault.volume-key":"data"}\n' }));
+      expect(await runtime.inspectVolume('av-demo-data')).toEqual({
+        name: 'av-demo-data',
+        labels: { 'agentvault.agent': 'demo', 'agentvault.managed': 'true', 'agentvault.volume-key': 'data' },
+      });
+      expect(calls[0]?.args).toEqual(['volume', 'inspect', '--format={{json .Labels}}', 'av-demo-data']);
+    });
+
+    it('an unlabelled volume has no labels (Docker prints null)', async () => {
+      const { runtime } = runtimeWith(() => ({ stdout: 'null\n' }));
+      expect(await runtime.inspectVolume('v1')).toEqual({ name: 'v1', labels: {} });
+    });
+
+    it('null when the volume does not exist; other failures propagate', async () => {
+      expect(await runtimeWith(() => failed(REAL_ERR.noSuchVolume)).runtime.inspectVolume('v1')).toBeNull();
+      expectError(await rejection(runtimeWith(() => failed(REAL_ERR.daemonDown)).runtime.inspectVolume('v1')), 'DAEMON_UNREACHABLE');
+    });
+
+    it('rejects output that is not a label map instead of guessing', async () => {
+      for (const stdout of ['[1,2]\n', '"x"\n', '{"a":1}\n', 'not json\n', '']) {
+        expectError(await rejection(runtimeWith(() => ({ stdout })).runtime.inspectVolume('v1')), 'COMMAND_FAILED', /Unexpected output/);
+      }
+    });
+
+    it('validates the name before running anything', async () => {
+      const { runtime, calls } = runtimeWith();
+      expectError(await rejection(runtime.inspectVolume('bad name')), 'INVALID_INPUT');
+      expect(calls).toHaveLength(0);
+    });
   });
 
   it('removeVolume runs volume rm and surfaces NOT_FOUND and in-use errors', async () => {

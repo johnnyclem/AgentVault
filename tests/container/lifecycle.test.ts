@@ -272,6 +272,12 @@ class FakeRuntime implements ContainerRuntime {
     return Promise.resolve();
   }
 
+  inspectVolume(name: string): Promise<{ name: string; labels: Record<string, string> } | null> {
+    this.step('inspectVolume', [name]);
+    const labels = this.volumes.get(name);
+    return Promise.resolve(labels === undefined ? null : { name, labels: { ...labels } });
+  }
+
   removeVolume(name: string): Promise<void> {
     this.step('removeVolume', [name]);
     if (!this.volumes.has(name)) return Promise.reject(new ContainerError('NOT_FOUND', `no such volume ${name}`));
@@ -726,8 +732,9 @@ describe('startAgent, detached, network none', () => {
       'ensureAvailable',
       `inspectImage ${IMAGE}`,
       'list',
-      'listVolumes',
+      `inspectVolume av-${AGENT}-data`,
       `ensureVolume av-${AGENT}-data`,
+      `inspectVolume av-${AGENT}-var-cache`,
       `ensureVolume av-${AGENT}-var-cache`,
       `start av-${AGENT}`,
     ]);
@@ -794,7 +801,8 @@ describe('startAgent, detached, network none', () => {
     fake.seed(`av-${AGENT}`, 'agent', AGENT, 'exited');
     fake.volumes.set(`av-${AGENT}-data`, { [LABEL_MANAGED]: 'true', [LABEL_AGENT]: AGENT, [LABEL_VOLUME_KEY]: 'data' });
     const started = await startAgent(req(fake));
-    expect(fake.mutations).toEqual([`remove av-${AGENT} --force`, `ensureVolume av-${AGENT}-data`, `start av-${AGENT}`]);
+    // The kept volume is recognised as this agent's and reused as it is: nothing is created or re-labelled.
+    expect(fake.mutations).toEqual([`remove av-${AGENT} --force`, `start av-${AGENT}`]);
     expect(fake.volumes.has(`av-${AGENT}-data`)).toBe(true);
     expect(fake.containers.get(`av-${AGENT}`)?.state).toBe('running');
     expect(started.containerId).toBeDefined();
@@ -973,7 +981,7 @@ describe('startAgent in proxy mode', () => {
       'list',
       `removeNetwork av-${AGENT}-net`,
       `removeNetwork av-${AGENT}-egress`,
-      'listVolumes',
+      `inspectVolume av-${AGENT}-data`,
       `ensureVolume av-${AGENT}-data`,
       `ensureNetwork av-${AGENT}-net internal`,
       `start av-${AGENT}-proxy`,
@@ -1205,6 +1213,86 @@ describe('(g) sidecar readiness and log redaction', () => {
 // Rollback (properties c, j)
 // ---------------------------------------------------------------------------
 
+describe('volume ownership', () => {
+  const mine = { [LABEL_MANAGED]: 'true', [LABEL_AGENT]: AGENT, [LABEL_VOLUME_KEY]: 'data' };
+  const PRECIOUS = `av-${AGENT}-data`;
+
+  it('reuses this agent\'s own volume exactly as it is: nothing is created, re-labelled or removed', async () => {
+    const fake = new FakeRuntime();
+    fake.volumes.set(PRECIOUS, { ...mine });
+    await startAgent(req(fake));
+    expect(fake.mutations).toEqual([`start av-${AGENT}`]);
+    expect(fake.volumes.get(PRECIOUS)).toEqual(mine);
+  });
+
+  it('refuses a volume of that name that carries no AgentVault labels (somebody else\'s), before creating anything', async () => {
+    const fake = new FakeRuntime();
+    fake.volumes.set(PRECIOUS, {}); // e.g. a volume the user made by hand with this name
+    const error = await expectRefusal(fake, req(fake), 'POLICY_VIOLATION');
+    expect(error.message).toContain(PRECIOUS);
+    expect(error.message).toMatch(/not created by AgentVault/);
+    expect(fake.volumes.has(PRECIOUS)).toBe(true);
+  });
+
+  it('refuses another AGENT\'s volume that happens to derive the same Docker name', async () => {
+    // agent "alpha-agent" + key "data" and agent "alpha" + key "agent-data" are both "av-alpha-agent-data".
+    const fake = new FakeRuntime(manifestFor({ volumes: ['/agent-data'] }));
+    const owner = { [LABEL_MANAGED]: 'true', [LABEL_AGENT]: `${AGENT}-agent`, [LABEL_VOLUME_KEY]: 'data' };
+    fake.volumes.set(`av-${AGENT}-agent-data`, { ...owner });
+    const error = await expectRefusal(fake, req(fake), 'POLICY_VIOLATION');
+    expect(error.message).toContain(`"${AGENT}-agent"`);
+    expect(error.message).toMatch(/combine/);
+    expect(fake.volumes.get(`av-${AGENT}-agent-data`)).toEqual(owner);
+  });
+
+  it('refuses a volume of the right agent but a different key', async () => {
+    const fake = new FakeRuntime();
+    fake.volumes.set(PRECIOUS, { ...mine, [LABEL_VOLUME_KEY]: 'other' });
+    await expectRefusal(fake, req(fake), 'POLICY_VIOLATION');
+  });
+
+  it('a failed start NEVER deletes a volume it did not create (the original data-loss path)', async () => {
+    // Before: a volume of that name without our labels was not in the label-filtered "before" list, so the rollback
+    // believed it had created it and deleted it after any later failure (even a typo'd --cpus). Now it is refused
+    // outright, and a volume that is genuinely this agent's is reused and never counted as created.
+    const dry = new FakeRuntime();
+    dry.volumes.set(PRECIOUS, { ...mine });
+    await startAgent(req(dry));
+    const lastCall = dry.calls.length - 1; // the agent's own start
+
+    const fake = new FakeRuntime();
+    fake.volumes.set(PRECIOUS, { ...mine });
+    fake.failAt = lastCall;
+    const error = await rejection(startAgent(req(fake)));
+    expect(error.message).toContain('injected failure');
+    expect(fake.mutations.filter((m) => m.startsWith('removeVolume'))).toEqual([]);
+    expect(fake.volumes.get(PRECIOUS)).toEqual(mine);
+
+    const foreigners: Array<Record<string, string>> = [{}, { [LABEL_MANAGED]: 'true', [LABEL_AGENT]: 'someone-else', [LABEL_VOLUME_KEY]: 'data' }];
+    for (const foreign of foreigners) {
+      const refused = new FakeRuntime();
+      refused.volumes.set(PRECIOUS, { ...foreign });
+      await expectRefusal(refused, req(refused), 'POLICY_VIOLATION'); // also asserts: not one mutating call
+      expect(refused.volumes.get(PRECIOUS)).toEqual(foreign);
+    }
+  });
+
+  it('a volume this call created IS removed when the start fails afterwards, and only that one', async () => {
+    const make = (): FakeRuntime => {
+      const fake = new FakeRuntime(manifestFor({ volumes: ['/data', '/cache'] }));
+      fake.volumes.set(PRECIOUS, { ...mine }); // pre-existing and genuinely this agent's: must survive
+      return fake;
+    };
+    const dry = make();
+    await startAgent(req(dry));
+    const fake = make();
+    fake.failAt = dry.calls.length - 1;
+    await rejection(startAgent(req(fake)));
+    expect(fake.volumes.has(PRECIOUS)).toBe(true);
+    expect(fake.volumes.has(`av-${AGENT}-cache`)).toBe(false);
+  });
+});
+
 describe('(c)(j) rollback', () => {
   interface Scenario {
     label: string;
@@ -1269,7 +1357,7 @@ describe('(c)(j) rollback', () => {
       return fake.calls.map((c) => c.method);
     }
     /** Stale-network removal before the first listVolumes is deliberately best effort. */
-    const isTolerated = (methods: string[], i: number): boolean => methods[i] === 'removeNetwork' && i < methods.indexOf('listVolumes');
+    const isTolerated = (methods: string[], i: number): boolean => methods[i] === 'removeNetwork' && i < methods.indexOf('inspectVolume');
 
     it('rejects with the ORIGINAL error and leaves nothing it created behind', async () => {
       const methods = await dryRun();

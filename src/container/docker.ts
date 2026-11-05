@@ -724,9 +724,10 @@ export class DockerRuntime implements ContainerRuntime {
     }
     const labels = validateLabels({ ...(options.labels ?? {}), [LABEL_MANAGED]: 'true' });
 
-    const existing = await this.networkInternalFlag(name);
+    const existing = await this.inspectNetwork(name);
     if (existing !== null) {
-      this.assertNetworkMatches(name, existing, options.internal);
+      this.assertNetworkOurs(name, existing.managed);
+      this.assertNetworkMatches(name, existing.internal, options.internal);
       return;
     }
     const args = ['network', 'create', '--driver=bridge'];
@@ -737,28 +738,40 @@ export class DockerRuntime implements ContainerRuntime {
     if (created.exitCode === 0 && !created.spawnFailed && !created.timedOut) return;
     if (/already exists/i.test(created.stderr)) {
       // Lost a race with another creator: verify what they made.
-      const raced = await this.networkInternalFlag(name);
+      const raced = await this.inspectNetwork(name);
       if (raced !== null) {
-        this.assertNetworkMatches(name, raced, options.internal);
+        this.assertNetworkOurs(name, raced.managed);
+        this.assertNetworkMatches(name, raced.internal, options.internal);
         return;
       }
     }
     throw classifyDockerFailure(created);
   }
 
-  /** null when the network does not exist. */
-  private async networkInternalFlag(name: string): Promise<boolean | null> {
-    const result = await this.invoke(['network', 'inspect', '--format={{.Internal}}', name], { timeoutMs: QUICK_TIMEOUT_MS });
+  /** null when the network does not exist. `managed` is false for a network AgentVault did not create. */
+  private async inspectNetwork(name: string): Promise<{ internal: boolean; managed: boolean } | null> {
+    const format = `--format={{.Internal}} {{index .Labels "${LABEL_MANAGED}"}}`;
+    const result = await this.invoke(['network', 'inspect', format, name], { timeoutMs: QUICK_TIMEOUT_MS });
     if (result.exitCode === 0 && !result.spawnFailed && !result.timedOut) {
-      const text = result.stdout.trim();
-      if (text !== 'true' && text !== 'false') {
+      const [internal, managed] = result.stdout.trim().split(/\s+/);
+      if (internal !== 'true' && internal !== 'false') {
         throw new ContainerError('COMMAND_FAILED', `Unexpected output from docker network inspect ${name}`);
       }
-      return text === 'true';
+      return { internal: internal === 'true', managed: managed === 'true' };
     }
     const error = classifyDockerFailure(result);
     if (error.code === 'NOT_FOUND') return null;
     throw error;
+  }
+
+  /**
+   * Network names derive from the agent name, so a network of that name may be someone else's. Attaching an agent
+   * (or the credential sidecar) to a network AgentVault does not control would void the isolation it promises.
+   */
+  private assertNetworkOurs(name: string, managed: boolean): void {
+    if (!managed) {
+      violation(`Network ${JSON.stringify(name)} already exists but was not created by AgentVault; refusing to use it. Remove or rename it if it is yours.`);
+    }
   }
 
   private assertNetworkMatches(name: string, isInternal: boolean, wantInternal: boolean): void {
@@ -774,6 +787,12 @@ export class DockerRuntime implements ContainerRuntime {
     assertDockerName(name, 'network name');
     if (BUILTIN_NETWORKS.includes(name)) {
       violation(`Refusing to remove the built-in "${name}" network`);
+    }
+    // Only networks AgentVault created: `rm`, stale-cleanup and rollback all derive the name from the agent.
+    const existing = await this.inspectNetwork(name);
+    if (existing === null) throw new ContainerError('NOT_FOUND', `No such network: ${name}`);
+    if (!existing.managed) {
+      throw new ContainerError('NOT_FOUND', `Network ${name} was not created by AgentVault; it is left alone`);
     }
     await this.invokeOk(['network', 'rm', name], { timeoutMs: QUICK_TIMEOUT_MS });
   }
@@ -797,6 +816,33 @@ export class DockerRuntime implements ContainerRuntime {
     assertDockerName(name, 'volume name');
     const all = validateLabels({ ...labels, [LABEL_MANAGED]: 'true' });
     await this.invokeOk(['volume', 'create', ...all.map(([k, v]) => `--label=${k}=${v}`), name], { timeoutMs: QUICK_TIMEOUT_MS });
+  }
+
+  /** null when the volume does not exist. An unlabelled volume has no labels. */
+  async inspectVolume(name: string): Promise<{ name: string; labels: Record<string, string> } | null> {
+    assertDockerName(name, 'volume name');
+    const result = await this.invoke(['volume', 'inspect', '--format={{json .Labels}}', name], { timeoutMs: QUICK_TIMEOUT_MS });
+    if (result.exitCode === 0 && !result.spawnFailed && !result.timedOut) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(result.stdout.trim());
+      } catch {
+        parsed = undefined;
+      }
+      if (parsed === null) return { name, labels: {} };
+      if (
+        typeof parsed !== 'object' ||
+        parsed === undefined ||
+        Array.isArray(parsed) ||
+        !Object.values(parsed).every((value) => typeof value === 'string')
+      ) {
+        throw new ContainerError('COMMAND_FAILED', `Unexpected output from docker volume inspect ${name}`);
+      }
+      return { name, labels: { ...(parsed as Record<string, string>) } };
+    }
+    const error = classifyDockerFailure(result);
+    if (error.code === 'NOT_FOUND') return null;
+    throw error;
   }
 
   async removeImage(ref: string): Promise<void> {

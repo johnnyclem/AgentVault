@@ -433,6 +433,43 @@ async function watchForEarlyExit(
   }
 }
 
+/**
+ * Make sure the Docker volume for (agent, key) exists and is THIS agent's; true when this call created it.
+ *
+ * Volume names are `av-<agent>-<key>` and both parts may contain dashes, so different (agent, key) pairs can
+ * derive the same name ("my" + "agent-data" and "my-agent" + "data"). The agent name and volume paths come from
+ * the image's manifest, so an image can aim at another agent's data this way. An existing volume is therefore
+ * used only if its labels say it belongs to exactly this agent and key; an unlabelled one (somebody else's) or
+ * another agent's is refused, never adopted, and so never removed by a rollback either.
+ */
+export async function ensureAgentVolume(
+  runtime: ContainerRuntime,
+  agent: string,
+  key: string,
+  name: string = resourceNames(agent).volume(key)
+): Promise<boolean> {
+  const existing = await runtime.inspectVolume(name);
+  if (existing === null) {
+    await runtime.ensureVolume(name, { [LABEL_MANAGED]: 'true', [LABEL_AGENT]: agent, [LABEL_VOLUME_KEY]: key });
+    return true;
+  }
+  const labels = existing.labels;
+  if (labels[LABEL_MANAGED] !== 'true') {
+    throw new ContainerError(
+      'POLICY_VIOLATION',
+      `Docker volume ${name} already exists but was not created by AgentVault, so it will not be used or removed. ` +
+        `If it is yours to discard: docker volume rm ${name}`
+    );
+  }
+  if (labels[LABEL_AGENT] === agent && labels[LABEL_VOLUME_KEY] === key) return false;
+  const shown = (value: string | undefined): string => JSON.stringify((value ?? '').slice(0, 64));
+  throw new ContainerError(
+    'POLICY_VIOLATION',
+    `Docker volume ${name} belongs to agent ${shown(labels[LABEL_AGENT])} (volume ${shown(labels[LABEL_VOLUME_KEY])}), not to "${agent}" (volume "${key}"): ` +
+      'agent and volume names combine into the same Docker name. Use a different agent name (--name) or volume name.'
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Step 8: ledger and rollback
 // ---------------------------------------------------------------------------
@@ -604,12 +641,10 @@ async function startAgentChecked(request: StartAgentOptions): Promise<StartedAge
       egress === undefined ? [] : [names.network, ...(egress.owned ? [names.egress] : [])];
     await removeStale(runtime, agent, names, staleNetworks);
 
-    // 5. Volumes. Remember which ones this call created.
-    const before = new Set((await runtime.listVolumes({ agent })).map((v) => v.name));
+    // 5. Volumes. Only one this call CREATED may be taken away again by its rollback.
     for (const { key } of volumes) {
       const name = names.volume(key);
-      await runtime.ensureVolume(name, { [LABEL_MANAGED]: 'true', [LABEL_AGENT]: agent, [LABEL_VOLUME_KEY]: key });
-      if (!before.has(name)) ledger.createdVolumes.push(name);
+      if (await ensureAgentVolume(runtime, agent, key, name)) ledger.createdVolumes.push(name);
     }
 
     // 6. Proxy mode: internal network, sidecar, its way out, readiness.

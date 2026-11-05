@@ -264,8 +264,10 @@ export interface ContainerRuntime {
   removeNetwork(name: string): Promise<void>;
   connectNetwork(container: string, network: string, aliases?: string[]): Promise<void>;
 
-  /** Idempotent. */
+  /** Idempotent. Does not check who owns an existing volume: use `ensureAgentVolume` for that. */
   ensureVolume(name: string, labels?: Record<string, string>): Promise<void>;
+  /** null when it does not exist. Labels as Docker holds them (an unlabelled volume has none). */
+  inspectVolume(name: string): Promise<{ name: string; labels: Record<string, string> } | null>;
   removeVolume(name: string): Promise<void>;
   /** Names of AgentVault-managed volumes, optionally for one agent. */
   listVolumes(filter?: { agent?: string }): Promise<Array<{ name: string; key: string; agent: string }>>;

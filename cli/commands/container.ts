@@ -32,12 +32,12 @@ import chalk from 'chalk';
 import { Command } from 'commander';
 import { manifestFromLabels, parseManifest } from '../../src/container/manifest.js';
 import type { ContainerManifest } from '../../src/container/manifest.js';
-import { listAgents, removeAgent, startAgent, stopAgent } from '../../src/container/lifecycle.js';
+import { ensureAgentVolume, listAgents, removeAgent, startAgent, stopAgent } from '../../src/container/lifecycle.js';
 import type { StartAgentOptions } from '../../src/container/lifecycle.js';
 import { getPreset, presetSecretEnvMapping } from '../../src/container/proxy/presets.js';
 import { SecretStore, createChainResolver, createEnvResolver, createStoreResolver } from '../../src/container/secrets-store.js';
 import type { PartialSecretResolver } from '../../src/container/secrets-store.js';
-import { ContainerError, LABEL_AGENT, LABEL_VOLUME_KEY } from '../../src/container/types.js';
+import { ContainerError } from '../../src/container/types.js';
 import type {
   ContainerMount,
   ContainerRuntime,
@@ -502,15 +502,15 @@ export async function executeRun(target: string, command: readonly string[], opt
   // Named volumes are created labelled, so snapshot and rm can find them.
   const namedVolumes = parsedVolumes.flatMap(({ mount, key }) => (key === undefined ? [] : [{ name: mount.source, key }]));
   const createdVolumes: string[] = [];
-  if (namedVolumes.length > 0) {
-    const managedBefore = new Set((await runtime.listVolumes({ agent })).map((volume) => volume.name));
+  try {
     for (const { name, key } of namedVolumes) {
-      await runtime.ensureVolume(name, { [LABEL_AGENT]: agent, [LABEL_VOLUME_KEY]: key });
+      // Refuses a volume of that name that is not this agent's; only one this call creates is ever removed again.
+      if (await ensureAgentVolume(runtime, agent, key, name)) createdVolumes.push(name);
     }
-    // A volume that is managed now but was not before is one THIS call made. (A pre-existing volume of that name that
-    // was not ours keeps its own labels, so it never shows up here and is never removed.)
-    const managedAfter = new Set((await runtime.listVolumes({ agent })).map((volume) => volume.name));
-    createdVolumes.push(...namedVolumes.map(({ name }) => name).filter((name) => managedAfter.has(name) && !managedBefore.has(name)));
+  } catch (error) {
+    // Nothing has run yet, so what this call made is empty: do not leave it behind because a later volume was refused.
+    for (const volume of createdVolumes) await runtime.removeVolume(volume).catch(() => undefined);
+    throw error;
   }
 
   // Warnings: a detached start shows a spinner, so they wait until it is gone; a foreground run shows them at once.

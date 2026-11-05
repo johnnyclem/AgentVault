@@ -191,6 +191,11 @@ class FakeRuntime implements ContainerRuntime {
     return Promise.resolve(out);
   }
 
+  inspectVolume(name: string): Promise<{ name: string; labels: Record<string, string> } | null> {
+    // Snapshot code never asks; present only to satisfy the interface.
+    return Promise.resolve(this.existing.has(name) ? { name, labels: {} } : null);
+  }
+
   ensureVolume(name: string, labels?: Record<string, string>): Promise<void> {
     this.events.push(`ensureVolume ${name}`);
     this.ensured.push({ name, labels });
