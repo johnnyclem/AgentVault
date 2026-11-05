@@ -10,7 +10,7 @@ import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DockerRuntime } from '../../src/container/docker.js';
 import { MANIFEST_FILE, manifestToLabel, parseManifest } from '../../src/container/manifest.js';
-import { packageContainer, type ContainerPackageResult } from '../../src/container/package-image.js';
+import { OUTPUT_LOCK, packageContainer, type ContainerPackageResult } from '../../src/container/package-image.js';
 import { ContainerError, LABEL_MANIFEST, LABEL_SOURCE_HASH } from '../../src/container/types.js';
 import { dockerTestEnv } from './helpers/docker.js';
 
@@ -278,6 +278,110 @@ describe.skipIf(!d.available)('packageContainer against a real Docker daemon', (
       expect(caught).toBeInstanceOf(ContainerError);
       expect(docker(['image', 'inspect', `agentvault/${agent}:1.2.3`]).status).not.toBe(0);
       expect(fs.existsSync(path.join(src, 'dist', 'container', 'Dockerfile'))).toBe(true);
+    },
+    300_000
+  );
+
+  it(
+    'refuses a tag that holds another image and leaves it alone; rebuilding the same agent replaces only its own image',
+    async () => {
+      const agent = d.agent('tag');
+      const src = makeNodeAgent(agent, true);
+      const victim = `agentvault/${d.name('victim')}:1`;
+      const built = spawnSync('docker', ['build', '-q', '-t', victim, '-'], {
+        input: 'FROM node:22-slim\nLABEL avt-b.victim=precious\n',
+        encoding: 'utf8',
+        timeout: 120_000,
+      });
+      expect(built.status, built.stderr).toBe(0);
+      const idOf = (ref: string): string => docker(['image', 'inspect', '--format={{.Id}}', ref]).stdout.trim();
+      const victimId = idOf(victim);
+
+      let caught: unknown;
+      try {
+        await packageContainer({ sourceDir: src, runtime, image: victim });
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(ContainerError);
+      expect((caught as ContainerError).code).toBe('INVALID_INPUT');
+      expect((caught as ContainerError).message).toContain('--image');
+      expect(idOf(victim)).toBe(victimId);
+      expect(docker(['image', 'inspect', '--format={{index .Config.Labels "avt-b.victim"}}', victim]).stdout.trim()).toBe('precious');
+      expect(fs.existsSync(path.join(src, 'dist'))).toBe(false);
+
+      // The same agent again, over its own image, is an ordinary rebuild...
+      const first = await packageContainer({ sourceDir: src, runtime });
+      const second = await packageContainer({ sourceDir: src, runtime });
+      expect(second.imageTag).toBe(first.imageTag);
+      expect(idOf(second.imageTag)).toBe(second.imageId);
+      // ...and neither leaves its private build tag behind.
+      const tags = docker(['image', 'ls', '--format', '{{.Repository}}:{{.Tag}}', `agentvault/${agent}`]).stdout.split('\n').filter(Boolean);
+      expect(tags).toEqual([`agentvault/${agent}:1.2.3`]);
+    },
+    600_000
+  );
+
+  it(
+    'two overlapping runs on one output directory: one fails fast, the other builds a complete image',
+    async () => {
+      const agent = d.agent('conc');
+      const src = path.join(root, agent);
+      fs.mkdirSync(path.join(src, 'big'), { recursive: true });
+      fs.writeFileSync(path.join(src, 'package.json'), JSON.stringify({ name: 'x', version: '1.0.0' }));
+      fs.writeFileSync(path.join(src, 'index.js'), 'console.log("conc")\n');
+      for (let i = 0; i < 1500; i++) fs.writeFileSync(path.join(src, 'big', `f${i}.js`), `// ${i}\n`);
+      const out = path.join(root, 'conc-out');
+
+      const results = await Promise.allSettled([
+        packageContainer({ sourceDir: src, runtime, outputDir: out, image: `agentvault/${d.name('conc-a')}:1` }),
+        packageContainer({ sourceDir: src, runtime, outputDir: out, image: `agentvault/${d.name('conc-b')}:1` }),
+      ]);
+      const fulfilled = results.filter((r): r is PromiseFulfilledResult<ContainerPackageResult> => r.status === 'fulfilled');
+      const rejected = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect((rejected[0]?.reason as ContainerError).message).toMatch(/another packaging run/i);
+
+      const image = (fulfilled[0] as PromiseFulfilledResult<ContainerPackageResult>).value.imageTag;
+      const count = docker(['run', '--rm', '--entrypoint', 'sh', image, '-c', 'ls /app/big | wc -l']);
+      expect(count.stdout.trim()).toBe('1500');
+      expect(fs.existsSync(path.join(out, OUTPUT_LOCK))).toBe(false);
+    },
+    600_000
+  );
+
+  it(
+    'builds a python agent whose requirements.txt names an extra index, and warns about it',
+    async () => {
+      const agent = d.agent('pyidx');
+      const src = path.join(root, agent);
+      fs.mkdirSync(src);
+      // No installable packages, so pip never contacts the index (the sandbox has no network).
+      fs.writeFileSync(path.join(src, 'requirements.txt'), '--extra-index-url http://127.0.0.1:9/simple\n');
+      fs.writeFileSync(path.join(src, 'main.py'), 'print("hello from avt-b pyidx")\n');
+      const warnings: string[] = [];
+      const r = await packageContainer({ sourceDir: src, runtime, onWarning: (m) => warnings.push(m) });
+      expect(warnings.join('\n')).toMatch(/requirements\.txt line 1 \(--extra-index-url\).*as root/);
+      expect(fs.readFileSync(r.dockerfilePath, 'utf8')).toContain('RUN pip install --no-cache-dir --no-input -r requirements.txt');
+      const run = docker(['run', '--rm', r.imageTag]);
+      expect(run.status, run.stderr).toBe(0);
+      expect(run.stdout.trim()).toBe('hello from avt-b pyidx');
+    },
+    300_000
+  );
+
+  it(
+    'runs an executable entrypoint given as ./run.sh (it must not be looked up on PATH or run through node)',
+    async () => {
+      const agent = d.agent('runsh');
+      const src = makeNodeAgent(agent, true);
+      fs.writeFileSync(path.join(src, 'run.sh'), '#!/bin/sh\necho "hello from run.sh uid=$(id -u) args=$*"\n', { mode: 0o755 });
+      const r = await packageContainer({ sourceDir: src, runtime, entrypoint: ['./run.sh', 'a', 'b'] });
+      expect(r.manifest.entrypoint).toEqual(['./run.sh', 'a', 'b']);
+      const run = docker(['run', '--rm', r.imageTag]);
+      expect(run.status, run.stderr).toBe(0);
+      expect(run.stdout.trim()).toBe('hello from run.sh uid=10001 args=a b');
     },
     300_000
   );

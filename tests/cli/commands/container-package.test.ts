@@ -80,12 +80,16 @@ const noDocker: PackagingRuntime = new Proxy({} as PackagingRuntime, {
   },
 });
 
-/** Builds "images" by reading the manifest the packager wrote next to the Dockerfile. */
-function fakeBuildRuntime(): PackagingRuntime & { builds: BuildRequest[] } {
+/**
+ * Builds "images" by reading the manifest the packager wrote next to the Dockerfile,
+ * and models tags: a build adds one, tagImage copies one, removeImage drops one.
+ */
+function fakeBuildRuntime(existing: Record<string, ImageInfo> = {}): PackagingRuntime & { builds: BuildRequest[]; images: Map<string, ImageInfo> } {
   const builds: BuildRequest[] = [];
-  const images = new Map<string, ImageInfo>();
+  const images = new Map<string, ImageInfo>(Object.entries(existing));
   return {
     builds,
+    images,
     runner: () => Promise.reject(new Error('no runner')),
     buildImage: (request: BuildRequest): Promise<BuildResult> => {
       builds.push(request);
@@ -95,7 +99,16 @@ function fakeBuildRuntime(): PackagingRuntime & { builds: BuildRequest[] } {
       return Promise.resolve({ imageId: 'sha256:' + 'e'.repeat(64), tag: request.tag });
     },
     inspectImage: (ref: string) => Promise.resolve(images.get(ref) ?? null),
-    removeImage: () => Promise.resolve(),
+    removeImage: (ref: string) => {
+      images.delete(ref);
+      return Promise.resolve();
+    },
+    tagImage: (source: string, target: string) => {
+      const info = images.get(source);
+      if (info === undefined) return Promise.reject(new ContainerError('NOT_FOUND', `no such image ${source}`));
+      images.set(target, info);
+      return Promise.resolve();
+    },
   };
 }
 
@@ -320,11 +333,60 @@ describe('executeContainerPackage: real staging', () => {
     const source = agentDir();
     const runtime = fakeBuildRuntime();
     expect(await exec(h, source, { image: 'avt-k-custom:1' }, runtime)).toBe(0);
-    expect(runtime.builds.map((b) => b.tag)).toEqual(['avt-k-custom:1']);
+    // Built and verified under a private tag, then given the requested one; only that one is left.
+    expect(runtime.builds.map((b) => b.tag)).toEqual([expect.stringMatching(/^agentvault\/avt-k-pkg-agent:build-[0-9a-f]{16}$/)]);
+    expect([...runtime.images.keys()]).toEqual(['avt-k-custom:1']);
     const record = readImageRecord(path.join(source, 'dist', 'container'));
     expect(record).toEqual({ schemaVersion: 1, image: 'avt-k-custom:1', imageId: 'sha256:' + 'e'.repeat(64) });
     expect(h.out.join('\n')).toContain('Packaged agent avt-k-pkg-agent as container image avt-k-custom:1');
     expect(h.out.join('\n')).toContain('agentvault run avt-k-custom:1 -d');
+  });
+
+  it('refuses a tag that already names someone else\'s image, with a hint to pick another, and records nothing', async () => {
+    const h = harness();
+    const source = agentDir();
+    const base: ImageInfo = { id: 'sha256:' + 'b'.repeat(64), repoTags: ['node:22-slim'], repoDigests: [], labels: {}, user: '', sizeBytes: 1 };
+    const runtime = fakeBuildRuntime({ 'node:22-slim': base });
+    expect(await exec(h, source, { image: 'node:22-slim' }, runtime)).toBe(1);
+    const text = h.err.join('\n');
+    expect(text).toContain('node:22-slim');
+    expect(text).toMatch(/did not build/);
+    expect(text).toContain('--image');
+    expect(runtime.builds).toEqual([]);
+    expect(runtime.images.get('node:22-slim')).toBe(base);
+    expect(fs.existsSync(path.join(source, 'dist'))).toBe(false);
+  });
+
+  it('refuses to write through a symlinked dist/ and says so', async () => {
+    const h = harness();
+    const source = agentDir();
+    const elsewhere = mkdtemp('avt-k-pkg-elsewhere-');
+    fs.symlinkSync(elsewhere, path.join(source, 'dist'));
+    expect(await exec(h, source, { build: false })).toBe(1);
+    expect(h.err.join('\n')).toMatch(/symbolic link/);
+    expect(fs.readdirSync(elsewhere)).toEqual([]);
+  });
+
+  it('reports the real output path when --output goes through a symlinked directory', async () => {
+    const h = harness();
+    const source = agentDir();
+    const real = mkdtemp('avt-k-pkg-real-');
+    const link = path.join(h.cwd, 'link');
+    fs.symlinkSync(real, link);
+    expect(await exec(h, source, { build: false, output: path.join('link', 'out') })).toBe(0);
+    expect(h.out.join('\n')).toContain(`Output:      ${path.join(real, 'out')}`);
+    expect(readImageRecord(path.join(real, 'out'))).not.toBeNull();
+  });
+
+  it('prints the pip warnings the packager raises', async () => {
+    const h = harness();
+    const source = agentDir('avt-k-pkg-py');
+    fs.rmSync(path.join(source, 'package.json'));
+    fs.rmSync(path.join(source, 'index.js'));
+    fs.writeFileSync(path.join(source, 'main.py'), 'print(1)\n');
+    fs.writeFileSync(path.join(source, 'requirements.txt'), '--extra-index-url http://x\n');
+    expect(await exec(h, source, { build: false })).toBe(0);
+    expect(h.err.join('\n')).toMatch(/requirements\.txt line 1 \(--extra-index-url\)/);
   });
 
   it('a second run over the same output directory is accepted (it is ours)', async () => {

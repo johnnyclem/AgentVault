@@ -242,7 +242,9 @@ export function parseVolumeFlag(spec: string, agent: string, ctx: CliContext): P
     throw new ContainerError('INVALID_INPUT', '--volume expects NAME:/container/path or /host/path:/container/path, optionally followed by :ro');
   }
   const readOnly = mode === 'ro';
-  const containerPath = assertContainerPath(target);
+  // A run-time flag the user types is theirs to decide (unchanged behaviour). Volumes that get baked
+  // into an image, or read from an image label, are where system locations are refused.
+  const containerPath = assertContainerPath(target, { allowSystem: true });
   const bind = source.startsWith('/') || source.startsWith('./') || source.startsWith('../');
   if (bind) {
     const hostPath = assertBindSource(path.resolve(ctx.cwd, source));

@@ -18,6 +18,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { detectAgent } from '../packaging/detector.js';
+import type { AgentConfig } from '../packaging/types.js';
 import { sanitizePathPart } from '../utils/path-validation.js';
 import { ContainerError } from './types.js';
 import { AGENT_NAME_RE, assertImageRef } from './validate.js';
@@ -72,21 +73,46 @@ const TYPESCRIPT_RE = /\.(ts|tsx|mts|cts)$/i;
 const EXCLUDED_NAMES = new Set([
   '.git', 'node_modules', '.agentvault', '.venv', 'venv', '__pycache__',
   '.ssh', '.aws', '.gnupg', '.docker', '.kube',
-  '.npmrc', '.pypirc', '.netrc', '.ds_store', '.git-credentials', '.pgpass', '.envrc', '.dockerignore',
+  '.npmrc', '.pypirc', '.netrc', '.ds_store', '.git-credentials', '.pgpass', '.dockerignore',
+  '.htpasswd', '.vault-token', '.boto', '.s3cfg', '.dockercfg', 'kubeconfig', 'credentials.json',
+  '.bash_history', '.zsh_history',
 ]);
-const EXCLUDED_SUFFIXES = ['.pem', '.key', '.p12', '.pfx', '.jks', '.keystore', '.log'];
-const EXCLUDED_PREFIXES = ['id_rsa', 'id_ed25519', 'id_ecdsa', 'id_dsa'];
+const EXCLUDED_SUFFIXES = [
+  '.pem', '.key', '.p12', '.pfx', '.jks', '.keystore', '.log',
+  '.p8', '.ppk', '.kdbx', '.gpg', '.kubeconfig',
+  '.tfstate', '.tfstate.backup', '.tfvars', '.tfvars.json',
+];
+/** Data files that are credentials by convention. Whole-name patterns, so `secrets_manager.js` and `serviceaccount.js` stay. */
+const EXCLUDED_NAME_PATTERNS = [/^secrets(\..*)?$/, /service[-_]?account.*\.json$/];
+/** `id_rsa`, `my_id_rsa`, `deploy-id_ed25519`, but not `valid_rsa_key.js`: the key type must start a word. */
+const SSH_KEY_RE = /(^|[^a-z0-9])id_(rsa|ed25519|ecdsa|dsa)/;
+/** Added by editors and backup tools. `.env~` and `server.key.bak` are as sensitive as the originals. */
+const BACKUP_SUFFIXES = ['~', '.bak', '.old', '.orig', '.swp', '.tmp'];
+
+function withoutBackupSuffix(name: string): string {
+  let current = name;
+  for (;;) {
+    const suffix = BACKUP_SUFFIXES.find((s) => current.length > s.length && current.endsWith(s));
+    if (suffix === undefined) return current;
+    current = current.slice(0, -suffix.length);
+  }
+}
 
 /**
  * Why a directory entry (matched on its base name, case-insensitively) is never
  * copied into the build context, or undefined when it may be.
+ *
+ * Every rule is judged on the name with backup suffixes removed, so decorating a
+ * secret's name does not smuggle it in. Deliberately NOT excluded: `env`, `env.py`,
+ * `env.js` and `environment.js`, which are ordinary source files. Only a name that
+ * STARTS with `.env` or ENDS with `.env` is treated as an environment file.
  */
 export function exclusionReason(baseName: string): string | undefined {
-  const n = baseName.toLowerCase();
-  if (n === '.env' || n.startsWith('.env.')) return 'environment file (may hold secrets)';
-  if (EXCLUDED_NAMES.has(n)) return 'excluded name (secrets, VCS data or local environments)';
+  const n = withoutBackupSuffix(baseName.toLowerCase());
+  if (n.startsWith('.env') || n.endsWith('.env')) return 'environment file (may hold secrets)';
+  if (EXCLUDED_NAMES.has(n) || EXCLUDED_NAME_PATTERNS.some((re) => re.test(n))) return 'excluded name (secrets, VCS data or local environments)';
   if (EXCLUDED_SUFFIXES.some((s) => n.endsWith(s))) return 'excluded file type (key material or log)';
-  if (EXCLUDED_PREFIXES.some((p) => n.startsWith(p))) return 'SSH private key';
+  if (SSH_KEY_RE.test(n)) return 'SSH private key';
   return undefined;
 }
 
@@ -240,9 +266,11 @@ function validateOverride(runtime: RuntimeKind, argv: unknown, realSource: strin
 
   const head = out[0] as string;
   if (!BARE_COMMAND_RE.test(head)) {
-    // A path to an executable inside the source tree.
+    // A path to an executable inside the source tree. It must stay path-like:
+    // a bare "run.sh" would be looked up on PATH, and the node base image's
+    // entrypoint script would even prepend "node" to it.
     entryFile = acceptFile(checkEntryPath(realSource, head), 'Entrypoint');
-    out[0] = entryFile;
+    out[0] = `./${entryFile}`;
   } else if (INTERPRETERS[runtime].includes(head)) {
     let i = 1;
     while (i < out.length && (out[i] as string).startsWith('-')) {
@@ -284,6 +312,141 @@ function readText(realSource: string, name: string): string {
   const abs = path.join(realSource, name);
   if (fs.lstatSync(abs).size > MAX_CONFIG_BYTES) invalid(`${name} is larger than ${MAX_CONFIG_BYTES} bytes`);
   return fs.readFileSync(abs, 'utf8');
+}
+
+/**
+ * Every file detectAgent() reads as the agent's own config (its AGENT_PATTERNS,
+ * which it does not export). It follows symlinks and reads without a size cap,
+ * so a link to a file outside the tree would choose the image's name and version.
+ */
+const AGENT_CONFIG_FILES: readonly string[] = [
+  'clawdbot.json', 'clawdbot.config.json', '.clawdbot',
+  'goose.yaml', 'goose.yml', 'goose.config.yaml', '.gooserc',
+  'cline.json', 'cline.config.json', '.cline',
+  'polytician.json', '.polytician.json',
+  'nemoclaw.json', 'nemoclaw.config.json', '.nemoclaw.json',
+  'agent.json', 'agent.yaml', 'agent.yml', 'agentvault.json',
+];
+
+/**
+ * detectAgent() for a source tree whose config files are all regular files; a
+ * symlinked one is reported and detectAgent() is not asked, so nothing is read
+ * through the link. The name then falls back to the directory name and the
+ * version to package.json.
+ */
+function detectAgentIgnoringLinks(realSource: string, absolute: string, warnings: string[]): AgentConfig {
+  const linked = AGENT_CONFIG_FILES.filter((name) => probe(realSource, name) === 'symlink');
+  if (linked.length === 0) return detectAgent(absolute);
+  for (const name of linked) {
+    warnings.push(`${name} is a symbolic link and is ignored: symbolic links are never copied into the image, and the agent name and version are not read through one`);
+  }
+  return { name: path.basename(absolute), type: 'generic', sourcePath: absolute };
+}
+
+// ---------------------------------------------------------------------------
+// pip build-time risks
+// ---------------------------------------------------------------------------
+
+/** Options that change WHERE pip gets code from, or install a source tree. */
+const PIP_SOURCE_OPTIONS = new Set(['-i', '--index-url', '--extra-index-url', '--trusted-host', '-f', '--find-links', '-e', '--editable']);
+/** Options that pull in another requirements file; harmless while it stays inside the tree. */
+const PIP_NESTED_FILE_OPTIONS = new Set(['-r', '--requirement', '-c', '--constraint']);
+const LONG_OPTION_RE = /^(--[A-Za-z][A-Za-z0-9-]*)(?:[=\s]\s*(.*))?$/;
+const SHORT_OPTION_RE = /^(-[A-Za-z])\s*(.*)$/;
+const MAX_LISTED_FINDINGS = 5;
+/** The build backends `pip install .` is routinely used with. Anything else is worth a second look. */
+const KNOWN_BUILD_BACKENDS = new Set([
+  'setuptools.build_meta', 'setuptools.build_meta:__legacy__', 'hatchling.build', 'flit_core.buildapi', 'flit.buildapi',
+  'poetry.core.masonry.api', 'pdm.backend', 'pdm.pep517.api', 'maturin', 'mesonpy', 'scikit_build_core.build', 'sipbuild.api',
+]);
+const PIP_RISK_NOTE = 'The image build runs pip as root with network access, and installing a package can run its build code, so only use sources you trust';
+
+function pointsOutsideTree(value: string): boolean {
+  return value.startsWith('/') || value.startsWith('~') || /^[A-Za-z]:/.test(value) || value.includes('://') || value.split(/[\\/]/).includes('..');
+}
+
+/** requirements.txt as pip reads it: continuation lines joined, comments dropped. Line numbers are the first physical line. */
+function logicalRequirementLines(text: string): Array<{ line: number; text: string }> {
+  const out: Array<{ line: number; text: string }> = [];
+  let pending: { line: number; text: string } | undefined;
+  text.split(/\r?\n/).forEach((physical, index) => {
+    const continues = physical.endsWith('\\');
+    const piece = (continues ? physical.slice(0, -1) : physical).replace(/(^|\s)#.*$/, '');
+    pending = pending ? { line: pending.line, text: `${pending.text} ${piece}` } : { line: index + 1, text: piece };
+    if (!continues) {
+      out.push({ line: pending.line, text: pending.text.trim() });
+      pending = undefined;
+    }
+  });
+  if (pending) out.push({ line: pending.line, text: pending.text.trim() });
+  return out.filter((l) => l.text.length > 0);
+}
+
+/** What a requirements line does that deserves a warning, named without echoing its value (it may hold credentials). */
+function requirementFinding(logical: string): string | undefined {
+  if (!logical.startsWith('-')) return logical.includes('://') ? 'URL' : undefined;
+  const m = LONG_OPTION_RE.exec(logical) ?? SHORT_OPTION_RE.exec(logical);
+  if (!m) return undefined;
+  const option = m[1] as string;
+  if (PIP_SOURCE_OPTIONS.has(option)) return option;
+  if (PIP_NESTED_FILE_OPTIONS.has(option) && pointsOutsideTree((m[2] ?? '').trim())) return `${option} outside the source tree`;
+  return undefined;
+}
+
+function pipRequirementsWarnings(realSource: string): string[] {
+  let text: string;
+  try {
+    text = readText(realSource, 'requirements.txt');
+  } catch {
+    return [];
+  }
+  const findings = logicalRequirementLines(text).flatMap(({ line, text: logical }) => {
+    const finding = requirementFinding(logical);
+    return finding === undefined ? [] : [`line ${line} (${finding})`];
+  });
+  if (findings.length === 0) return [];
+  const listed = findings.slice(0, MAX_LISTED_FINDINGS).join(', ');
+  const more = findings.length > MAX_LISTED_FINDINGS ? `, and ${findings.length - MAX_LISTED_FINDINGS} more` : '';
+  const effect = findings.length === 1 ? 'this changes' : 'these change';
+  return [`requirements.txt ${listed}${more}: ${effect} where pip gets code from. ${PIP_RISK_NOTE}`];
+}
+
+/**
+ * The text of the PEP 517 [build-system] table (also in its inline-table and
+ * dotted-key forms). Not a TOML parser: it is advice for the person packaging,
+ * not a security boundary, because the build runs in a container either way.
+ */
+function buildSystemText(toml: string): string {
+  const parts: string[] = [];
+  let inTable = false;
+  for (const raw of toml.split(/\r?\n/)) {
+    const line = raw.replace(/(^|\s)#.*$/, '').trim();
+    if (/^\[\[?[^\]]*\]\]?$/.test(line)) {
+      inTable = line === '[build-system]';
+    } else if (inTable || /^build-system[.\s=]/.test(line)) {
+      parts.push(line);
+    }
+  }
+  return parts.join('\n');
+}
+
+function pyprojectWarnings(realSource: string): string[] {
+  let text: string;
+  try {
+    text = readText(realSource, 'pyproject.toml');
+  } catch {
+    return [];
+  }
+  const buildSystem = buildSystemText(text);
+  const warnings: string[] = [];
+  if (/\bbackend-path\s*=/.test(buildSystem)) {
+    warnings.push(`pyproject.toml declares backend-path, so its build backend is loaded from this source tree and runs during "pip install .". ${PIP_RISK_NOTE}`);
+  }
+  const backend = /\bbuild-backend\s*=\s*(["'])(.*?)\1/.exec(buildSystem)?.[2];
+  if (backend !== undefined && !KNOWN_BUILD_BACKENDS.has(backend)) {
+    warnings.push(`pyproject.toml build-backend ${JSON.stringify(printable(backend, 80))} is not a well-known build backend and runs during "pip install .". ${PIP_RISK_NOTE}`);
+  }
+  return warnings;
 }
 
 interface PackageJsonInfo {
@@ -403,7 +566,7 @@ export function detectContainerRuntime(sourceDir: string, options: DetectOptions
     }
   }
 
-  const agent = detectAgent(absolute);
+  const agent = detectAgentIgnoringLinks(realSource, absolute, warnings);
   const hasPackageJson = probe(realSource, 'package.json') === 'file';
   const pyStrong = [
     ...['requirements.txt', 'pyproject.toml'].filter((f) => probe(realSource, f) === 'file'),
@@ -454,10 +617,12 @@ export function detectContainerRuntime(sourceDir: string, options: DetectOptions
     install = 'pip-requirements';
     packageManager = 'pip';
     lockfile = 'requirements.txt';
+    warnings.push(...pipRequirementsWarnings(realSource));
   } else if (probe(realSource, 'pyproject.toml') === 'file') {
     packageManager = probe(realSource, 'uv.lock') === 'file' ? 'uv' : probe(realSource, 'poetry.lock') === 'file' ? 'poetry' : 'pip';
     if (pythonProjectIsInstallable(realSource)) {
       install = 'pip-project';
+      warnings.push(...pyprojectWarnings(realSource));
       if (packageManager !== 'pip') warnings.push(`${packageManager === 'uv' ? 'uv.lock' : 'poetry.lock'} found but only pip is supported in Phase 1: installing with "pip install ." and ignoring the lockfile`);
     } else {
       warnings.push('pyproject.toml has no [project], [build-system] or [tool.poetry] table: not installing anything');

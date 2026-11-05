@@ -64,13 +64,38 @@ export function assertImageRef(ref: string): string {
   return ref;
 }
 
-/** Absolute, normalized, no `..`, none of the mount-spec metacharacters. */
-export function assertContainerPath(p: string): string {
+/** Directories (and everything below them) that hold the system, not the agent's data. */
+const SYSTEM_TREES = ['/proc', '/sys', '/dev', '/etc', '/usr', '/bin', '/sbin', '/lib', '/lib64', '/boot', '/run', '/var/run', '/root'];
+/** Exact paths only: the agent's tmpfs mounts. Their children, such as /home/agent/data, are fine. */
+const SYSTEM_PATHS = ['/tmp', '/home/agent'];
+
+/**
+ * True for a path a volume must not cover. Whole path segments only: `/etcetera`
+ * is not `/etc`. Judged on the normalized path, because Docker normalizes it too
+ * and `//etc` or `/./etc` must not slip past a check on the raw string.
+ */
+export function isSystemContainerPath(p: string): boolean {
+  const normalized = path.posix.normalize(p);
+  const n = normalized.length > 1 ? normalized.replace(/\/+$/, '') : normalized;
+  return SYSTEM_PATHS.includes(n) || SYSTEM_TREES.some((tree) => n === tree || n.startsWith(`${tree}/`));
+}
+
+/**
+ * Absolute, normalized, no `..`, none of the mount-spec metacharacters, and not a
+ * system location. A volume over /proc fails at container creation, one over /etc
+ * or /usr replaces what the image relies on (and the Dockerfile would chown it to
+ * the agent), and one over /tmp swaps the noexec tmpfs for a persistent disk.
+ * `allowSystem` is for the fixed tmpfs mounts, which are exactly those paths.
+ */
+export function assertContainerPath(p: string, options: { allowSystem?: boolean } = {}): string {
   if (typeof p !== 'string' || !CONTAINER_PATH_RE.test(p)) {
     invalid('container path', String(p), 'must be absolute and use only [A-Za-z0-9._/-]');
   }
   if (p !== '/' && (p.endsWith('/') || p.split('/').some((seg) => seg === '..' || seg === '.'))) {
     invalid('container path', p, 'must be normalized (no "..", ".", or trailing "/")');
+  }
+  if (options.allowSystem !== true && isSystemContainerPath(p)) {
+    invalid('container path', p, 'is a system location and cannot be a volume; use a directory of your own such as /data');
   }
   return p;
 }

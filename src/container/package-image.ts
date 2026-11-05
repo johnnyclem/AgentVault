@@ -37,6 +37,7 @@ import {
   DEFAULT_AGENT_USER,
   LABEL_MANIFEST,
   type ContainerRuntime,
+  type ImageInfo,
   type NetworkMode,
 } from './types.js';
 import { assertContainerPath, assertEnvName, assertImageRef, assertSecretName, volumeKeysForPaths } from './validate.js';
@@ -55,6 +56,8 @@ export const MAX_CONTEXT_BYTES = 200 * 1024 * 1024;
 export const MAX_CONTEXT_FILES = 20_000;
 /** Written first into an output directory so later runs know it is ours. */
 export const OUTPUT_MARKER = '.agentvault-container-output';
+/** Held (with the owning pid inside) while a run generates or builds from an output directory. */
+export const OUTPUT_LOCK = '.agentvault-container-output.lock';
 
 const DEFAULT_VOLUMES = ['/data'];
 const CREDENTIAL_NAME_RE = /(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL)/i;
@@ -65,7 +68,7 @@ const PLATFORM_RE = /^[a-z0-9]+\/[a-z0-9]+(\/[a-z0-9]+)?$/;
 // ---------------------------------------------------------------------------
 
 /** The slice of ContainerRuntime that packaging uses. */
-export type PackagingRuntime = Pick<ContainerRuntime, 'buildImage' | 'inspectImage' | 'removeImage' | 'runner'>;
+export type PackagingRuntime = Pick<ContainerRuntime, 'buildImage' | 'inspectImage' | 'removeImage' | 'tagImage' | 'runner'>;
 
 export interface ContainerPackageOptions {
   sourceDir: string;
@@ -129,6 +132,12 @@ export interface StageOptions {
   maxFiles?: number;
   /** Absolute directories to skip (the output directory). */
   excludeDirs?: string[];
+  /**
+   * Runs after the scan and before the first file is opened: the window in which
+   * another process could swap what the scan saw. Tests use it to swap files
+   * deterministically; production callers have no use for it.
+   */
+  afterScan?: () => void;
 }
 
 export interface StageResult {
@@ -141,7 +150,9 @@ export interface StageResult {
 interface StagedCandidate {
   rel: string;
   abs: string;
-  size: number;
+  /** Identity of the file the scan saw. The copy only accepts a file with the same one. */
+  dev: bigint;
+  ino: bigint;
 }
 
 const SKIP_SYMLINK = 'symbolic link (never copied)';
@@ -160,9 +171,15 @@ function capError(kind: 'files' | 'bytes', maxFiles: number, maxBytes: number): 
   );
 }
 
+/**
+ * O_NOFOLLOW only covers the LAST path component, so the caller must still check
+ * the opened file's identity (an intermediate directory may have become a symlink).
+ * O_NONBLOCK makes opening a FIFO that has no writer return at once instead of
+ * blocking this process for ever; the caller then rejects it as not a regular file.
+ */
 function openNoFollow(abs: string): number | 'symlink' | 'gone' {
   try {
-    return fs.openSync(abs, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
+    return fs.openSync(abs, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0) | (fs.constants.O_NONBLOCK ?? 0));
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     if (code === 'ELOOP') return 'symlink';
@@ -203,9 +220,9 @@ export function stageBuildContext(sourceDir: string, contextDir: string, options
         skip(rel, true, 'output directory');
         continue;
       }
-      let st: fs.Stats;
+      let st: fs.BigIntStats;
       try {
-        st = fs.lstatSync(abs);
+        st = fs.lstatSync(abs, { bigint: true });
       } catch {
         skip(rel, false, 'unreadable entry');
         continue;
@@ -225,9 +242,9 @@ export function stageBuildContext(sourceDir: string, contextDir: string, options
         }
       } else if (st.isFile()) {
         if (candidates.length + 1 > maxFiles) throw capError('files', maxFiles, maxBytes);
-        plannedBytes += st.size;
+        plannedBytes += Number(st.size);
         if (plannedBytes > maxBytes) throw capError('bytes', maxFiles, maxBytes);
-        candidates.push({ rel, abs, size: st.size });
+        candidates.push({ rel, abs, dev: st.dev, ino: st.ino });
       } else {
         skip(rel, false, SKIP_SPECIAL);
       }
@@ -235,6 +252,7 @@ export function stageBuildContext(sourceDir: string, contextDir: string, options
   };
   walk(sourceDir, '');
   candidates.sort(byPath);
+  options.afterScan?.();
 
   const madeDirs = new Set<string>(['']);
   fs.chmodSync(contextDir, 0o755);
@@ -259,14 +277,20 @@ export function stageBuildContext(sourceDir: string, contextDir: string, options
     let content: Buffer;
     let executable: boolean;
     try {
-      const st = fs.fstatSync(fd);
+      const st = fs.fstatSync(fd, { bigint: true });
       if (!st.isFile()) {
         skip(candidate.rel, false, SKIP_SPECIAL);
         continue;
       }
-      if (bytes + st.size > maxBytes) throw capError('bytes', maxFiles, maxBytes);
+      // Not the file the scan saw: an intermediate directory was swapped for a
+      // symlink (so the path now leads outside the source) or the file was replaced.
+      if (st.dev !== candidate.dev || st.ino !== candidate.ino) {
+        skip(candidate.rel, false, 'changed while packaging');
+        continue;
+      }
+      if (bytes + Number(st.size) > maxBytes) throw capError('bytes', maxFiles, maxBytes);
       content = fs.readFileSync(fd);
-      executable = (st.mode & 0o111) !== 0;
+      executable = (Number(st.mode) & 0o111) !== 0;
     } finally {
       fs.closeSync(fd);
     }
@@ -334,8 +358,33 @@ function isSameOrInside(parent: string, child: string): boolean {
   return rel === '' || (rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel));
 }
 
-/** Refuse an output directory that could clobber user files, then claim it. */
-function prepareOutputDir(outputDir: string, realSource: string): void {
+function refuseSymlink(p: string, what: string): void {
+  let isLink = false;
+  try {
+    isLink = fs.lstatSync(p).isSymbolicLink();
+  } catch {
+    // does not exist yet: nothing to follow
+  }
+  if (isLink) {
+    throw new ContainerError(
+      'INVALID_INPUT',
+      `${what} ${p} is a symbolic link, so the build output would be written wherever it points (possibly another project). Remove the link or choose a real directory with --output`
+    );
+  }
+}
+
+/**
+ * Refuse an output directory that could clobber user files, then claim it.
+ * Returns its real path, which is what the caller reports and builds from.
+ *
+ * The output location must not itself be a symlink. Only the last component
+ * (and, for the default `<source>/dist/container`, `dist`) is checked: a parent
+ * that is a link on the way to an explicit --output is the user's own doing
+ * (`/tmp` on macOS) and is resolved instead.
+ */
+function prepareOutputDir(outputDir: string, realSource: string, isDefault: boolean): string {
+  if (isDefault) refuseSymlink(path.join(realSource, 'dist'), 'The default output location');
+  refuseSymlink(outputDir, 'The output location');
   if (isSameOrInside(realpathLoose(outputDir), realSource)) {
     throw new ContainerError('INVALID_INPUT', `Output directory ${outputDir} must not be the source directory or contain it`);
   }
@@ -356,6 +405,7 @@ function prepareOutputDir(outputDir: string, realSource: string): void {
   if (!fs.existsSync(marker)) {
     atomicWriteFileSync(marker, `${JSON.stringify({ tool: 'agentvault', kind: 'container-build-output', schemaVersion: 1 })}\n`, { mode: 0o644 });
   }
+  return fs.realpathSync(outputDir);
 }
 
 function removeGenerated(outputDir: string): void {
@@ -365,11 +415,157 @@ function removeGenerated(outputDir: string): void {
 }
 
 // ---------------------------------------------------------------------------
+// Output lock
+// ---------------------------------------------------------------------------
+
+export interface OutputLock {
+  /** Idempotent. Only removes the lock file if it still names this process. */
+  release(): void;
+  /** Set when the lock was taken over from a process that is no longer running. */
+  replacedStaleOwner?: number;
+}
+
+/** The pid in a lock file; 'gone' if the file vanished, 'unknown' if it does not name one. */
+function readLockOwner(lockPath: string): number | 'gone' | 'unknown' {
+  let text: string;
+  try {
+    text = fs.readFileSync(lockPath, 'utf8');
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'ENOENT' ? 'gone' : 'unknown';
+  }
+  const pid = Number(/^(\d{1,10})\s*$/.exec(text)?.[1] ?? 0);
+  return pid > 0 ? pid : 'unknown';
+}
+
+function processIsRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    // EPERM: it exists but belongs to someone else. Only ESRCH proves it is gone.
+    return (err as NodeJS.ErrnoException).code !== 'ESRCH';
+  }
+}
+
+/**
+ * Take the exclusive right to generate into, and build from, `outputDir`.
+ *
+ * Why: `docker build` streams the context lazily, so a second run that deletes
+ * and re-creates it mid-build makes the first image silently incomplete (or a
+ * mix of both agents) while still passing label verification. Two runs on one
+ * source directory share `dist/container`, so this happens to ordinary users.
+ *
+ * The lock is a file created with O_EXCL holding the owner's pid. A second run
+ * fails at once instead of waiting. A lock whose pid is provably dead (a crash
+ * or Ctrl-C, which skips 'exit' handlers) is taken over; one that names no pid
+ * is never deleted automatically, because it cannot be shown to be stale.
+ */
+export function acquireOutputLock(outputDir: string): OutputLock {
+  const lockPath = path.join(outputDir, OUTPUT_LOCK);
+  let replacedStaleOwner: number | undefined;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const fd = fs.openSync(lockPath, 'wx', 0o644);
+      try {
+        fs.writeSync(fd, `${process.pid}\n`);
+      } catch (err) {
+        fs.rmSync(lockPath, { force: true }); // do not leave an empty lock behind
+        throw err;
+      } finally {
+        fs.closeSync(fd);
+      }
+      break;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+      const owner = readLockOwner(lockPath);
+      if (owner === 'gone' && attempt < 3) continue; // released between our create and our read
+      if (typeof owner === 'number' && !processIsRunning(owner) && attempt < 3) {
+        // Re-read right before deleting so a lock another run took meanwhile is not removed.
+        if (readLockOwner(lockPath) === owner) fs.rmSync(lockPath, { force: true });
+        replacedStaleOwner = owner;
+        continue;
+      }
+      const who = typeof owner === 'number' ? `process ${owner}` : 'an unknown process';
+      throw new ContainerError(
+        'INVALID_INPUT',
+        `Another packaging run (${who}) is using ${outputDir}. Wait for it to finish or choose a different --output. ` +
+          `If no packaging run is active, delete ${lockPath}`,
+        { lockPath, ...(typeof owner === 'number' ? { pid: owner } : {}) }
+      );
+    }
+  }
+
+  let released = false;
+  const release = (): void => {
+    if (released) return;
+    released = true;
+    process.removeListener('exit', release);
+    if (readLockOwner(lockPath) === process.pid) fs.rmSync(lockPath, { force: true });
+  };
+  // Ctrl-C and SIGKILL skip this; the dead-pid takeover above covers them.
+  process.on('exit', release);
+  return { release, ...(replacedStaleOwner !== undefined ? { replacedStaleOwner } : {}) };
+}
+
+// ---------------------------------------------------------------------------
+// Existing image tags
+// ---------------------------------------------------------------------------
+
+/** The agent a built image belongs to, from its manifest label; undefined for anything that is not one of ours. */
+function agentOfImage(info: ImageInfo): string | undefined {
+  const label = info.labels[LABEL_MANIFEST];
+  if (label === undefined) return undefined;
+  try {
+    return parseManifest(label).name;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * `docker tag` silently moves a tag, leaving the image that held it untagged. So
+ * a tag may only be (re)used when it is free or already belongs to an AgentVault
+ * image of this same agent: `--image node:22-slim` must not re-bind the base
+ * image, and one agent must not overwrite another's image.
+ */
+async function assertTagAvailable(runtime: PackagingRuntime, tag: string, agent: string): Promise<void> {
+  const existing = await runtime.inspectImage(tag);
+  if (existing === null) return;
+  const owner = agentOfImage(existing);
+  if (owner === agent) return;
+  const what = owner === undefined ? 'an image AgentVault did not build' : `the AgentVault image of agent ${JSON.stringify(owner)}`;
+  throw new ContainerError(
+    'INVALID_INPUT',
+    `Image tag ${tag} already names ${what} (${printable(existing.id.slice(0, 19), 40)}). ` +
+      'Packaging would move the tag to this agent and leave that image untagged. Choose another tag with --image <name:tag>',
+    { tag, existingImageId: existing.id }
+  );
+}
+
+/** Fail before anything is written when the runtime cannot move a tag (see ContainerRuntime.tagImage). */
+function requireTagging(runtime: PackagingRuntime): (source: string, target: string) => Promise<void> {
+  const tagImage = runtime.tagImage?.bind(runtime);
+  if (tagImage === undefined) {
+    throw new ContainerError('COMMAND_FAILED', 'This container runtime cannot tag images, which packaging needs to publish a verified image under its name');
+  }
+  return tagImage;
+}
+
+/** A tag nobody else uses: the image is built and verified here before it is given its real tag. */
+function temporaryTag(agent: string): string {
+  return `agentvault/${agent}:build-${crypto.randomBytes(8).toString('hex')}`;
+}
+
+// ---------------------------------------------------------------------------
 // Verification of the built image
 // ---------------------------------------------------------------------------
 
-async function verifyBuiltImage(runtime: PackagingRuntime, tag: string, manifest: ContainerManifest): Promise<void> {
-  const info = await runtime.inspectImage(tag);
+/**
+ * `builtRef` is where the image sits while it is verified (a private tag);
+ * `tag` is the name the user asked for, which is what messages should say.
+ */
+async function verifyBuiltImage(runtime: PackagingRuntime, builtRef: string, tag: string, manifest: ContainerManifest): Promise<void> {
+  const info = await runtime.inspectImage(builtRef);
   if (info === null) {
     throw new ContainerError('INTEGRITY', `Image ${tag} was not found after the build`);
   }
@@ -475,77 +671,103 @@ export async function packageContainer(options: ContainerPackageOptions): Promis
   // surfaces before anything is written to disk.
   renderDockerfile({ manifest: draftManifest('0'.repeat(64)), base: detection.base, install: detection.install });
 
-  // 4. Output directory
-  const outputDir = path.resolve(options.outputDir ?? path.join(realSource, 'dist', 'container'));
-  prepareOutputDir(outputDir, realSource);
-  removeGenerated(outputDir);
-  const contextDir = path.join(outputDir, 'context');
-  const dockerfilePath = path.join(outputDir, 'Dockerfile');
-  const manifestPath = path.join(outputDir, MANIFEST_FILE);
+  // Refuse a tag that is not ours to move before anything is written or built.
+  const runtime = options.runtime;
+  const tagImage = options.build === false ? undefined : requireTagging(runtime);
+  if (tagImage !== undefined) await assertTagAvailable(runtime, imageTag, detection.name);
 
-  // 5. Stage + write. Anything half-written is removed on failure.
-  let manifest: ContainerManifest;
-  let stage: StageResult;
+  // 4. Output directory. The lock is held until the build has finished reading the context.
+  const outputDir = prepareOutputDir(
+    path.resolve(options.outputDir ?? path.join(realSource, 'dist', 'container')),
+    realSource,
+    options.outputDir === undefined
+  );
+  const lock = acquireOutputLock(outputDir);
   try {
-    fs.mkdirSync(contextDir, { mode: 0o755 });
-    stage = stageBuildContext(realSource, contextDir, { excludeDirs: [fs.realpathSync(outputDir)] });
-    if (detection.entryFile !== undefined && !fs.existsSync(path.join(contextDir, ...detection.entryFile.split('/')))) {
-      throw new ContainerError('INTEGRITY', `Entrypoint ${detection.entryFile} was not staged into the build context`);
+    if (lock.replacedStaleOwner !== undefined) {
+      warn(`Replaced a stale packaging lock left by process ${lock.replacedStaleOwner}, which is no longer running`);
     }
-    manifest = draftManifest(stage.contentHash);
-    atomicWriteFileSync(dockerfilePath, renderDockerfile({ manifest, base: detection.base, install: detection.install }), { mode: 0o644 });
-    atomicWriteFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o644 });
-  } catch (err) {
     removeGenerated(outputDir);
-    throw err;
-  }
+    const contextDir = path.join(outputDir, 'context');
+    const dockerfilePath = path.join(outputDir, 'Dockerfile');
+    const manifestPath = path.join(outputDir, MANIFEST_FILE);
 
-  const symlinks = stage.skipped.filter((s) => s.reason === SKIP_SYMLINK);
-  if (symlinks.length > 0) {
-    const shown = symlinks.slice(0, 3).map((s) => s.path).join(', ');
-    warn(`${symlinks.length} symbolic link(s) were not copied into the image (${shown}${symlinks.length > 3 ? ', ...' : ''})`);
-  }
-  const envFiles = stage.skipped.filter((s) => s.reason.startsWith('environment file'));
-  if (envFiles.length > 0) {
-    warn(`${envFiles.map((s) => s.path).join(', ')} not copied into the image: pass credentials with --secret or declare variable names with --env`);
-  }
-
-  const result: ContainerPackageResult = {
-    imageTag,
-    manifest,
-    outputDir,
-    contextDir,
-    dockerfilePath,
-    manifestPath,
-    warnings,
-    skipped: stage.skipped,
-    stats: { files: stage.files, bytes: stage.bytes },
-  };
-  if (options.build === false) {
-    return result;
-  }
-
-  // 6. Build + verify
-  const built = await options.runtime.buildImage({
-    contextDir,
-    dockerfile: dockerfilePath,
-    tag: imageTag,
-    ...(options.platform !== undefined ? { platform: options.platform } : {}),
-    ...(options.noCache ? { noCache: true } : {}),
-  });
-  try {
-    await verifyBuiltImage(options.runtime, built.tag, manifest);
-  } catch (err) {
-    // Do not leave a tag that points at an image we could not vouch for. This is
-    // best effort: failing to untag must not hide the verification error.
+    // 5. Stage + write. Anything half-written is removed on failure.
+    let manifest: ContainerManifest;
+    let stage: StageResult;
     try {
-      await options.runtime.removeImage(built.tag);
-    } catch {
-      // the verification error below is the one the caller needs to see
+      fs.mkdirSync(contextDir, { mode: 0o755 });
+      stage = stageBuildContext(realSource, contextDir, { excludeDirs: [outputDir] });
+      if (detection.entryFile !== undefined && !fs.existsSync(path.join(contextDir, ...detection.entryFile.split('/')))) {
+        throw new ContainerError('INTEGRITY', `Entrypoint ${detection.entryFile} was not staged into the build context`);
+      }
+      manifest = draftManifest(stage.contentHash);
+      atomicWriteFileSync(dockerfilePath, renderDockerfile({ manifest, base: detection.base, install: detection.install }), { mode: 0o644 });
+      atomicWriteFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o644 });
+    } catch (err) {
+      removeGenerated(outputDir);
+      throw err;
     }
-    throw err;
+
+    const symlinks = stage.skipped.filter((s) => s.reason === SKIP_SYMLINK);
+    if (symlinks.length > 0) {
+      const shown = symlinks.slice(0, 3).map((s) => s.path).join(', ');
+      warn(`${symlinks.length} symbolic link(s) were not copied into the image (${shown}${symlinks.length > 3 ? ', ...' : ''})`);
+    }
+    const envFiles = stage.skipped.filter((s) => s.reason.startsWith('environment file'));
+    if (envFiles.length > 0) {
+      warn(`${envFiles.map((s) => s.path).join(', ')} not copied into the image: pass credentials with --secret or declare variable names with --env`);
+    }
+
+    const result: ContainerPackageResult = {
+      imageTag,
+      manifest,
+      outputDir,
+      contextDir,
+      dockerfilePath,
+      manifestPath,
+      warnings,
+      skipped: stage.skipped,
+      stats: { files: stage.files, bytes: stage.bytes },
+    };
+    if (tagImage === undefined) {
+      return result; // generate only
+    }
+
+    // 6. Build under a private tag, verify THAT, and only then give it the real
+    // tag. A failed build or verification can then never untag or move an image
+    // that already holds the name, and the name never points at an image we
+    // could not vouch for.
+    const privateTag = temporaryTag(manifest.name);
+    const built = await runtime.buildImage({
+      contextDir,
+      dockerfile: dockerfilePath,
+      tag: privateTag,
+      ...(options.platform !== undefined ? { platform: options.platform } : {}),
+      ...(options.noCache ? { noCache: true } : {}),
+    });
+    try {
+      await verifyBuiltImage(runtime, built.tag, imageTag, manifest);
+      // The build can take minutes: someone may have claimed the name meanwhile.
+      await assertTagAvailable(runtime, imageTag, manifest.name);
+      await tagImage(built.tag, imageTag);
+    } catch (err) {
+      // Best effort: failing to drop our private tag must not hide the real error.
+      try {
+        await runtime.removeImage(built.tag);
+      } catch {
+        // the error below is the one the caller needs to see
+      }
+      throw err;
+    }
+    try {
+      await runtime.removeImage(built.tag);
+    } catch (err) {
+      warn(`The image is tagged ${imageTag}, but its temporary tag ${built.tag} could not be removed (${err instanceof Error ? err.message : String(err)}); run docker image rm ${built.tag}`);
+    }
+    result.imageId = built.imageId;
+    return result;
+  } finally {
+    lock.release();
   }
-  result.imageTag = built.tag;
-  result.imageId = built.imageId;
-  return result;
 }

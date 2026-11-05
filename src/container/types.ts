@@ -260,6 +260,13 @@ export interface ContainerRuntime {
   buildImage(request: BuildRequest): Promise<BuildResult>;
   /** Untag/remove an image. NOT_FOUND if it does not exist. */
   removeImage(ref: string): Promise<void>;
+  /**
+   * `docker tag`: point `target` at the image `source` names, replacing whatever
+   * `target` named before. Only packaging needs it. Optional so that runtimes and
+   * test doubles written before it existed still satisfy the interface;
+   * DockerRuntime always provides it and packaging refuses a runtime without it.
+   */
+  tagImage?(source: string, target: string): Promise<void>;
 
   /** Idempotent. `internal` => `docker network create --internal`. */
   ensureNetwork(name: string, options: { internal: boolean; labels?: Record<string, string> }): Promise<void>;

@@ -184,7 +184,9 @@ function resolveMounts(spec: ContainerSpec): string[] {
     if (m.kind !== 'volume' && m.kind !== 'bind') {
       invalid(`Invalid mount kind ${JSON.stringify(String(m.kind))}: use "volume" or "bind"`);
     }
-    const target = assertContainerPath(m.target);
+    // Unchanged behaviour: what may be a volume is decided where volumes are declared
+    // (package, manifest parsing, --volume); this only builds the argv.
+    const target = assertContainerPath(m.target, { allowSystem: true });
     if (target === '/') {
       invalid('Invalid mount target "/": mounting over the root filesystem is not allowed');
     }
@@ -211,7 +213,8 @@ function resolveTmpfs(spec: ContainerSpec): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const raw of spec.tmpfs) {
-    const p = assertContainerPath(raw);
+    // The agent's own tmpfs mounts are exactly the paths a volume may not take.
+    const p = assertContainerPath(raw, { allowSystem: true });
     if (p === '/') {
       invalid('Invalid tmpfs path "/": use a sub-directory');
     }
@@ -904,6 +907,12 @@ export class DockerRuntime implements ContainerRuntime {
   async removeImage(ref: string): Promise<void> {
     assertImageRef(ref);
     await this.invokeOk(['image', 'rm', '--', ref], { timeoutMs: QUICK_TIMEOUT_MS });
+  }
+
+  async tagImage(source: string, target: string): Promise<void> {
+    assertImageRef(source);
+    assertImageRef(target);
+    await this.invokeOk(['image', 'tag', '--', source, target], { timeoutMs: QUICK_TIMEOUT_MS });
   }
 
   async removeVolume(name: string): Promise<void> {
