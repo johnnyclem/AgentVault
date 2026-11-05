@@ -622,10 +622,10 @@ function deadSpool(parent: string): string {
   return dir;
 }
 
-describe('interrupt-leaves-plaintext: signals abort the work, then the command exits non-zero', () => {
+describe('interrupt-leaves-plaintext: signals abort the work, then the command exits 130', () => {
   const restored = { volumes: [{ key: 'data', volume: `av-${AGENT}-data`, entries: 3, bytes: 2048 }], entries: 3, warnings: [] as string[] };
 
-  it('create: the handler is installed for the work, an abort reaches the library, the command exits 1 and the handler is removed', async () => {
+  it('create: the handler is installed for the work, an abort reaches the library, the command exits 130 and the handler is removed', async () => {
     const hook = signalHook();
     const h = harness({ installSignalHandler: hook.install });
     vi.mocked(createSnapshot).mockImplementationOnce(untilAborted('Interrupted. The unfinished snapshot was deleted and nothing was kept.'));
@@ -637,7 +637,7 @@ describe('interrupt-leaves-plaintext: signals abort the work, then the command e
     hook.press();
     expect(signal?.aborted).toBe(true);
 
-    expect(await done).toBe(1);
+    expect(await done).toBe(130); // 128 + SIGINT, like an interrupted `run -d`
     expect(h.stderr()).toContain('Error: Interrupted. The unfinished snapshot was deleted and nothing was kept.');
     expect(hook.uninstalled()).toBe(1);
     expect(h.stdout()).not.toContain('written to');
@@ -653,7 +653,7 @@ describe('interrupt-leaves-plaintext: signals abort the work, then the command e
     await vi.waitFor(() => expect(hook.installed()).toBe(1));
     hook.press();
 
-    expect(await done).toBe(1);
+    expect(await done).toBe(130); // 128 + SIGINT, like an interrupted `run -d`
     expect(vi.mocked(restoreSnapshot).mock.calls[0]?.[0].signal?.aborted).toBe(true);
     expect(h.stderr()).toContain('Interrupted. Volume "av-alpha-data" was removed again');
     expect(hook.uninstalled()).toBe(1);
@@ -669,7 +669,7 @@ describe('interrupt-leaves-plaintext: signals abort the work, then the command e
     await vi.waitFor(() => expect(hook.installed()).toBe(1));
     hook.press();
 
-    expect(await done).toBe(1);
+    expect(await done).toBe(130); // 128 + SIGINT, like an interrupted `run -d`
     expect(vi.mocked(verifySnapshot).mock.calls[0]?.[0].signal?.aborted).toBe(true);
     expect(hook.uninstalled()).toBe(1);
   });
@@ -694,7 +694,7 @@ describe('interrupt-leaves-plaintext: signals abort the work, then the command e
     await vi.waitFor(() => expect(hook.installed()).toBe(1));
     hook.press();
     hook.press();
-    expect(await done).toBe(1);
+    expect(await done).toBe(130); // 128 + SIGINT, like an interrupted `run -d`
   });
 });
 

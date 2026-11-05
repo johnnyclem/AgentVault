@@ -1386,11 +1386,23 @@ describe('rm (property b: data loss is explicit)', () => {
     expect(confirm).not.toHaveBeenCalled();
   });
 
+  it('--volumes without a terminal and without -y can never be answered: it fails (exit 1) instead of looking like success', async () => {
+    // Piped stdin is not an answer. Exiting 0 here let a script believe the data had been deleted.
+    const confirm = vi.fn(() => Promise.resolve(true));
+    const h = seeded();
+    h.deps.confirm = confirm;
+    expect(await run(rmCommand(h.deps), [AGENT, '--volumes'])).toBe(1);
+    expect(confirm).not.toHaveBeenCalled();
+    expect(h.stderr()).toContain('-y');
+    expect(h.runtime.mutations).toEqual([]);
+  });
+
   it('--volumes asks first, naming the volumes, and removes nothing at all when the answer is no', async () => {
     const confirm = vi.fn(() => Promise.resolve(false));
     const h = seeded();
+    h.deps.interactive = true;
     h.deps.confirm = confirm;
-    expect(await run(rmCommand(h.deps), [AGENT, '--volumes'])).toBe(0);
+    expect(await run(rmCommand(h.deps), [AGENT, '--volumes'])).toBe(0); // the user said no, and knows it
     expect(confirm).toHaveBeenCalledTimes(1);
     expect(String((confirm.mock.calls as unknown[][])[0]?.[0])).toContain(`av-${AGENT}-data`);
     expect(h.runtime.mutations).toEqual([]);
@@ -1399,6 +1411,7 @@ describe('rm (property b: data loss is explicit)', () => {
 
   it('--volumes deletes the volumes after a yes', async () => {
     const h = seeded();
+    h.deps.interactive = true;
     h.deps.confirm = () => Promise.resolve(true);
     expect(await run(rmCommand(h.deps), [AGENT, '--volumes'])).toBe(0);
     expect(h.runtime.callsOf('removeVolume')).toEqual([[`av-${AGENT}-data`]]);
@@ -1414,13 +1427,13 @@ describe('rm (property b: data loss is explicit)', () => {
     expect(h.runtime.callsOf('removeVolume')).toEqual([[`av-${AGENT}-data`]]);
   });
 
-  it('with no terminal and no -y the default answer is no, so a script cannot delete data by accident', async () => {
+  it('with no terminal and no -y nothing is deleted and the command FAILS, so a script cannot mistake it for success', async () => {
     const h = seeded();
     delete h.deps.confirm; // the real default: "no" without a TTY
     const original = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY');
     Object.defineProperty(process.stdin, 'isTTY', { value: false, configurable: true });
     try {
-      expect(await run(rmCommand(h.deps), [AGENT, '--volumes'])).toBe(0);
+      expect(await run(rmCommand(h.deps), [AGENT, '--volumes'])).toBe(1);
     } finally {
       if (original) Object.defineProperty(process.stdin, 'isTTY', original);
       else delete (process.stdin as { isTTY?: boolean }).isTTY;

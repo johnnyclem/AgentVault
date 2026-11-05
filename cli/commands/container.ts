@@ -32,7 +32,8 @@ import chalk from 'chalk';
 import { Command } from 'commander';
 import { manifestFromLabels, parseManifest } from '../../src/container/manifest.js';
 import type { ContainerManifest } from '../../src/container/manifest.js';
-import { ensureAgentVolume, listAgents, removeAgent, startAgent, stopAgent } from '../../src/container/lifecycle.js';
+import { listAgents, removeAgent, startAgent, stopAgent } from '../../src/container/lifecycle.js';
+import { ensureAgentVolume } from '../../src/container/volume-ownership.js';
 import type { StartAgentOptions } from '../../src/container/lifecycle.js';
 import { getPreset, presetSecretEnvMapping } from '../../src/container/proxy/presets.js';
 import { SecretStore, createChainResolver, createEnvResolver, createStoreResolver } from '../../src/container/secrets-store.js';
@@ -706,6 +707,13 @@ export async function executeRm(agent: string, options: { volumes?: boolean; yes
   if (removeVolumes && options.yes !== true) {
     const volumes = (await runtime.listVolumes({ agent })).map((volume) => volume.name);
     if (volumes.length > 0) {
+      if (!ctx.interactive) {
+        // Nobody can answer: exiting 0 here let a script believe the data had been deleted.
+        throw new ContainerError(
+          'INVALID_INPUT',
+          `Deleting ${volumes.join(', ')} needs confirmation and there is no terminal to ask on. Pass -y to delete the data without being asked.`
+        );
+      }
       const confirmed = await ctx.confirm(`Permanently delete the data in ${volumes.join(', ')}? This cannot be undone.`);
       if (!confirmed) {
         ctx.log('Aborted. Nothing was removed. Pass -y to delete the volumes without this question.');

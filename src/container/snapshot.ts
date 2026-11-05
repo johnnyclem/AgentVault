@@ -83,7 +83,8 @@ import { atomicWriteFileSync, sanitizePathPart } from '../utils/path-validation.
 import { KDF_ITERATIONS_DEFAULT, KDF_ITERATIONS_MAX, KDF_ITERATIONS_MIN, assertPassphrase, decryptFile, encryptFile } from './crypto.js';
 import { validateTarArchive } from './tar-validate.js';
 import type { TarSummary } from './tar-validate.js';
-import { ContainerError, LABEL_AGENT, LABEL_MANAGED, LABEL_ROLE, LABEL_VOLUME_KEY } from './types.js';
+import { ContainerError, LABEL_AGENT, LABEL_MANAGED, LABEL_ROLE } from './types.js';
+import { ensureAgentVolume } from './volume-ownership.js';
 import type { CommandResult, ContainerRuntime, ContainerSpec } from './types.js';
 import {
   AGENT_NAME_RE,
@@ -129,13 +130,13 @@ const LEGACY_PLAINTEXT_RE = /^\.[a-z0-9][a-z0-9_-]{0,31}\.tar\.plain$/;
 
 /**
  * The user (or a signal handler) stopped the operation. Nothing partial was
- * kept except what the message says. Deliberately not a ContainerError: none of
- * its codes describe "the user changed their mind", and a docker hint under it
- * would mislead.
+ * kept except what the message says. It carries the INTERRUPTED code, which has
+ * no docker hint to mislead and which the CLI turns into exit status 130, the
+ * same as an interrupted `run -d`.
  */
-export class SnapshotInterruptedError extends Error {
+export class SnapshotInterruptedError extends ContainerError {
   constructor(message = 'Interrupted.') {
-    super(message);
+    super('INTERRUPTED', message);
     this.name = 'SnapshotInterruptedError';
   }
 }
@@ -1204,6 +1205,8 @@ export async function restoreSnapshot(request: RestoreSnapshotRequest): Promise<
   const spoolDir = makeSpool(request.tempDir);
   /** Volumes the restore helper has started on. A failure takes them back. */
   const touched: TouchedVolume[] = [];
+  /** Volumes this call created (empty, never written to) before the helper started: a refusal part-way takes them back too. */
+  const createdHere: Array<{ key: string; name: string }> = [];
   try {
     // 1-5. Everything about every volume is verified before any volume is touched.
     const { staged } = await stageSnapshot({
@@ -1240,16 +1243,23 @@ export async function restoreSnapshot(request: RestoreSnapshotRequest): Promise<
       );
     }
 
-    // 7. Create the missing volumes (labelled so snapshot/list/rm find them). A name that existed
-    // unmanaged is only discovered now, so these are checked for emptiness too, before any write.
+    // 7. Create the missing volumes (labelled so snapshot/list/rm find them). A volume of that name that is not this
+    // agent's (unlabelled, or another agent's) is refused rather than adopted, filled and later deleted as "empty".
+    // One that appears between the check and the creation is still caught by the emptiness check, before any write.
     for (const { volume } of staged) {
       if (existing.has(volume.key)) continue;
       throwIfInterrupted(signal);
       const volumeName = names.volume(volume.key);
-      await runtime.ensureVolume(volumeName, { [LABEL_AGENT]: agent, [LABEL_VOLUME_KEY]: volume.key });
+      if (await ensureAgentVolume(runtime, agent, volume.key, volumeName)) createdHere.push({ key: volume.key, name: volumeName });
       if (await volumeIsEmpty(runtime, agent, volumeName, helperImage, signal)) {
         emptyBefore.add(volume.key);
-      } else if (!force) {
+      } else {
+        // "Created" can be wrong if another writer got there between the check and the creation. A volume that turns out
+        // to hold data is never ours to remove, whatever we believed about creating it.
+        const at = createdHere.findIndex((made) => made.name === volumeName);
+        if (at !== -1) createdHere.splice(at, 1);
+      }
+      if (!emptyBefore.has(volume.key) && !force) {
         throw new ContainerError(
           'POLICY_VIOLATION',
           `Refusing to restore into ${JSON.stringify(volumeName)}: a volume with that name already holds data. Empty it first, or pass force to restore anyway.`,
@@ -1277,6 +1287,9 @@ export async function restoreSnapshot(request: RestoreSnapshotRequest): Promise<
   } catch (err) {
     // Never leave a half-restored volume that looks like real data, and say what became of each one.
     // Only volumes that were empty when we started are removed or emptied; one that held data (force) is never deleted.
+    for (const made of createdHere) {
+      if (!touched.some((t) => t.name === made.name)) touched.push({ key: made.key, name: made.name, wasEmpty: true });
+    }
     const outcomes = await undoFailedRestore(runtime, agent, touched, helperImage);
     if (signal?.aborted === true) {
       throw interruptedAfterCleanup(

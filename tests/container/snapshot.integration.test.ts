@@ -362,6 +362,19 @@ describe.skipIf(!usable)('snapshot create / verify / restore on a real daemon', 
     expect(after).toContain('readable.txt');
   });
 
+  it('refuses to restore into an unlabelled volume of the target\'s name, even an EMPTY one, and leaves it alone', async () => {
+    // Restore used to find an empty same-named volume, write into it, and delete it as "empty before" if anything failed.
+    const created = await createSnapshot({ runtime, agent: source, outputDir: path.join(work, 'foreign-out'), volumeKeys: ['data'] });
+
+    const handmade = d.agent('handmade');
+    const handmadeVolume = resourceNames(handmade).volume('data');
+    expect(docker(['volume', 'create', handmadeVolume]).status).toBe(0); // no AgentVault labels
+    const unlabelled = await expectCode(restoreSnapshot({ runtime, snapshotDir: created.dir, agent: handmade }), 'POLICY_VIOLATION');
+    expect(unlabelled.message).toMatch(/not created by AgentVault/);
+    expect(volumeExists(handmadeVolume)).toBe(true);
+    expect(inVolume(handmadeVolume, 'ls -A /v', { readOnly: true }).stdout.trim()).toBe('');
+  });
+
   it('a snapshot with a hostile tar (valid hashes, valid tag) is refused before any volume exists', async () => {
     // Hand-forge: write-through-symlink archive, encrypted with the real format, manifest with correct hashes.
     const gnu = path.join(work, 'forge');

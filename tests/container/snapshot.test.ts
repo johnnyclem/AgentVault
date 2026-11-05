@@ -28,7 +28,7 @@ import {
   volumeBinding,
 } from '../../src/container/snapshot.js';
 import type { SnapshotManifest } from '../../src/container/snapshot.js';
-import { ContainerError, LABEL_AGENT, LABEL_VOLUME_KEY } from '../../src/container/types.js';
+import { ContainerError, LABEL_AGENT, LABEL_MANAGED, LABEL_VOLUME_KEY } from '../../src/container/types.js';
 import type {
   CommandResult,
   ContainerInfo,
@@ -160,6 +160,8 @@ interface FakeOptions {
   hang?: 'snapshot' | 'restore';
   /** The first N `remove` calls fail with NOT_FOUND (the container is not created yet). */
   removeContainerFailures?: number;
+  /** Volumes that exist but are NOT this agent's: volume name -> the labels Docker holds ({} = unlabelled). */
+  foreign?: Record<string, Record<string, string>>;
 }
 
 class FakeRuntime implements ContainerRuntime {
@@ -209,8 +211,15 @@ class FakeRuntime implements ContainerRuntime {
   }
 
   inspectVolume(name: string): Promise<{ name: string; labels: Record<string, string> } | null> {
-    // Snapshot code never asks; present only to satisfy the interface.
-    return Promise.resolve(this.existing.has(name) ? { name, labels: {} } : null);
+    this.events.push(`inspectVolume ${name}`);
+    const foreign = this.options.foreign?.[name];
+    if (foreign !== undefined) return Promise.resolve({ name, labels: { ...foreign } });
+    if (this.existing.has(name)) {
+      const agent = this.options.agent ?? 'src-agent';
+      const key = name.startsWith(`av-${agent}-`) ? name.slice(`av-${agent}-`.length) : name;
+      return Promise.resolve({ name, labels: { [LABEL_MANAGED]: 'true', [LABEL_AGENT]: agent, 'agentvault.volume-key': key } });
+    }
+    return Promise.resolve(null);
   }
 
   ensureVolume(name: string, labels?: Record<string, string>): Promise<void> {
@@ -983,7 +992,7 @@ describe('restoreSnapshot', () => {
 
       expect(result.volumes).toEqual([{ key: 'data', volume: 'av-new-agent-data', entries: GOOD_ENTRIES, bytes: `${CANARY}:data`.length + 5 }]);
       expect(result.entries).toBe(GOOD_ENTRIES);
-      expect(runtime.ensured).toEqual([{ name: 'av-new-agent-data', labels: { [LABEL_AGENT]: 'new-agent', [LABEL_VOLUME_KEY]: 'data' } }]);
+      expect(runtime.ensured).toEqual([{ name: 'av-new-agent-data', labels: { [LABEL_MANAGED]: 'true', [LABEL_AGENT]: 'new-agent', [LABEL_VOLUME_KEY]: 'data' } }]);
 
       const restore = runtime.helpers('restore');
       expect(restore).toHaveLength(1);
@@ -1174,12 +1183,46 @@ describe('restoreSnapshot', () => {
       expect(runtime.helpers('restore')).toHaveLength(1);
     });
 
-    it('catches a same-named volume that existed WITHOUT our labels (found after ensureVolume, before any write)', async () => {
+    it('still catches a volume that turns out to hold data once it exists (another writer got there first)', async () => {
       const { dir } = await makeSnapshot();
       const runtime = new FakeRuntime({ existing: [], nonEmpty: ['av-new-agent-data'] });
       await expectError(restoreSnapshot({ runtime, snapshotDir: dir, agent: 'new-agent' }), 'POLICY_VIOLATION', /already holds data/);
       expect(runtime.helpers('restore')).toEqual([]);
       expect(runtime.removed).toEqual([]);
+    });
+
+    it('a volume that turns out to hold data is never removed by the cleanup, even though restore believed it had just created it', async () => {
+      // `docker volume create` of an existing name succeeds, so "created" can be wrong when another writer got there first.
+      const { dir } = await makeSnapshot();
+      const runtime = new FakeRuntime({ existing: [], nonEmpty: ['av-new-agent-data'] });
+      await expectError(restoreSnapshot({ runtime, snapshotDir: dir, agent: 'new-agent' }), 'POLICY_VIOLATION', /already holds data/);
+      expect(runtime.removed).toEqual([]);
+    });
+
+    describe('a volume of that name that is not this agent\'s', () => {
+      // Restore used to `ensureVolume` (a no-op for an existing volume), find it EMPTY, write into it, and on any later
+      // failure delete it as "empty before we started": somebody else's volume adopted, filled and removed.
+      it.each([
+        ['an unlabelled volume somebody made by hand', {}, /not created by AgentVault/],
+        ['another agent\'s volume that derives the same Docker name', { 'agentvault.managed': 'true', 'agentvault.agent': 'other-agent', 'agentvault.volume-key': 'data' }, /belongs to agent "other-agent"/],
+      ] as const)('refuses %s, even when it is empty, and never removes it', async (_label, labels, message) => {
+        const { dir } = await makeSnapshot();
+        const runtime = new FakeRuntime({ existing: [], foreign: { 'av-new-agent-data': { ...labels } } });
+        await expectError(restoreSnapshot({ runtime, snapshotDir: dir, agent: 'new-agent' }), 'POLICY_VIOLATION', message);
+        expect(runtime.helpers('restore')).toEqual([]);
+        expect(runtime.ensured).toEqual([]);
+        expect(runtime.removed).toEqual([]);
+      });
+
+      it('...and when a LATER volume is refused, the one this restore had already created is taken away again', async () => {
+        // Volumes are handled in key order: "config" is created first, then "data" is found to be somebody else's.
+        const { dir } = await makeSnapshot({ keys: { config: goodTar('config'), data: goodTar('data') } });
+        const runtime = new FakeRuntime({ existing: [], foreign: { 'av-new-agent-data': {} } });
+        await expectError(restoreSnapshot({ runtime, snapshotDir: dir, agent: 'new-agent' }), 'POLICY_VIOLATION', /not created by AgentVault/);
+        expect(runtime.helpers('restore')).toEqual([]);
+        expect(runtime.removed).toContain('av-new-agent-config'); // ours: made by this restore, never written
+        expect(runtime.removed).not.toContain('av-new-agent-data'); // theirs: untouched
+      });
     });
 
     it('ignores a labelled volume whose name is not the canonical one (it must not make us probe the real name)', async () => {
@@ -1217,7 +1260,8 @@ describe('restoreSnapshot', () => {
       const { dir } = await makeSnapshot({ keys: { alpha: goodTar('a'), beta: goodTar('b') } });
       const runtime = new FakeRuntime({ existing: [], restoreExit: 1 });
       await expectError(restoreSnapshot({ runtime, snapshotDir: dir, agent: 'new-agent' }), 'COMMAND_FAILED', /exit code 1/);
-      expect(runtime.removed).toEqual(['av-new-agent-alpha']);
+      // alpha was being written; beta was created for this restore but never reached. Neither may be left behind.
+      expect(runtime.removed).toEqual(['av-new-agent-alpha', 'av-new-agent-beta']);
     });
 
     it('removes every empty volume restored so far when a later one fails', async () => {
