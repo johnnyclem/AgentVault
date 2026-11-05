@@ -718,6 +718,15 @@ describe.skipIf(!usable)('DockerRuntime against a real daemon', () => {
   // -- volumes and listing --------------------------------------------------
 
   describe('volumes', () => {
+    it('remove also takes the container\'s ANONYMOUS volumes (an image VOLUME line), which nothing else could find', async () => {
+      const name = d.name('anon');
+      expect(dockerCli(['create', '--name', name, '-v', '/anon-data', BUSYBOX, 'true']).status).toBe(0);
+      const volume = dockerCli(['inspect', '--format', '{{range .Mounts}}{{.Name}}{{end}}', name]).stdout.trim();
+      expect(volume).toMatch(/^[0-9a-f]{64}$/);
+      await runtime.remove(name, { force: true });
+      expect(dockerCli(['volume', 'inspect', volume]).status).not.toBe(0);
+    });
+
     it('listVolumes finds managed volumes by agent, with their keys, and ignores others', async () => {
       const agent = d.agent('vols');
       const other = d.agent('vols2');

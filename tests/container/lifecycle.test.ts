@@ -140,6 +140,8 @@ class FakeRuntime implements ContainerRuntime {
 
   /** Fail the call with this index (counting every call, in order). */
   failAt: number | undefined;
+  /** Called with the index of each Docker call as it begins. */
+  onCall: ((index: number) => void) | undefined;
   private failed = false;
   /** After the injected failure, every cleanup call fails too. */
   failCleanup = false;
@@ -162,6 +164,7 @@ class FakeRuntime implements ContainerRuntime {
   private step(method: string, args: unknown[]): void {
     const index = this.calls.length;
     this.calls.push({ method, args, mutating: MUTATING.has(method) });
+    this.onCall?.(index);
     if (this.failAt === index) {
       this.failed = true;
       throw new ContainerError('COMMAND_FAILED', `injected failure at call ${index} (${method})`);
@@ -908,6 +911,20 @@ describe('detached liveness watch', () => {
   });
 });
 
+describe('--writable-rootfs', () => {
+  it('is announced as weakening isolation, like bridge, and never otherwise', async () => {
+    const heard: string[] = [];
+    const weaker = await startAgent(req(new FakeRuntime(), { writableRootfs: true, onWarning: (m) => heard.push(m) }));
+    expect(weaker.warnings).toHaveLength(1);
+    expect(heard).toEqual(weaker.warnings);
+    expect(weaker.warnings[0]).toMatch(/--writable-rootfs/);
+    expect(weaker.warnings[0]).toMatch(/modify its own root filesystem/);
+
+    expect((await startAgent(req(new FakeRuntime()))).warnings).toEqual([]);
+    expect((await startAgent(req(new FakeRuntime(), { writableRootfs: false }))).warnings).toEqual([]);
+  });
+});
+
 describe('(e) network bridge', () => {
   const bridgeManifest = (): ContainerManifest => manifestFor({ isolation: { network: 'bridge', user: '10001:10001', readOnlyRootfs: true } });
 
@@ -1212,6 +1229,81 @@ describe('(g) sidecar readiness and log redaction', () => {
 // ---------------------------------------------------------------------------
 // Rollback (properties c, j)
 // ---------------------------------------------------------------------------
+
+describe('interrupting a start', () => {
+  const makeProxy = (): { fake: FakeRuntime; request: StartAgentOptions } => {
+    const fake = new FakeRuntime(manifestFor({ secrets: ['svc'], isolation: { network: 'proxy', user: '10001:10001', readOnlyRootfs: true } }));
+    return { fake, request: req(fake, { proxyPlan: planFor() }) };
+  };
+
+  it('an already-aborted signal stops the start before anything is created', async () => {
+    const { fake, request } = makeProxy();
+    const controller = new AbortController();
+    controller.abort();
+    const error = await rejection(startAgent({ ...request, signal: controller.signal }));
+    expect(error.code).toBe('INTERRUPTED');
+    expect(fake.mutations).toEqual([]);
+  });
+
+  it('an abort at ANY point is rolled back completely: no sidecar, network or new volume survives', async () => {
+    // Abort as the Nth Docker call happens, for every N a successful start makes, and compare with what existed before.
+    const dry = makeProxy();
+    await startAgent(dry.request);
+    const total = dry.fake.calls.length;
+    let aborted = 0;
+    for (let n = 1; n < total; n += 1) {
+      const { fake, request } = makeProxy();
+      const before = fake.state();
+      const controller = new AbortController();
+      fake.onCall = (index) => {
+        if (index === n) controller.abort();
+      };
+      let outcome: 'started' | 'interrupted';
+      try {
+        await startAgent({ ...request, signal: controller.signal });
+        outcome = 'started';
+      } catch (error) {
+        expect((error as ContainerError).code, `abort at call ${n}`).toBe('INTERRUPTED');
+        outcome = 'interrupted';
+      }
+      if (outcome === 'interrupted') {
+        aborted += 1;
+        const after = fake.state();
+        for (const c of after.containers) expect(before.containers.has(c), `abort at call ${n}: container ${c} left behind`).toBe(true);
+        for (const net of after.networks) expect(before.networks.has(net), `abort at call ${n}: network ${net} left behind`).toBe(true);
+        for (const v of after.volumes) expect(before.volumes.has(v), `abort at call ${n}: volume ${v} left behind`).toBe(true);
+      }
+    }
+    expect(aborted).toBeGreaterThan(5); // the loop really did interrupt starts in the middle
+  });
+
+  it('an abort while waiting for the sidecar does not wait out the readiness timeout', async () => {
+    const { fake, request } = makeProxy();
+    fake.proxyLogs = () => ''; // never reports ready
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 30);
+    const started = Date.now();
+    const error = await rejection(startAgent({ ...request, signal: controller.signal, proxyReadyTimeoutMs: 20_000, proxyReadyPollMs: 5 }));
+    expect(error.code).toBe('INTERRUPTED');
+    expect(Date.now() - started).toBeLessThan(3_000);
+    expect(fake.containers.size).toBe(0);
+  });
+
+  it('once the agent is running, an abort during the liveness window does not undo a successful start', async () => {
+    const fake = new FakeRuntime();
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 20);
+    const started = await startAgent(req(fake, { signal: controller.signal, livenessGraceMs: 2_000, livenessPollMs: 5 }));
+    expect(started.containerId).toBeDefined();
+    expect(fake.containers.get(`av-${AGENT}`)?.state).toBe('running');
+    expect(fake.mutations.filter((m) => m.startsWith('remove') || m.startsWith('stop'))).toEqual([]);
+  });
+
+  it('the signal is optional: without one nothing changes', async () => {
+    const fake = new FakeRuntime();
+    expect((await startAgent(req(fake))).containerId).toBeDefined();
+  });
+});
 
 describe('volume ownership', () => {
   const mine = { [LABEL_MANAGED]: 'true', [LABEL_AGENT]: AGENT, [LABEL_VOLUME_KEY]: 'data' };

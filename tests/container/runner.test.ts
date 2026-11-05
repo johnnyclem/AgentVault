@@ -153,6 +153,58 @@ describe('execaRunner: env', () => {
   });
 });
 
+describe('execaRunner: AgentVault\'s own secrets are not handed to the child', () => {
+  // Every docker invocation (and the credential helpers and CLI plugins it may run) inherited the whole environment,
+  // including the passphrases and, with --secrets-from-env, the provider API keys.
+  const withheld: Record<string, string> = {
+    AGENTVAULT_SNAPSHOT_PASSPHRASE: 'p1',
+    AGENTVAULT_SECRETS_PASSPHRASE: 'p2',
+    AGENTVAULT_PRIVATE_KEY: 'p3',
+    AV_SECRET_ANTHROPIC: 'k0',
+    AV_PROXY_CONFIG: 'k00',
+    ANTHROPIC_API_KEY: 'k1',
+    OPENAI_API_KEY: 'k2',
+    VENICE_API_KEY: 'k3',
+  };
+  const kept: Record<string, string> = { DOCKER_HOST: 'unix:///x.sock', DOCKER_CONFIG: '/tmp/dc', HTTPS_PROXY: 'http://p:1', AVT_A_OTHER: 'keep' };
+
+  afterEach(() => {
+    for (const name of [...Object.keys(withheld), ...Object.keys(kept)]) delete process.env[name];
+  });
+
+  const seen = async (env?: Record<string, string>): Promise<Record<string, string | undefined>> => {
+    const names = [...Object.keys(withheld), ...Object.keys(kept), 'PATH'];
+    const r = await execaRunner(process.execPath, ['-e', `process.stdout.write(JSON.stringify(Object.fromEntries(${JSON.stringify(names)}.map((n) => [n, process.env[n]]))))`], env ? { env } : {});
+    return JSON.parse(r.stdout) as Record<string, string | undefined>;
+  };
+
+  it('drops them from the inherited environment, and keeps everything docker legitimately needs', async () => {
+    Object.assign(process.env, withheld, kept);
+    const env = await seen();
+    for (const name of Object.keys(withheld)) expect(env[name], name).toBeUndefined();
+    for (const [name, value] of Object.entries(kept)) expect(env[name], name).toBe(value);
+    expect(env['PATH']).toBeTruthy();
+  });
+
+  it('a caller that passes one explicitly still can (that is deliberate, not inherited)', async () => {
+    Object.assign(process.env, withheld);
+    const env = await seen({ AGENTVAULT_SNAPSHOT_PASSPHRASE: 'on purpose' });
+    expect(env['AGENTVAULT_SNAPSHOT_PASSPHRASE']).toBe('on purpose');
+    expect(env['AGENTVAULT_SECRETS_PASSPHRASE']).toBeUndefined();
+  });
+
+  it('matches prefixes and names case-sensitively like the environment does, without touching lookalikes', async () => {
+    process.env['MY_AGENTVAULT_THING'] = 'x';
+    process.env['AVT_A_OTHER'] = 'keep';
+    try {
+      const r = await execaRunner(process.execPath, ['-e', 'process.stdout.write(JSON.stringify([process.env.MY_AGENTVAULT_THING, process.env.AVT_A_OTHER]))']);
+      expect(JSON.parse(r.stdout)).toEqual(['x', 'keep']);
+    } finally {
+      delete process.env['MY_AGENTVAULT_THING'];
+    }
+  });
+});
+
 describe('execaRunner: stdin', () => {
   it('feeds string input to stdin', async () => {
     const r = await execaRunner('cat', [], { input: 'hello stdin' });

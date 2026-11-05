@@ -27,7 +27,7 @@ import * as path from 'node:path';
 import chalk from 'chalk';
 import ora from 'ora';
 import { assertPassphrase } from '../../src/container/crypto.js';
-import { DockerRuntime } from '../../src/container/docker.js';
+import { DockerRuntime, sweepStaleEnvDirs } from '../../src/container/docker.js';
 import { LIVENESS_GRACE_MS, redactSecrets } from '../../src/container/lifecycle.js';
 import { ContainerError } from '../../src/container/types.js';
 import type { ContainerErrorCode, ContainerRuntime } from '../../src/container/types.js';
@@ -174,7 +174,14 @@ export function resolveDeps(deps: ContainerCliDeps = {}): CliContext {
   const promptSecret = deps.promptSecret ?? ((message: string): Promise<string> => promptHidden(message));
   let runtime = deps.runtime;
   return {
-    runtime: () => (runtime ??= new DockerRuntime()),
+    runtime: () => {
+      if (runtime === undefined) {
+        // First use of the real runtime: clear key files a previous run left behind when it was killed outright.
+        sweepStaleEnvDirs();
+        runtime = new DockerRuntime();
+      }
+      return runtime;
+    },
     getPassphrase: async (request) => remember(await provider(request)),
     env,
     cwd: deps.cwd ?? process.cwd(),
@@ -209,6 +216,23 @@ const HINTS: Readonly<Partial<Record<ContainerErrorCode, string>>> = {
   COMMAND_FAILED: 'Docker reported the failure above.',
 };
 
+/**
+ * Shapes of well-known credentials. Validation errors quote the argument that failed, and a key pasted into the wrong
+ * place (`secrets add sk-ant-...`, `--service ghp_...`) would otherwise be echoed to the terminal and into logs even
+ * though this process never "knew" it was a secret.
+ */
+const TOKEN_SHAPES: readonly RegExp[] = [
+  /sk-[A-Za-z0-9_-]{20,}/g, // Anthropic, OpenAI and compatibles
+  /gh[pousr]_[A-Za-z0-9]{30,}/g, // GitHub
+  /\bAKIA[0-9A-Z]{16}\b/g, // AWS access key id
+  /xox[abprs]-[A-Za-z0-9-]{10,}/g, // Slack
+  /Bearer\s+[A-Za-z0-9._~+/=-]{20,}/g, // an Authorization header value
+];
+
+export function redactTokenShapes(text: string): string {
+  return TOKEN_SHAPES.reduce((out, shape) => out.replace(shape, '[redacted]'), text);
+}
+
 export interface RenderedError {
   /** "Error: <message>" - secrets scrubbed, no stack trace. */
   message: string;
@@ -222,7 +246,7 @@ export interface RenderedError {
  */
 export function renderError(error: unknown, sensitive: Iterable<string> = []): RenderedError {
   const raw = error instanceof Error ? error.message : 'Unknown error';
-  const message = redactSecrets(`Error: ${raw}`, sensitive);
+  const message = redactTokenShapes(redactSecrets(`Error: ${raw}`, sensitive));
   const hint = error instanceof ContainerError ? HINTS[error.code] : undefined;
   return hint !== undefined ? { message, hint } : { message };
 }
@@ -245,7 +269,8 @@ export async function runGuarded(ctx: CliContext, body: () => Promise<number | v
     code = (await body()) ?? 0;
   } catch (error) {
     printError(ctx, error);
-    code = 1;
+    // 128 + SIGINT, the conventional status of a command the user interrupted.
+    code = error instanceof ContainerError && error.code === 'INTERRUPTED' ? 130 : 1;
   }
   if (code !== 0) ctx.exit(code);
 }

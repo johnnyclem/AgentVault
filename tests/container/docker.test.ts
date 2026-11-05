@@ -5,6 +5,7 @@
  * integration test for the same commands against the live daemon).
  */
 
+import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -16,6 +17,7 @@ import {
   classifyDockerFailure,
   parseDockerLabels,
   renderEnvFile,
+  sweepStaleEnvDirs,
 } from '../../src/container/docker.js';
 import { ContainerError, DEFAULT_LIMITS, LABEL_AGENT, LABEL_MANAGED, LABEL_ROLE } from '../../src/container/types.js';
 import type {
@@ -1523,12 +1525,14 @@ describe('DockerRuntime.stop and remove', () => {
     expectError(await rejection(runtime.stop('avt-a-probe-nope')), 'NOT_FOUND');
   });
 
-  it('remove passes -f only when forced', async () => {
+  it('remove passes -f only when forced, and always -v so a VOLUME line in the image cannot outlive the container', async () => {
+    // Anonymous volumes (from an image's VOLUME instruction) are unlabelled, invisible to ps/rm/snapshot, and persist
+    // on the host after `docker rm` unless -v is given. Declared volumes are named, so -v never touches them.
     const { runtime, calls } = runtimeWith();
     await runtime.remove('av-demo');
     await runtime.remove('av-demo', { force: true });
     await runtime.remove('av-demo', { force: false });
-    expect(calls.map((c) => c.args)).toEqual([['rm', 'av-demo'], ['rm', '-f', 'av-demo'], ['rm', 'av-demo']]);
+    expect(calls.map((c) => c.args)).toEqual([['rm', '-v', 'av-demo'], ['rm', '-f', '-v', 'av-demo'], ['rm', '-v', 'av-demo']]);
   });
 
   it('remove throws NOT_FOUND for a missing container and COMMAND_FAILED for a running one', async () => {
@@ -1624,5 +1628,75 @@ describe('DockerRuntime.stats and exec', () => {
   it('exec does not mistake the command\'s own "No such container" output for a docker error', async () => {
     const { runtime } = runtimeWith(() => ({ exitCode: 1, stderr: 'my-tool: No such container: foo' }));
     await expect(runtime.exec('x1', ['my-tool'])).resolves.toMatchObject({ exitCode: 1 });
+  });
+});
+
+describe('stale env-file directories', () => {
+  // The 0600 env file lives in a fresh 0700 directory for the duration of `docker run`. A SIGKILL (or a crash) skips
+  // the cleanup and leaves the values on disk; the name carries the owning PID so a later run can tell it is stale.
+  let tmp: string;
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'avt-a-sweep-'));
+  });
+  afterEach(() => {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  const deadPid = (): number => {
+    const r = spawnSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], { encoding: 'utf8' });
+    return Number(r.stdout);
+  };
+  const plant = (name: string): string => {
+    const dir = path.join(tmp, name);
+    fs.mkdirSync(dir, { mode: 0o700 });
+    fs.writeFileSync(path.join(dir, 'env'), 'SECRET=1\n', { mode: 0o600 });
+    return dir;
+  };
+
+  it('a run names its directory after the owning process', async () => {
+    let seen = '';
+    const rec = recorder((call) => {
+      const flag = call.args.find((a) => a.startsWith('--env-file='));
+      seen = flag?.slice('--env-file='.length) ?? '';
+      return { stdout: `${'a'.repeat(64)}\n` };
+    });
+    await new DockerRuntime({ runner: rec.runner }).start(agentSpec({ env: { K: 'v' } }));
+    expect(path.basename(path.dirname(seen))).toMatch(new RegExp(`^avt-env-${process.pid}-`));
+    expect(fs.existsSync(path.dirname(seen))).toBe(false); // and it is gone again
+  });
+
+  it('removes the directory of a process that no longer exists, and only that', () => {
+    const stale = plant(`avt-env-${deadPid()}-abcdef`);
+    const mine = plant(`avt-env-${process.pid}-abcdef`);
+    const unrelated = plant('avt-env-notapid-abcdef');
+    const other = plant('something-else');
+    expect(sweepStaleEnvDirs(tmp)).toEqual([stale]);
+    expect(fs.existsSync(stale)).toBe(false);
+    for (const kept of [mine, unrelated, other]) expect(fs.existsSync(kept), kept).toBe(true);
+  });
+
+  it('leaves the directory of ANOTHER process that is still alive alone', () => {
+    // A second agentvault in another terminal is mid-`docker run` with its own env file.
+    const live = plant(`avt-env-${process.ppid}-abcdef`);
+    sweepStaleEnvDirs(tmp);
+    expect(fs.existsSync(live)).toBe(true);
+  });
+
+  it('never follows a symlink: the link goes, its target survives', () => {
+    const target = fs.mkdtempSync(path.join(os.tmpdir(), 'avt-a-sweep-target-'));
+    fs.writeFileSync(path.join(target, 'precious'), 'x');
+    try {
+      fs.symlinkSync(target, path.join(tmp, `avt-env-${deadPid()}-link`));
+      sweepStaleEnvDirs(tmp);
+      expect(fs.existsSync(path.join(target, 'precious'))).toBe(true);
+    } finally {
+      fs.rmSync(target, { recursive: true, force: true });
+    }
+  });
+
+  it('ignores a plain file with that name and a missing directory', () => {
+    fs.writeFileSync(path.join(tmp, `avt-env-${deadPid()}-file`), 'x');
+    expect(sweepStaleEnvDirs(tmp)).toEqual([]);
+    expect(sweepStaleEnvDirs(path.join(tmp, 'nope'))).toEqual([]);
   });
 });

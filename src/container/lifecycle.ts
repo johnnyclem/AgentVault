@@ -59,6 +59,10 @@ import type { ResourceNames } from './validate.js';
 /** How long startAgent waits for the sidecar's {"event":"listening"} line. */
 export const PROXY_READY_TIMEOUT_MS = 20_000;
 export const PROXY_READY_POLL_MS = 250;
+function throwIfInterrupted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw new ContainerError('INTERRUPTED', 'Interrupted before the agent was running; everything created so far was removed again');
+}
+
 /** How long the CLI watches a detached agent for an immediate crash. */
 export const LIVENESS_GRACE_MS = 1_500;
 export const LIVENESS_POLL_MS = 150;
@@ -369,10 +373,12 @@ async function waitForProxyReady(
   names: ResourceNames,
   secrets: readonly string[],
   timeoutMs: number,
-  pollMs: number
+  pollMs: number,
+  signal?: AbortSignal
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
+    throwIfInterrupted(signal);
     const sidecar = (await runtime.list({ agent, all: true })).find((c) => c.name === names.proxy);
     if (sidecar === undefined || sidecar.state !== 'running') {
       let tail = '(no output)';
@@ -410,11 +416,14 @@ async function watchForEarlyExit(
   agent: string,
   containerName: string,
   graceMs: number,
-  pollMs: number
+  pollMs: number,
+  signal?: AbortSignal
 ): Promise<{ exitCode: number; state: string } | undefined> {
   if (!(graceMs > 0)) return undefined;
   const deadline = Date.now() + graceMs;
   for (;;) {
+    // The agent is running, so the start has succeeded: an interrupt only ends the watching.
+    if (signal?.aborted) return undefined;
     try {
       const row = (await runtime.list({ agent, all: true })).find((c) => c.name === containerName);
       if (row === undefined) return undefined;
@@ -603,6 +612,9 @@ async function startAgentChecked(request: StartAgentOptions): Promise<StartedAge
         'Anything it runs can reach any host, and any secret in its environment is exposed to them.'
     );
   }
+  if (request.writableRootfs === true) {
+    warn('--writable-rootfs: the agent can modify its own root filesystem (its code and system files), which weakens the read-only isolation.');
+  }
   if (egress !== undefined && !egress.owned) {
     warn(
       egress.name.toLowerCase() === 'bridge'
@@ -635,6 +647,9 @@ async function startAgentChecked(request: StartAgentOptions): Promise<StartedAge
     }
   };
 
+  // Nothing exists yet, so an interrupt here needs no rollback at all.
+  throwIfInterrupted(request.signal);
+
   try {
     // 4. Same-named leftovers.
     const staleNetworks =
@@ -643,6 +658,7 @@ async function startAgentChecked(request: StartAgentOptions): Promise<StartedAge
 
     // 5. Volumes. Only one this call CREATED may be taken away again by its rollback.
     for (const { key } of volumes) {
+      throwIfInterrupted(request.signal);
       const name = names.volume(key);
       if (await ensureAgentVolume(runtime, agent, key, name)) ledger.createdVolumes.push(name);
     }
@@ -650,15 +666,19 @@ async function startAgentChecked(request: StartAgentOptions): Promise<StartedAge
     // 6. Proxy mode: internal network, sidecar, its way out, readiness.
     if (resolved.mode === 'proxy' && proxySpec !== undefined && egress !== undefined) {
       const labels = { [LABEL_MANAGED]: 'true', [LABEL_AGENT]: agent };
+      throwIfInterrupted(request.signal);
       ledger.internalNetwork = true;
       await runtime.ensureNetwork(names.network, { internal: true, labels });
+      throwIfInterrupted(request.signal);
       await startOwned(proxySpec, () => {
         ledger.sidecar = true;
       });
       if (egress.owned) {
+        throwIfInterrupted(request.signal);
         ledger.egressNetwork = true;
         await runtime.ensureNetwork(names.egress, { internal: false, labels });
       }
+      throwIfInterrupted(request.signal);
       // No aliases: the alias lives on the internal network only, so the sidecar is not discoverable by name from its egress side.
       await runtime.connectNetwork(names.proxy, egress.name);
       await waitForProxyReady(
@@ -667,7 +687,8 @@ async function startAgentChecked(request: StartAgentOptions): Promise<StartedAge
         names,
         secretValues,
         request.proxyReadyTimeoutMs ?? PROXY_READY_TIMEOUT_MS,
-        request.proxyReadyPollMs ?? PROXY_READY_POLL_MS
+        request.proxyReadyPollMs ?? PROXY_READY_POLL_MS,
+        request.signal
       );
     }
 
@@ -681,6 +702,7 @@ async function startAgentChecked(request: StartAgentOptions): Promise<StartedAge
       warnings,
     };
 
+    throwIfInterrupted(request.signal);
     if (detach) {
       const { id } = await startOwned(agentSpec, () => {
         ledger.agentContainer = true;
@@ -693,7 +715,8 @@ async function startAgentChecked(request: StartAgentOptions): Promise<StartedAge
         agent,
         names.container,
         request.livenessGraceMs ?? 0,
-        request.livenessPollMs ?? LIVENESS_POLL_MS
+        request.livenessPollMs ?? LIVENESS_POLL_MS,
+        request.signal
       );
       return { ...started, containerId: id, warnings: [...warnings], ...(earlyExit !== undefined ? { earlyExit } : {}) };
     }

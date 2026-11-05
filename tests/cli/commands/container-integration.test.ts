@@ -17,7 +17,7 @@
  * dockerTestEnv('avt-k-').
  */
 
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -603,6 +603,36 @@ describe.skipIf(!usable)('container commands against a real daemon', () => {
       await cli(['rm', agent.name, '-y']);
       expect(docker(['network', 'inspect', '--format', '{{.Name}}', network]).stdout.trim()).toBe(network);
       docker(['network', 'rm', network]);
+    });
+
+    it('Ctrl-C during a detached proxy start rolls everything back: no sidecar, network, new volume or key file survives', async () => {
+      // The real CLI in a child process, interrupted the way a terminal does (SIGINT to the whole process group).
+      // The default signal action used to kill it mid-start and leave the sidecar holding the real key behind.
+      const agent = forgedImage('intr', { secrets: ['anthropic'], isolation: { network: 'proxy', user: '10001:10001', readOnlyRootfs: true } });
+      const tmp = fs.mkdtempSync(path.join(scratch, 'tmp-intr-'));
+      const child = spawn(path.join(process.cwd(), 'node_modules', '.bin', 'tsx'), ['cli/index.ts', 'run', agent.tag, '-d', '--yes', '--secrets-from-env'], {
+        cwd: process.cwd(),
+        env: { ...process.env, AGENTVAULT_HOME: home, ANTHROPIC_API_KEY: CANARY, TMPDIR: tmp },
+        detached: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      let output = '';
+      child.stdout.on('data', (chunk: Buffer) => (output += chunk.toString()));
+      child.stderr.on('data', (chunk: Buffer) => (output += chunk.toString()));
+      const exited = new Promise<number | null>((resolve) => child.on('close', (code) => resolve(code)));
+
+      // The first resource of a proxy start is its internal network: interrupt as soon as it exists.
+      await eventually('the start to begin', () => (dockerNames(['network', 'ls', '--format', '{{.Name}}']).includes(`av-${agent.name}-net`) ? true : undefined), 90_000);
+      process.kill(-(child.pid as number), 'SIGINT');
+
+      const code = await exited;
+      expect(code, output).toBe(130);
+      expect(output).toContain('Interrupted');
+      expect(containersOf(agent.name)).toEqual([]);
+      expect(dockerNames(['network', 'ls', '--format', '{{.Name}}']).filter((n) => n.includes(agent.name))).toEqual([]);
+      expect(dockerNames(['volume', 'ls', '--format', '{{.Name}}']).filter((n) => n.includes(agent.name))).toEqual([]);
+      expect(fs.readdirSync(tmp).filter((n) => n.startsWith('avt-env-'))).toEqual([]);
+      expect(output).not.toContain(CANARY);
     });
 
     it('claiming another agent\'s name does not take over its stopped container and data', async () => {

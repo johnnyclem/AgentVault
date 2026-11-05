@@ -515,6 +515,7 @@ export async function executeRun(target: string, command: readonly string[], opt
 
   // Warnings: a detached start shows a spinner, so they wait until it is gone; a foreground run shows them at once.
   const pendingWarnings: string[] = [];
+  const interrupt = new AbortController();
   const request: StartAgentOptions = {
     runtime,
     agent,
@@ -533,6 +534,7 @@ export async function executeRun(target: string, command: readonly string[], opt
     ...(options.writableRootfs === true ? { writableRootfs: true } : {}),
     ...(options.restart !== undefined ? { restart: options.restart as (typeof RESTART_POLICIES)[number] } : {}),
     ...(options.interactive === true && !detach ? { interactive: true } : {}),
+    ...(detach ? { signal: interrupt.signal } : {}),
   };
   if (options.interactive === true && detach) noteLine(ctx, '-i has no effect on a detached run (there is no terminal to read from)');
 
@@ -544,6 +546,11 @@ export async function executeRun(target: string, command: readonly string[], opt
       stopping = true;
       void stopAgent(runtime, agent).catch(() => undefined);
     });
+  } else {
+    // A detached start takes seconds (networks, the sidecar, waiting for it). Dying half-way left the sidecar that holds
+    // the real key, its networks and its env file behind, so Ctrl-C only ASKS the start to stop: it rolls back what it
+    // created and rejects with INTERRUPTED. The handler also swallows repeated signals until then.
+    uninstall = ctx.installSignalHandler(() => interrupt.abort());
   }
   let started: StartedAgent;
   try {
@@ -557,6 +564,11 @@ export async function executeRun(target: string, command: readonly string[], opt
       for (const volume of createdVolumes) {
         await runtime.removeVolume(volume).catch(() => undefined);
       }
+    }
+    // A terminal's Ctrl-C reaches the docker client processes too, so the step in flight usually fails with "terminated
+    // by SIGINT" before the start can notice the request: whatever the failure was, it was the interrupt.
+    if (interrupt.signal.aborted && !(error instanceof ContainerError && error.code === 'INTERRUPTED')) {
+      throw new ContainerError('INTERRUPTED', 'Interrupted before the agent was running; everything created so far was removed again');
     }
     throw error;
   } finally {

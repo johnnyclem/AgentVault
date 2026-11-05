@@ -580,6 +580,56 @@ function writePrivateFile(file: string, content: string): void {
   }
 }
 
+/** Directory name prefix for the 0600 env file of a `docker run`: `avt-env-<pid>-<random>`. */
+const ENV_DIR_PREFIX = 'avt-env-';
+
+/**
+ * Remove env-file directories left behind by a process that died before its cleanup ran (SIGKILL, a crash, power
+ * loss). Only directories named for a PID that no longer exists, owned by this user, are removed; a symlink is
+ * unlinked, never followed. Returns what was removed. Safe to call on every start.
+ */
+export function sweepStaleEnvDirs(root: string = os.tmpdir()): string[] {
+  let names: string[];
+  try {
+    names = fs.readdirSync(root);
+  } catch {
+    return [];
+  }
+  const uid = process.getuid?.();
+  const removed: string[] = [];
+  for (const name of names) {
+    const match = new RegExp(`^${ENV_DIR_PREFIX}(\\d+)-`).exec(name);
+    if (match === null) continue;
+    const pid = Number(match[1]);
+    if (pid === process.pid || processExists(pid)) continue;
+    const full = path.join(root, name);
+    try {
+      const stat = fs.lstatSync(full);
+      if (stat.isSymbolicLink()) {
+        fs.unlinkSync(full);
+      } else if (stat.isDirectory() && (uid === undefined || stat.uid === uid)) {
+        fs.rmSync(full, { recursive: true, force: true });
+      } else {
+        continue;
+      }
+      removed.push(full);
+    } catch {
+      // not ours to remove, or already gone
+    }
+  }
+  return removed;
+}
+
+function processExists(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // EPERM: it exists but belongs to someone else. Only ESRCH means gone.
+    return (error as NodeJS.ErrnoException).code !== 'ESRCH';
+  }
+}
+
 function removeQuietly(dir: string, file: string): void {
   try {
     fs.rmSync(file, { force: true });
@@ -626,7 +676,7 @@ export class DockerRuntime implements ContainerRuntime {
     if (Object.keys(spec.env).length === 0) {
       return fn(buildRunArgs(spec));
     }
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'avt-env-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), `${ENV_DIR_PREFIX}${process.pid}-`));
     const file = path.join(dir, 'env');
     try {
       const args = buildRunArgs(spec, file);
@@ -998,9 +1048,11 @@ export class DockerRuntime implements ContainerRuntime {
 
   async remove(name: string, options: { force?: boolean } = {}): Promise<void> {
     assertDockerName(name, 'container name');
+    // -v: an image's VOLUME instruction makes an anonymous volume that is unlabelled, invisible to ps/rm/snapshot and
+    // otherwise outlives the container. Declared volumes are named, which -v never touches.
     const args = ['rm'];
     if (options.force === true) args.push('-f');
-    args.push(name);
+    args.push('-v', name);
     await this.invokeOk(args, { timeoutMs: 60_000 });
   }
 

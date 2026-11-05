@@ -33,7 +33,9 @@ export type ContainerErrorCode =
   /** A snapshot or archive failed an integrity or safety check. */
   | 'INTEGRITY'
   /** The thing asked for does not exist. */
-  | 'NOT_FOUND';
+  | 'NOT_FOUND'
+  /** The caller asked to stop (Ctrl-C) and everything created so far was rolled back. */
+  | 'INTERRUPTED';
 
 export class ContainerError extends Error {
   readonly code: ContainerErrorCode;
@@ -407,6 +409,12 @@ export interface StartAgentRequest {
   detach?: boolean;
   restart?: 'no' | 'unless-stopped' | 'on-failure';
   onWarning?: (message: string) => void;
+  /**
+   * Abort a start that is in progress. Checked between steps (and while waiting for the sidecar), then the normal
+   * rollback removes everything this call created and `startAgent` rejects with INTERRUPTED. Once the agent is running
+   * the start has succeeded and an abort no longer undoes it.
+   */
+  signal?: AbortSignal;
 }
 
 export interface StartedAgent {

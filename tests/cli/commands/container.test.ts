@@ -5,6 +5,7 @@
  * rather than re-testing src/container/lifecycle.ts, which has its own tests.
  */
 
+import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -29,7 +30,7 @@ import {
   stopCommand,
 } from '../../../cli/commands/container.js';
 import { IMAGE_RECORD_FILE } from '../../../cli/commands/container-package.js';
-import { createPassphraseProvider, renderError } from '../../../cli/commands/cli-support.js';
+import { createPassphraseProvider, renderError, resolveDeps } from '../../../cli/commands/cli-support.js';
 import type { ContainerCliDeps, PassphraseRequest } from '../../../cli/commands/cli-support.js';
 import { packageCommand } from '../../../cli/commands/package.js';
 import { secretsCommand } from '../../../cli/commands/secrets.js';
@@ -684,6 +685,110 @@ describe('run: network and services', () => {
     expect(h.passphrases).toEqual([]);
   });
 
+  describe('Ctrl-C during a detached start', () => {
+    // A detached start takes seconds (networks, the sidecar, waiting for it). The default signal action killed the CLI
+    // half-way, leaving the sidecar (which holds the real key), its networks and its 0600 env file behind.
+    function interruptible(h: Harness): { fire: () => void } {
+      const box: { fire: () => void } = { fire: () => undefined };
+      h.deps.installSignalHandler = (handler) => {
+        box.fire = handler;
+        return () => undefined;
+      };
+      return box;
+    }
+
+    it('asks the start to stop, which rolls itself back, and exits 130 with a clear message', async () => {
+      const h = harness();
+      const signal = interruptible(h);
+      vi.mocked(startAgent).mockImplementationOnce(
+        (request) =>
+          new Promise((_resolve, reject) => {
+            request.signal?.addEventListener('abort', () => reject(new ContainerError('INTERRUPTED', 'Interrupted; everything created so far was removed again')));
+            signal.fire();
+          })
+      );
+      expect(await run(runCommand(h.deps), [IMAGE, '-d'])).toBe(130);
+      expect(h.stderr()).toContain('Interrupted');
+      expect(h.stdout()).not.toContain('Started agent');
+    });
+
+    it('a second Ctrl-C while it rolls back changes nothing (the handler stays installed until the start has settled)', async () => {
+      const h = harness();
+      const signal = interruptible(h);
+      let aborts = 0;
+      vi.mocked(startAgent).mockImplementationOnce(
+        (request) =>
+          new Promise((_resolve, reject) => {
+            request.signal?.addEventListener('abort', () => {
+              aborts += 1;
+              setTimeout(() => reject(new ContainerError('INTERRUPTED', 'Interrupted')), 10);
+            });
+            signal.fire();
+            signal.fire();
+            signal.fire();
+          })
+      );
+      expect(await run(runCommand(h.deps), [IMAGE, '-d'])).toBe(130);
+      expect(aborts).toBe(1);
+    });
+
+    it('whatever failure the interrupt causes in the step in flight is reported as the interrupt', async () => {
+      // A terminal's Ctrl-C reaches the docker client children as well, so the step in flight usually fails first.
+      const h = harness();
+      const signal = interruptible(h);
+      vi.mocked(startAgent).mockImplementationOnce(() => {
+        signal.fire();
+        return Promise.reject(new ContainerError('COMMAND_FAILED', 'docker failed (exit 1): Command "docker" terminated by SIGINT'));
+      });
+      expect(await run(runCommand(h.deps), [IMAGE, '-d'])).toBe(130);
+      expect(h.stderr()).toContain('Interrupted');
+      expect(h.stderr()).not.toContain('terminated by SIGINT');
+    });
+
+    it('...but a failure with no interrupt keeps its own message and exit code', async () => {
+      const h = harness();
+      interruptible(h);
+      vi.mocked(startAgent).mockRejectedValueOnce(new ContainerError('COMMAND_FAILED', 'docker failed (exit 1): no such image'));
+      expect(await run(runCommand(h.deps), [IMAGE, '-d'])).toBe(1);
+      expect(h.stderr()).toContain('no such image');
+      expect(h.stderr()).not.toContain('Interrupted');
+    });
+
+    it('takes away a named volume this run created, like any other failed detached start', async () => {
+      const h = harness();
+      const signal = interruptible(h);
+      vi.mocked(startAgent).mockImplementationOnce(
+        (request) =>
+          new Promise((_resolve, reject) => {
+            request.signal?.addEventListener('abort', () => reject(new ContainerError('INTERRUPTED', 'Interrupted')));
+            signal.fire();
+          })
+      );
+      expect(await run(runCommand(h.deps), [IMAGE, '-d', '--volume', 'fresh:/fresh'])).toBe(130);
+      expect(h.runtime.callsOf('removeVolume')).toEqual([[`av-${AGENT}-fresh`]]);
+    });
+
+    it('the handler is removed once the start is over, and a foreground run is untouched (it has its own handling)', async () => {
+      const h = harness();
+      let installed = 0;
+      let uninstalled = 0;
+      h.deps.installSignalHandler = () => {
+        installed += 1;
+        return () => {
+          uninstalled += 1;
+        };
+      };
+      vi.mocked(startAgent).mockResolvedValueOnce(started());
+      expect(await run(runCommand(h.deps), [IMAGE, '-d'])).toBe(0);
+      expect([installed, uninstalled]).toEqual([1, 1]);
+      expect(vi.mocked(startAgent).mock.calls[0]?.[0].signal).toBeDefined();
+
+      vi.mocked(startAgent).mockResolvedValueOnce(started({ exitCode: 0 }));
+      await run(runCommand(h.deps), [IMAGE]);
+      expect(vi.mocked(startAgent).mock.calls[1]?.[0].signal).toBeUndefined();
+    });
+  });
+
   describe('a detached agent that died at once', () => {
     it('is reported after the success summary, with the code, a hint and the way to read its output', async () => {
       const h = harness();
@@ -1065,11 +1170,14 @@ describe('run: foreground', () => {
     expect(uninstall).toHaveBeenCalledTimes(1);
   });
 
-  it('a detached run installs no signal handler', async () => {
-    const install = vi.fn(() => () => undefined);
+  it('a detached run installs a handler only for the duration of the start, and removes it', async () => {
+    // (It used to install none, so Ctrl-C killed the CLI half-way through a start and leaked the sidecar.)
+    const uninstall = vi.fn();
+    const install = vi.fn(() => uninstall);
     const h = harness({ installSignalHandler: install });
     await run(runCommand(h.deps), [IMAGE, '-d']);
-    expect(install).not.toHaveBeenCalled();
+    expect(install).toHaveBeenCalledTimes(1);
+    expect(uninstall).toHaveBeenCalledTimes(1);
   });
 
   it('prints the lifecycle warnings immediately in the foreground, and after the spinner when detached', async () => {
@@ -1341,6 +1449,31 @@ describe('rm (property b: data loss is explicit)', () => {
 // cli-support: errors and passphrases
 // ---------------------------------------------------------------------------
 
+describe('renderError: credential-shaped text the user pasted by mistake', () => {
+  // `secrets add sk-ant-...` (key in the name slot), `--service ghp_...` and similar are rejected with a message that
+  // quotes the argument; the quote must not put a pasted key on the terminal or into a log.
+  // Assembled at runtime on purpose: a complete token-shaped literal in the source trips secret scanning (and push
+  // protection) even though these are made up.
+  const join = (...parts: string[]): string => parts.join('');
+  it.each([
+    ['an Anthropic/OpenAI style key', join('sk', '-ant-api03-', 'AbCdEfGhIjKlMnOpQrStUvWxYz0123456789')],
+    ['a GitHub token', join('gh', 'p_', 'AbCdEfGhIjKlMnOpQrStUvWxYz0123456789')],
+    ['an AWS access key id', join('AK', 'IA', 'IOSFODNN7EXAMPLE')],
+    ['a Slack token', join('xo', 'xb-', '1234567890-abcdefghijklmnop')],
+    ['a long bearer value', join('Bear', 'er ', 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcdefghijklmnop')],
+  ])('redacts %s', (_label, token) => {
+    const rendered = renderError(new ContainerError('INVALID_INPUT', `Secret name "${token}" is not valid`));
+    expect(rendered.message).not.toContain(token);
+    expect(rendered.message).toContain('[redacted]');
+    expect(rendered.message).toContain('is not valid');
+  });
+
+  it('leaves ordinary messages alone (names, paths, words that merely start like a token)', () => {
+    const message = 'Agent "skeleton-key" not found at /tmp/ghost-1/sk-notes and ghp is not a token';
+    expect(renderError(new Error(message)).message).toBe(`Error: ${message}`);
+  });
+});
+
 describe('renderError', () => {
   it.each([
     ['NOT_INSTALLED', 'Install Docker'],
@@ -1379,6 +1512,44 @@ describe('renderError', () => {
     expect(h.stderr()).toContain('leaky: [redacted] / [redacted]');
     expect(h.all()).not.toContain(PASS);
     expect(h.all()).not.toContain(CANARY);
+  });
+});
+
+describe('the real Docker runtime, created on first use', () => {
+  it('sweeps env-file directories left by a process that died, once, when it is created', () => {
+    const tmp = mkdtemp('avt-k-sweep-');
+    const original = process.env['TMPDIR'];
+    process.env['TMPDIR'] = tmp;
+    try {
+      const dead = spawnSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], { encoding: 'utf8' }).stdout;
+      const stale = path.join(tmp, `avt-env-${dead}-abcdef`);
+      fs.mkdirSync(stale, { mode: 0o700 });
+      fs.writeFileSync(path.join(stale, 'env'), 'LEFT_BEHIND=1\n', { mode: 0o600 });
+
+      const ctx = resolveDeps({ env: { AGENTVAULT_HOME: tmp } }); // no runtime injected: the real one
+      expect(fs.existsSync(stale)).toBe(true); // nothing happens until a command asks for the runtime
+      ctx.runtime();
+      expect(fs.existsSync(stale)).toBe(false);
+    } finally {
+      if (original === undefined) delete process.env['TMPDIR'];
+      else process.env['TMPDIR'] = original;
+    }
+  });
+
+  it('an injected runtime sweeps nothing (tests and embedders keep control)', () => {
+    const tmp = mkdtemp('avt-k-sweep2-');
+    const original = process.env['TMPDIR'];
+    process.env['TMPDIR'] = tmp;
+    try {
+      const dead = spawnSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], { encoding: 'utf8' }).stdout;
+      const stale = path.join(tmp, `avt-env-${dead}-abcdef`);
+      fs.mkdirSync(stale, { mode: 0o700 });
+      resolveDeps({ runtime: new FakeRuntime() }).runtime();
+      expect(fs.existsSync(stale)).toBe(true);
+    } finally {
+      if (original === undefined) delete process.env['TMPDIR'];
+      else process.env['TMPDIR'] = original;
+    }
   });
 });
 
