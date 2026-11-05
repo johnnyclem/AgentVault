@@ -1,4 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { afterAll, beforeAll, describe, it, expect } from 'vitest';
+import * as fs from 'node:fs';
+import * as net from 'node:net';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import {
   agentvaultHome,
@@ -112,6 +115,51 @@ describe('assertBindSource', () => {
     expect(code(() => assertBindSource('work'))).toBe('INVALID_INPUT');
     expect(code(() => assertBindSource('/a,readonly=false'))).toBe('INVALID_INPUT');
     expect(code(() => assertBindSource('/a\0b'))).toBe('INVALID_INPUT');
+  });
+
+  describe('symlinks and sockets', () => {
+    let dir: string;
+    beforeAll(() => {
+      dir = fs.mkdtempSync(path.join(os.tmpdir(), 'avt-bind-'));
+    });
+    afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    it('resolves a symlink with an innocent name that points at docker.sock', () => {
+      const target = path.join(dir, 'docker.sock');
+      fs.writeFileSync(target, '');
+      const link = path.join(dir, 'innocent-looking');
+      fs.symlinkSync(target, link);
+      expect(code(() => assertBindSource(link))).toBe('POLICY_VIOLATION');
+    });
+
+    it('resolves a symlink to the filesystem root', () => {
+      const link = path.join(dir, 'to-root');
+      fs.symlinkSync('/', link);
+      expect(code(() => assertBindSource(link))).toBe('POLICY_VIOLATION');
+    });
+
+    it('refuses ANY unix socket, whatever it is called, directly or through a link', async () => {
+      const sock = path.join(dir, 'agent.sock');
+      const server = net.createServer();
+      await new Promise<void>((resolve) => server.listen(sock, resolve));
+      try {
+        expect(code(() => assertBindSource(sock))).toBe('POLICY_VIOLATION');
+        const link = path.join(dir, 'link-to-agent-sock');
+        fs.symlinkSync(sock, link);
+        expect(code(() => assertBindSource(link))).toBe('POLICY_VIOLATION');
+      } finally {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
+    });
+
+    it('still accepts an ordinary directory, and a symlink to one', () => {
+      const real = path.join(dir, 'work');
+      fs.mkdirSync(real);
+      const link = path.join(dir, 'work-link');
+      fs.symlinkSync(real, link);
+      expect(assertBindSource(real)).toBe(real);
+      expect(assertBindSource(link)).toBe(link);
+    });
   });
 
   it('refuses the docker socket and the filesystem root (host takeover)', () => {

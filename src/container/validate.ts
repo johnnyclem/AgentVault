@@ -9,6 +9,7 @@
  * these instead, and still use sanitizePathPart for host path components.
  */
 
+import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { ContainerError, PROXY_SECRET_ENV_PREFIX } from './types.js';
@@ -74,9 +75,24 @@ export function assertContainerPath(p: string): string {
   return p;
 }
 
+function isForbiddenBindTarget(candidate: string): boolean {
+  const base = path.basename(candidate);
+  return (
+    base === 'docker.sock' ||
+    base === 'containerd.sock' ||
+    candidate === '/' ||
+    candidate === '/var/run' ||
+    candidate === '/run'
+  );
+}
+
 /**
  * A host path for a bind mount: absolute, no NUL/newline/`,`, and never the
- * Docker socket (mounting it hands the agent the host).
+ * Docker socket (mounting it hands the agent the host). Symlinks are resolved
+ * before judging, because a link with an innocent name can point at the socket,
+ * and ANY unix socket is refused (an ssh-agent or other daemon socket gives the
+ * agent the same kind of reach). The returned path is the normalized one the
+ * caller gave, not the resolved one, so error messages and mounts stay stable.
  */
 export function assertBindSource(hostPath: string): string {
   if (typeof hostPath !== 'string' || !path.isAbsolute(hostPath)) {
@@ -86,11 +102,25 @@ export function assertBindSource(hostPath: string): string {
     invalid('bind-mount source', hostPath, 'contains a forbidden character (NUL, newline, or comma)');
   }
   const normalized = path.resolve(hostPath);
-  const base = path.basename(normalized);
-  if (base === 'docker.sock' || base === 'containerd.sock' || normalized === '/' || normalized === '/var/run' || normalized === '/run') {
+  let real = normalized;
+  let isSocket = false;
+  try {
+    real = fs.realpathSync(normalized);
+    isSocket = fs.statSync(real).isSocket();
+  } catch {
+    // does not exist (yet): nothing to resolve; callers that need it to exist check that themselves
+  }
+  if (isForbiddenBindTarget(normalized) || isForbiddenBindTarget(real)) {
+    const via = real !== normalized ? ` (it resolves to ${real})` : '';
     throw new ContainerError(
       'POLICY_VIOLATION',
-      `Refusing to bind-mount ${normalized}: it would give the agent control of the host`
+      `Refusing to bind-mount ${normalized}${via}: it would give the agent control of the host`
+    );
+  }
+  if (isSocket) {
+    throw new ContainerError(
+      'POLICY_VIOLATION',
+      `Refusing to bind-mount ${normalized}: it is a unix socket, which would give the agent whatever the daemon behind it can do`
     );
   }
   return normalized;
