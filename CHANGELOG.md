@@ -4,6 +4,25 @@ All notable changes to AgentVault will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased] - Container MVP
+
+Run agents in locked-down Docker containers on your own machine, as an alternative to compiling them to WASM for an ICP canister (PRD-00 to PRD-04, Phase 1). The default `package` target is unchanged. Guide: [docs/guides/container.md](docs/guides/container.md); example: [examples/container-notes](examples/container-notes).
+
+### Added
+- **`agentvault package --target container`** builds an image from a filtered copy of the agent directory (never `COPY . .`; `.env*`, keys, `.git`, `.agentvault`, `node_modules`, symlinks and special files are left out and listed). Node and Python agents; `dist/` is included so `tsc`-built agents work. Writes an `agentvault.json` manifest (env var *names* and credential service names, never values) into the output directory and as an image label.
+- **`agentvault run | ps | stop | rm`** and **`agentvault container run | ps | logs | stop | rm | stats | inspect | exec`**. Agents start non-root (uid 10001), all capabilities dropped, read-only root filesystem, no network, CPU/memory/process limits, `tini` as PID 1, and a named data volume that survives `stop` and `rm`. A detached agent that dies right after starting (for example exit 127) is reported with its exit code, instead of a bare "started". Top-level `logs`, `stats` and `exec` remain the canister commands.
+- **Credential proxy sidecar.** An agent that needs a model API sits on an internal-only network; a small sidecar on a dedicated per-agent egress network holds the real key and forwards to a fixed upstream (`anthropic`, `openai`, `venice`, `ollama` presets). The agent gets `*_BASE_URL` pointing at the proxy and a placeholder key. The sidecar's audit log is metadata only and names the failing upstream error code (for example `SELF_SIGNED_CERT_IN_CHAIN`) when a call fails.
+- **`agentvault secrets add | list | rm`**: an encrypted credential store (AES-256-GCM, passphrase from `AGENTVAULT_SECRETS_PASSPHRASE` or a prompt). Values come from an environment variable or a hidden prompt, never a flag.
+- **`agentvault snapshot create | restore | verify | list`**: encrypted (AES-256-GCM, PBKDF2) snapshots of an agent's volumes. Restore validates every archive of every volume before writing any, and refuses non-empty volumes without `--force`. `verify --ciphertext-only` checks integrity without the passphrase.
+
+### Security
+- Bind mounts resolve symlinks and refuse the Docker socket, `/`, `/run` and any unix socket, even through an innocently named link.
+- Snapshot helpers run with `--network none` and only the capabilities they need; a non-zero `tar` exit discards the snapshot (with `--cap-drop ALL` a root helper otherwise silently archives only what it can read).
+- `AGENTVAULT_SNAPSHOT_PASSPHRASE` and `AGENTVAULT_SECRETS_PASSPHRASE` are withheld from spawned MCP servers, like the wallet secrets.
+
+### Limitations
+Docker only (no Podman, SSH or Kubernetes deployment; not tested on Windows or rootless); no TypeScript compilation; base images are tags, not digests; the proxy injects headers only (no body/query injection, WebSocket, spend caps or per-agent policy), and a secret an upstream echoes in a response body reaches the agent; real keys are visible to anyone with `docker inspect` access to the sidecar. Not verified end to end in the development sandbox: a live vendor call through the proxy (checked against the real Anthropic endpoint from the host), the `ollama` preset, and interactive terminal behaviour (`run -i`, `exec -i`, signal handling, `logs --follow`) on a real daemon.
+
 ## [Unreleased] - Total Recall onboarding
 
 ### Added

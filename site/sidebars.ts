@@ -24,6 +24,7 @@ const sidebars: SidebarsConfig = {
         'user/deployment',
         'user/wallets',
         'user/backups',
+        'guides/container',
         'user/webapp',
         'user/troubleshooting',
         'user/clawdbot-claude-skill',

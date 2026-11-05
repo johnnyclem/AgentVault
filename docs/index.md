@@ -54,6 +54,7 @@ Short-hand are not integrated yet.
 - [MemoryRepo](/docs/memory-repo) — git-style on-chain memory, and the identities that may write to it.
 - [Polytician](/docs/guides/polytician) — semantic memory per agent, connected to AgentVault's webapp.
 - [Monitoring](/docs/guides/monitoring) — health checks, metrics, and alerting.
+- [Containers](/docs/guides/container) — run agents in locked-down Docker containers with a credential proxy and encrypted snapshots.
 - [Troubleshooting](/docs/user/troubleshooting) — fast diagnostics and recovery.
 
 ## Reference
