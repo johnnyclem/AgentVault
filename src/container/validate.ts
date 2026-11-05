@@ -9,6 +9,7 @@
  * these instead, and still use sanitizePathPart for host path components.
  */
 
+import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { ContainerError, PROXY_SECRET_ENV_PREFIX } from './types.js';
@@ -63,20 +64,60 @@ export function assertImageRef(ref: string): string {
   return ref;
 }
 
-/** Absolute, normalized, no `..`, none of the mount-spec metacharacters. */
-export function assertContainerPath(p: string): string {
+/** Directories (and everything below them) that hold the system, not the agent's data. */
+const SYSTEM_TREES = ['/proc', '/sys', '/dev', '/etc', '/usr', '/bin', '/sbin', '/lib', '/lib64', '/boot', '/run', '/var/run', '/root'];
+/** Exact paths only: the agent's tmpfs mounts. Their children, such as /home/agent/data, are fine. */
+const SYSTEM_PATHS = ['/tmp', '/home/agent'];
+
+/**
+ * True for a path a volume must not cover. Whole path segments only: `/etcetera`
+ * is not `/etc`. Judged on the normalized path, because Docker normalizes it too
+ * and `//etc` or `/./etc` must not slip past a check on the raw string.
+ */
+export function isSystemContainerPath(p: string): boolean {
+  const normalized = path.posix.normalize(p);
+  const n = normalized.length > 1 ? normalized.replace(/\/+$/, '') : normalized;
+  return SYSTEM_PATHS.includes(n) || SYSTEM_TREES.some((tree) => n === tree || n.startsWith(`${tree}/`));
+}
+
+/**
+ * Absolute, normalized, no `..`, none of the mount-spec metacharacters, and not a
+ * system location. A volume over /proc fails at container creation, one over /etc
+ * or /usr replaces what the image relies on (and the Dockerfile would chown it to
+ * the agent), and one over /tmp swaps the noexec tmpfs for a persistent disk.
+ * `allowSystem` is for the fixed tmpfs mounts, which are exactly those paths.
+ */
+export function assertContainerPath(p: string, options: { allowSystem?: boolean } = {}): string {
   if (typeof p !== 'string' || !CONTAINER_PATH_RE.test(p)) {
     invalid('container path', String(p), 'must be absolute and use only [A-Za-z0-9._/-]');
   }
   if (p !== '/' && (p.endsWith('/') || p.split('/').some((seg) => seg === '..' || seg === '.'))) {
     invalid('container path', p, 'must be normalized (no "..", ".", or trailing "/")');
   }
+  if (options.allowSystem !== true && isSystemContainerPath(p)) {
+    invalid('container path', p, 'is a system location and cannot be a volume; use a directory of your own such as /data');
+  }
   return p;
+}
+
+function isForbiddenBindTarget(candidate: string): boolean {
+  const base = path.basename(candidate);
+  return (
+    base === 'docker.sock' ||
+    base === 'containerd.sock' ||
+    candidate === '/' ||
+    candidate === '/var/run' ||
+    candidate === '/run'
+  );
 }
 
 /**
  * A host path for a bind mount: absolute, no NUL/newline/`,`, and never the
- * Docker socket (mounting it hands the agent the host).
+ * Docker socket (mounting it hands the agent the host). Symlinks are resolved
+ * before judging, because a link with an innocent name can point at the socket,
+ * and ANY unix socket is refused (an ssh-agent or other daemon socket gives the
+ * agent the same kind of reach). The returned path is the normalized one the
+ * caller gave, not the resolved one, so error messages and mounts stay stable.
  */
 export function assertBindSource(hostPath: string): string {
   if (typeof hostPath !== 'string' || !path.isAbsolute(hostPath)) {
@@ -86,11 +127,25 @@ export function assertBindSource(hostPath: string): string {
     invalid('bind-mount source', hostPath, 'contains a forbidden character (NUL, newline, or comma)');
   }
   const normalized = path.resolve(hostPath);
-  const base = path.basename(normalized);
-  if (base === 'docker.sock' || base === 'containerd.sock' || normalized === '/' || normalized === '/var/run' || normalized === '/run') {
+  let real = normalized;
+  let isSocket = false;
+  try {
+    real = fs.realpathSync(normalized);
+    isSocket = fs.statSync(real).isSocket();
+  } catch {
+    // does not exist (yet): nothing to resolve; callers that need it to exist check that themselves
+  }
+  if (isForbiddenBindTarget(normalized) || isForbiddenBindTarget(real)) {
+    const via = real !== normalized ? ` (it resolves to ${real})` : '';
     throw new ContainerError(
       'POLICY_VIOLATION',
-      `Refusing to bind-mount ${normalized}: it would give the agent control of the host`
+      `Refusing to bind-mount ${normalized}${via}: it would give the agent control of the host`
+    );
+  }
+  if (isSocket) {
+    throw new ContainerError(
+      'POLICY_VIOLATION',
+      `Refusing to bind-mount ${normalized}: it is a unix socket, which would give the agent whatever the daemon behind it can do`
     );
   }
   return normalized;
@@ -122,7 +177,14 @@ export function parseUser(user: string): { uid: number; gid: number } {
 export interface ResourceNames {
   container: string;
   proxy: string;
+  /** The INTERNAL network: the agent and its sidecar, no route out. */
   network: string;
+  /**
+   * The sidecar's own egress network (non-internal, sidecar only). It must not
+   * be the shared default bridge: the sidecar listens on 0.0.0.0 and holds the
+   * real credentials, so every container on a shared bridge could use them.
+   */
+  egress: string;
   /** Docker volume name for a volume key. */
   volume: (key: string) => string;
 }
@@ -133,6 +195,7 @@ export function resourceNames(agent: string): ResourceNames {
     container: `av-${agent}`,
     proxy: `av-${agent}-proxy`,
     network: `av-${agent}-net`,
+    egress: `av-${agent}-egress`,
     volume: (key: string) => `av-${agent}-${assertVolumeKey(key)}`,
   };
 }

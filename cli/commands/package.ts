@@ -10,6 +10,7 @@ import * as path from 'node:path';
 import { packageAgent, getPackageSummary } from '../../src/packaging/index.js';
 import type { PackageOptions, PackageResult } from '../../src/packaging/index.js';
 import { ensureIcpManifest } from '../../src/deployment/index.js';
+import type { ContainerPackageCliOptions } from './container-package.js';
 
 export interface PackageCommandOptions {
   output?: string;
@@ -206,6 +207,14 @@ export async function executePackage(
   }
 }
 
+/** What commander hands the action: the WASM options, with a target that may also be 'container'. */
+type PackageActionOptions = Omit<PackageCommandOptions, 'target'> & ContainerPackageCliOptions & { target?: string };
+
+/** commander collector for a repeatable option. */
+function collectValues(value: string, previous: string[] | undefined): string[] {
+  return [...(previous ?? []), value];
+}
+
 /**
  * Create the package command
  */
@@ -213,13 +222,13 @@ export function packageCommand(): Command {
   const command = new Command('package');
 
   command
-    .description('Compile agent to WASM for deployment to ICP')
+    .description('Compile agent to WASM for deployment to ICP (or, with --target container, package it as a container image)')
     .argument('[source]', 'path to agent source directory', '.')
     .option('-o, --output <path>', 'output directory for compiled files')
     .option('-f, --force', 'overwrite existing output files')
     .option('--skip-validation', 'skip validation checks')
     .option('--dry-run', 'show what would be packaged without executing')
-    .option('-t, --target <target>', 'compilation target (wasmedge|motoko|pure-wasm)', 'wasmedge')
+    .option('-t, --target <target>', 'compilation target (wasmedge|motoko|pure-wasm|container)', 'wasmedge')
     .option('--debug', 'enable debugging features (source maps, verbose output)')
     .option('--optimize <level>', 'optimization level (0-3)', '2')
     .option('--ic-wasm-optimize', 'optimize WASM with ic-wasm (requires ic-wasm)')
@@ -227,11 +236,28 @@ export function packageCommand(): Command {
     .option('--validate <did-file>', 'validate WASM endpoints against Candid .did file')
     .option('--memory-limit <limit>', 'set canister memory limit (e.g. 4GiB)')
     .option('--compute-quota <quota>', 'set canister compute quota')
-    .action(async (source: string, options: PackageCommandOptions) => {
+    .option('--image <name:tag>', 'container target: image tag (default agentvault/<name>:<version>)')
+    .option('--base <image>', 'container target: base image')
+    .option('--entrypoint <json-array>', 'container target: entrypoint as a JSON array, e.g. \'["node","index.js"]\'')
+    .option('--volume <path>', 'container target: container path to persist in a volume (repeatable, default /data)', collectValues)
+    .option('--env-name <NAME>', 'container target: environment variable NAME the agent reads (repeatable; values are never stored)', collectValues)
+    .option('--secret <service>', 'container target: credential-proxy service the agent needs, e.g. anthropic (repeatable)', collectValues)
+    .option('--health-url <url>', 'container target: http://localhost:<port>/<path> checked by the image HEALTHCHECK')
+    .option('--no-build', 'container target: generate the Dockerfile and manifest but do not build the image')
+    .action(async (source: string, options: PackageActionOptions) => {
+      // The container target has nothing in common with the WASM pipeline below
+      // (no icp.yaml, no WASM sizes, no "deploy to ICP"), so it branches off first,
+      // and is loaded only when asked for: the WASM path never imports it.
+      if (options.target === 'container') {
+        const { runContainerPackage } = await import('./container-package.js');
+        await runContainerPackage(source, options);
+        return;
+      }
+
       console.log(chalk.bold('\n📦 AgentVault Package\n'));
 
       try {
-        await executePackage(source, options);
+        await executePackage(source, options as PackageCommandOptions);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error';
         console.error(chalk.red(`\nError: ${message}`));

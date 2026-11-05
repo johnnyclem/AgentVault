@@ -33,7 +33,9 @@ export type ContainerErrorCode =
   /** A snapshot or archive failed an integrity or safety check. */
   | 'INTEGRITY'
   /** The thing asked for does not exist. */
-  | 'NOT_FOUND';
+  | 'NOT_FOUND'
+  /** The caller asked to stop (Ctrl-C) and everything created so far was rolled back. */
+  | 'INTERRUPTED';
 
 export class ContainerError extends Error {
   readonly code: ContainerErrorCode;
@@ -256,14 +258,25 @@ export interface ContainerRuntime {
 
   inspectImage(ref: string): Promise<ImageInfo | null>;
   buildImage(request: BuildRequest): Promise<BuildResult>;
+  /** Untag/remove an image. NOT_FOUND if it does not exist. */
+  removeImage(ref: string): Promise<void>;
+  /**
+   * `docker tag`: point `target` at the image `source` names, replacing whatever
+   * `target` named before. Only packaging needs it. Optional so that runtimes and
+   * test doubles written before it existed still satisfy the interface;
+   * DockerRuntime always provides it and packaging refuses a runtime without it.
+   */
+  tagImage?(source: string, target: string): Promise<void>;
 
   /** Idempotent. `internal` => `docker network create --internal`. */
   ensureNetwork(name: string, options: { internal: boolean; labels?: Record<string, string> }): Promise<void>;
   removeNetwork(name: string): Promise<void>;
   connectNetwork(container: string, network: string, aliases?: string[]): Promise<void>;
 
-  /** Idempotent. */
+  /** Idempotent. Does not check who owns an existing volume: use `ensureAgentVolume` for that. */
   ensureVolume(name: string, labels?: Record<string, string>): Promise<void>;
+  /** null when it does not exist. Labels as Docker holds them (an unlabelled volume has none). */
+  inspectVolume(name: string): Promise<{ name: string; labels: Record<string, string> } | null>;
   removeVolume(name: string): Promise<void>;
   /** Names of AgentVault-managed volumes, optionally for one agent. */
   listVolumes(filter?: { agent?: string }): Promise<Array<{ name: string; key: string; agent: string }>>;
@@ -277,7 +290,17 @@ export interface ContainerRuntime {
    */
   runForeground(
     spec: ContainerSpec,
-    io?: { stdinFile?: string; stdoutFile?: string; inheritStdio?: boolean }
+    io?: {
+      stdinFile?: string;
+      stdoutFile?: string;
+      inheritStdio?: boolean;
+      /**
+       * Kill the run after this long (exit code 124, timedOut). Helper
+       * containers (snapshot, restore, emptiness probe) should always set it:
+       * without one a wedged docker call blocks forever.
+       */
+      timeoutMs?: number;
+    }
   ): Promise<CommandResult>;
 
   list(filter?: { agent?: string; all?: boolean }): Promise<ContainerInfo[]>;
@@ -367,14 +390,23 @@ export interface StartAgentRequest {
   network?: NetworkMode;
   /** Required when network is 'proxy' or the manifest declares `secrets`. */
   proxyPlan?: ProxyPlan;
-  /** Docker network the sidecar uses to reach the internet. Default 'bridge'. */
+  /**
+   * Docker network the sidecar uses to reach the internet. Default: a dedicated
+   * per-agent network (resourceNames(agent).egress) that the lifecycle creates
+   * and removes, with only the sidecar on it. Passing 'bridge' puts the sidecar
+   * on the shared default bridge, where EVERY container on the host can reach
+   * it and spend the agent's credentials - the lifecycle warns when asked to.
+   */
   proxyEgressNetwork?: string;
   limits?: Partial<ResourceLimits>;
   /** Env the user typed (`--env K=V`). Subject to the secret-name denylist. */
   explicitEnv?: Record<string, string>;
   /**
-   * The host environment (process.env). ONLY names the manifest declares in
-   * `env` are copied from it; nothing else is forwarded.
+   * Host variables a library caller has DECIDED the agent may receive. Only names
+   * the manifest declares in `env` are copied from it. The manifest is written by
+   * whoever built the image, so never hand this the whole process environment on
+   * the image's say-so: the CLI passes nothing here and forwards only what the user
+   * typed with `--env`.
    */
   hostEnv?: Record<string, string | undefined>;
   extraMounts?: ContainerMount[];
@@ -384,6 +416,12 @@ export interface StartAgentRequest {
   detach?: boolean;
   restart?: 'no' | 'unless-stopped' | 'on-failure';
   onWarning?: (message: string) => void;
+  /**
+   * Abort a start that is in progress. Checked between steps (and while waiting for the sidecar), then the normal
+   * rollback removes everything this call created and `startAgent` rejects with INTERRUPTED. Once the agent is running
+   * the start has succeeded and an abort no longer undoes it.
+   */
+  signal?: AbortSignal;
 }
 
 export interface StartedAgent {
@@ -399,6 +437,12 @@ export interface StartedAgent {
   warnings: string[];
   /** Set when run in the foreground. */
   exitCode?: number;
+  /**
+   * Detached runs with a liveness window only: the agent container died (or is crash-looping)
+   * with a non-zero code before the window closed. The start itself still succeeded and the
+   * container is left in place so its logs can be read.
+   */
+  earlyExit?: { exitCode: number; state: string };
 }
 
 // ---------------------------------------------------------------------------

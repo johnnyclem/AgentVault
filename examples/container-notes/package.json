@@ -1,0 +1,9 @@
+{
+  "name": "container-notes",
+  "version": "0.1.0",
+  "description": "Smallest useful container agent: remembers across restarts and, if given a credential, asks a model one question through the credential proxy.",
+  "main": "index.js",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" }
+}

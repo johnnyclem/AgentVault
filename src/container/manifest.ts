@@ -14,7 +14,7 @@
 
 import { z } from 'zod';
 import { ContainerError, DEFAULT_AGENT_USER, LABEL_MANIFEST } from './types.js';
-import { AGENT_NAME_RE, CONTAINER_PATH_RE, ENV_NAME_RE, SECRET_NAME_RE } from './validate.js';
+import { AGENT_NAME_RE, CONTAINER_PATH_RE, ENV_NAME_RE, SECRET_NAME_RE, isSystemContainerPath } from './validate.js';
 
 export const MANIFEST_SCHEMA_VERSION = 1 as const;
 export const MANIFEST_FILE = 'agentvault.json';
@@ -23,7 +23,9 @@ export { LABEL_MANIFEST };
 const containerPathSchema = z
   .string()
   .regex(CONTAINER_PATH_RE)
-  .refine((p) => p !== '/' && !p.split('/').includes('..') && !p.endsWith('/'), 'path must be normalized and not "/"');
+  .refine((p) => p !== '/' && !p.split('/').includes('..') && !p.endsWith('/'), 'path must be normalized and not "/"')
+  // An image label is as untrusted as the image: it must not be able to ask for a volume over /etc or /proc.
+  .refine((p) => !isSystemContainerPath(p), 'path is a system location and cannot be a volume');
 
 export const containerManifestSchema = z
   .object({

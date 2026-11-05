@@ -19,6 +19,7 @@
 
 import * as fs from 'node:fs';
 import { execa } from 'execa';
+import { presetSecretEnvMapping } from './proxy/presets.js';
 import type { CommandOptions, CommandResult, CommandRunner } from './types.js';
 
 /** Cap for captured stdout/stderr in the non-file modes (execa's default is 100 MB). */
@@ -133,7 +134,8 @@ export const execaRunner: CommandRunner = async (file, args, options = {}) => {
       stderr,
       ...(options.input !== undefined ? { input: options.input } : {}),
       ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
-      ...(options.env !== undefined ? { env: options.env } : {}),
+      env: childEnv(options.env),
+      extendEnv: false,
       ...(options.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
       maxBuffer: MAX_BUFFER_BYTES,
     })) as unknown as ExecaOutcome;
@@ -144,6 +146,24 @@ export const execaRunner: CommandRunner = async (file, args, options = {}) => {
     closeQuietly(stdoutFd);
   }
 };
+
+/** Prefixes of AgentVault's own variables: passphrases, key material, the sidecar's secrets and config. */
+const WITHHELD_PREFIXES = ['AGENTVAULT_', 'AV_SECRET_', 'AV_PROXY_'];
+
+/**
+ * The environment a child gets: ours, minus AgentVault's own secrets, plus whatever the caller passes on purpose.
+ * Every docker invocation (and the credential helpers and CLI plugins it may run) used to inherit the passphrases
+ * and, with --secrets-from-env, the provider API keys sitting in this process's environment.
+ */
+function childEnv(extra: Record<string, string | undefined> | undefined): NodeJS.ProcessEnv {
+  const providerKeys = new Set(Object.values(presetSecretEnvMapping()));
+  const env: NodeJS.ProcessEnv = {};
+  for (const [name, value] of Object.entries(process.env)) {
+    if (WITHHELD_PREFIXES.some((prefix) => name.startsWith(prefix)) || providerKeys.has(name)) continue;
+    env[name] = value;
+  }
+  return { ...env, ...(extra ?? {}) };
+}
 
 function toResult(file: string, outcome: ExecaOutcome, timeoutMs: number | undefined): CommandResult {
   const stdout = text(outcome.stdout);

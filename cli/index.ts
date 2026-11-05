@@ -88,7 +88,18 @@ import { mergeCommand } from './merge.js';
 import { hypervaultCmd } from './commands/hypervault.js';
 import { totalRecallCmd } from './commands/total-recall.js';
 
-export function createProgram(): Command {
+// Container runtime — locked-down agent containers, snapshots and credentials
+import { containerCommand, psCommand, rmCommand, runCommand, stopCommand } from './commands/container.js';
+import { snapshotCommand } from './commands/snapshot.js';
+import { secretsCommand } from './commands/secrets.js';
+import type { ContainerCliDeps } from './commands/cli-support.js';
+
+/**
+ * `containerDeps` lets a test (or an embedding program) replace the Docker
+ * runtime, passphrase source and output of the container commands; the CLI
+ * itself passes nothing.
+ */
+export function createProgram(containerDeps: ContainerCliDeps = {}): Command {
   const program = new Command();
 
   program
@@ -178,6 +189,18 @@ export function createProgram(): Command {
   program.addCommand(hypervaultCmd);
   // Total Recall — write-once/read-many memory archive
   program.addCommand(totalRecallCmd);
+
+  // Container runtime. `logs`, `stats` and `exec` already belong to the canister
+  // commands above, so those verbs are only reachable as `container logs|stats|exec`.
+  // Commander cannot register one instance under two parents, so each shortcut is
+  // a fresh instance from the same factory as its `container` subcommand.
+  program.addCommand(containerCommand(containerDeps));
+  program.addCommand(runCommand(containerDeps));
+  program.addCommand(psCommand(containerDeps));
+  program.addCommand(stopCommand(containerDeps));
+  program.addCommand(rmCommand(containerDeps));
+  program.addCommand(snapshotCommand(containerDeps));
+  program.addCommand(secretsCommand(containerDeps));
 
   return program;
 }
