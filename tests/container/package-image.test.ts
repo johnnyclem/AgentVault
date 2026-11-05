@@ -457,6 +457,7 @@ describe('caps', () => {
     fs.rmSync(ctx, { recursive: true });
     fs.mkdirSync(ctx);
     expect(() => stageBuildContext(src, ctx, { maxFiles: 24 })).toThrow(/24-file limit/);
+    expect(listTree(ctx)).toEqual([]);
   });
 
   it('enforces maxBytes on planned and on actual sizes', () => {
@@ -465,6 +466,8 @@ describe('caps', () => {
     const ctx = path.join(root, 'ctx');
     fs.mkdirSync(ctx);
     expect(() => stageBuildContext(src, ctx, { maxBytes: 1000 })).toThrow(ContainerError);
+    // The planned-size check fails fast: nothing was written before the error.
+    expect(listTree(ctx)).toEqual([]);
     fs.rmSync(ctx, { recursive: true });
     fs.mkdirSync(ctx);
     expect(stageBuildContext(src, ctx, { maxBytes: 1200 }).bytes).toBe(1200);
