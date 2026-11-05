@@ -350,6 +350,31 @@ function printStarted(ctx: CliContext, started: StartedAgent): void {
   ctx.log(`  agentvault stop ${started.agent}`);
 }
 
+/** What a shell exit status usually means for a container that died right after starting. */
+function earlyExitHint(exitCode: number): string {
+  switch (exitCode) {
+    case 127:
+      return ' (command not found: check the image entrypoint, or pass the command explicitly)';
+    case 126:
+      return ' (the entrypoint is not executable)';
+    case 137:
+      return ' (killed, often out of memory: try --memory)';
+    default:
+      return '';
+  }
+}
+
+function printEarlyExit(ctx: CliContext, started: StartedAgent): void {
+  if (started.earlyExit === undefined) return;
+  const { exitCode, state } = started.earlyExit;
+  ctx.log('');
+  warnLine(
+    ctx,
+    `the agent ${state === 'restarting' ? 'is crash-looping' : 'exited immediately'} with code ${exitCode}${earlyExitHint(exitCode)}. ` +
+      `The container was kept so you can read its output: agentvault container logs ${started.agent}`
+  );
+}
+
 export async function executeRun(target: string, command: readonly string[], options: RunOptions, ctx: CliContext): Promise<number | void> {
   const runtime = ctx.runtime();
   const { image } = resolveRunTarget(target, ctx);
@@ -443,7 +468,9 @@ export async function executeRun(target: string, command: readonly string[], opt
   }
   let started: StartedAgent;
   try {
-    started = await (detach ? withSpinner(ctx, 'Starting the agent...', () => startAgent(request)) : startAgent(request));
+    started = await (detach
+      ? withSpinner(ctx, 'Starting the agent...', () => startAgent({ ...request, livenessGraceMs: ctx.livenessGraceMs }))
+      : startAgent(request));
   } catch (error) {
     // A detached start that failed never ran the agent, so the volumes made for it are empty: take them away again.
     // (After a foreground run they could hold data, so they stay.)
@@ -460,6 +487,7 @@ export async function executeRun(target: string, command: readonly string[], opt
 
   if (detach) {
     printStarted(ctx, started);
+    printEarlyExit(ctx, started);
     return;
   }
   return started.exitCode ?? 0;

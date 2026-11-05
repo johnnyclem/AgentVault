@@ -417,6 +417,12 @@ export interface StartedAgent {
   warnings: string[];
   /** Set when run in the foreground. */
   exitCode?: number;
+  /**
+   * Detached runs with a liveness window only: the agent container died (or is crash-looping)
+   * with a non-zero code before the window closed. The start itself still succeeded and the
+   * container is left in place so its logs can be read.
+   */
+  earlyExit?: { exitCode: number; state: string };
 }
 
 // ---------------------------------------------------------------------------

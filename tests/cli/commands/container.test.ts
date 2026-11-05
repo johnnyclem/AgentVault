@@ -314,6 +314,7 @@ function harness(over: Partial<ContainerCliDeps> = {}, runtime = new FakeRuntime
       return Promise.resolve(PASS);
     },
     installSignalHandler: () => () => undefined,
+    livenessGraceMs: 0, // the fake never crashes; waiting out the window would only slow every detached run
     ...over,
   };
   return {
@@ -670,6 +671,53 @@ describe('run: network and services', () => {
     expect(request?.proxyPlan?.config.routes.map((r) => r.name)).toEqual(['ollama']);
     expect(request?.proxyPlan?.secrets).toEqual({});
     expect(h.passphrases).toEqual([]);
+  });
+
+  describe('a detached agent that died at once', () => {
+    it('is reported after the success summary, with the code, a hint and the way to read its output', async () => {
+      const h = harness();
+      vi.mocked(startAgent).mockResolvedValueOnce(started({ containerId: 'a'.repeat(64), earlyExit: { exitCode: 127, state: 'exited' } }));
+      expect(await run(runCommand(h.deps), [IMAGE, '-d'])).toBe(0); // like `docker run -d`, the exit status is the start's
+      expect(h.stdout()).toContain(`Started agent ${AGENT}`);
+      expect(h.stderr()).toMatch(/exited immediately with code 127 \(command not found/);
+      expect(h.stderr()).toContain(`agentvault container logs ${AGENT}`);
+    });
+
+    it.each([
+      [126, /not executable/],
+      [137, /--memory/],
+      [3, /exited immediately with code 3\.\s/],
+    ])('code %i gets the matching hint', async (exitCode, expected) => {
+      const h = harness();
+      vi.mocked(startAgent).mockResolvedValueOnce(started({ earlyExit: { exitCode, state: 'exited' } }));
+      await run(runCommand(h.deps), [IMAGE, '-d']);
+      expect(h.stderr()).toMatch(expected);
+    });
+
+    it('says crash-looping for a restarting container', async () => {
+      const h = harness();
+      vi.mocked(startAgent).mockResolvedValueOnce(started({ earlyExit: { exitCode: 1, state: 'restarting' } }));
+      await run(runCommand(h.deps), [IMAGE, '-d']);
+      expect(h.stderr()).toMatch(/crash-looping with code 1/);
+    });
+
+    it('prints nothing extra for a healthy start', async () => {
+      const h = harness();
+      expect(await run(runCommand(h.deps), [IMAGE, '-d'])).toBe(0);
+      expect(h.stderr()).not.toMatch(/exited immediately|crash-looping/);
+    });
+
+    it('asks startAgent to watch for the window (detached only)', async () => {
+      const h = harness({ livenessGraceMs: 321 });
+      await run(runCommand(h.deps), [IMAGE, '-d']);
+      expect(vi.mocked(startAgent).mock.calls[0]?.[0].livenessGraceMs).toBe(321);
+    });
+
+    it('does not for a foreground run, which already waits for the exit', async () => {
+      const h = harness({ livenessGraceMs: 321 });
+      await run(runCommand(h.deps), [IMAGE]);
+      expect(vi.mocked(startAgent).mock.calls[0]?.[0].livenessGraceMs).toBeUndefined();
+    });
   });
 
   it('an unknown service is refused with the list of known ones', async () => {

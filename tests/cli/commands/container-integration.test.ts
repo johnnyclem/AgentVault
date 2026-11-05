@@ -423,4 +423,59 @@ describe.skipIf(!usable)('container commands against a real daemon', () => {
       expect(dockerNames(['volume', 'ls', '--format', '{{.Name}}']).filter((n) => n.includes(agent.name))).toEqual([]);
     });
   });
+
+  // -------------------------------------------------------------------------
+  // Flow 3: `docker run -d` succeeds even when the entrypoint cannot start
+  // -------------------------------------------------------------------------
+
+  describe('a detached agent that dies at once is reported, not celebrated', () => {
+    let node: { dir: string; name: string; tag: string };
+    let python: { dir: string; name: string };
+
+    beforeAll(async () => {
+      node = agentDirectory('dies');
+      await createProgram().parseAsync(['package', node.dir, '--target', 'container'], { from: 'user' });
+      // A base image with no entrypoint wrapper: the node image's docker-entrypoint.sh turns an
+      // unknown command into `node <command>` (exit 1), so only this one yields a true 127.
+      const name = d.agent('py');
+      const dir = path.join(scratch, name);
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'main.py'), 'print("hello")\n');
+      fs.writeFileSync(path.join(dir, 'requirements.txt'), '# no dependencies\n');
+      python = { dir, name };
+      await createProgram().parseAsync(['package', dir, '--target', 'container'], { from: 'user' });
+    });
+
+    it('a missing binary (exit 127) is called out, with a hint and where to read the output', async () => {
+      const result = await cli(['run', python.dir, '-d', '--', 'definitely-not-a-binary']);
+      expect(result.code, result.err).toBe(0); // like `docker run -d`, the exit status is the start's
+      expect(result.out).toContain(`Started agent ${python.name}`);
+      expect(result.err).toMatch(/exited immediately with code 127 \(command not found/);
+      expect(result.err).toContain(`agentvault container logs ${python.name}`);
+      // The container is kept so the advice is actionable.
+      expect(dockerNames(['ps', '-a', '--format', '{{.Names}}'])).toContain(`av-${python.name}`);
+      await cli(['rm', python.name, '--volumes', '-y']);
+    });
+
+    it('any other non-zero exit is reported with its code', async () => {
+      const result = await cli(['run', node.dir, '-d', '--', 'node', '-e', 'process.exit(3)']);
+      expect(result.code, result.err).toBe(0);
+      expect(result.err).toMatch(/exited immediately with code 3\./);
+      await cli(['rm', node.name, '--volumes', '-y']);
+    });
+
+    it('an agent that finishes successfully straight away is not a failure', async () => {
+      const result = await cli(['run', node.dir, '-d', '--', 'node', '-e', '0']);
+      expect(result.code, result.err).toBe(0);
+      expect(result.err).not.toMatch(/exited immediately|crash-looping/);
+    });
+
+    it('a healthy long-running agent is not flagged', async () => {
+      await cli(['rm', node.name, '--volumes', '-y']);
+      const result = await cli(['run', node.dir, '-d', '--', 'node', '-e', 'setInterval(() => {}, 1000)']);
+      expect(result.code, result.err).toBe(0);
+      expect(result.err).not.toMatch(/exited immediately|crash-looping/);
+      expect(docker(['inspect', '--format', '{{.State.Running}}', `av-${node.name}`]).stdout.trim()).toBe('true');
+    });
+  });
 });

@@ -28,7 +28,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { assertPassphrase } from '../../src/container/crypto.js';
 import { DockerRuntime } from '../../src/container/docker.js';
-import { redactSecrets } from '../../src/container/lifecycle.js';
+import { LIVENESS_GRACE_MS, redactSecrets } from '../../src/container/lifecycle.js';
 import { ContainerError } from '../../src/container/types.js';
 import type { ContainerErrorCode, ContainerRuntime } from '../../src/container/types.js';
 import { agentvaultHome, assertAgentName, resourceNames } from '../../src/container/validate.js';
@@ -81,6 +81,8 @@ export interface ContainerCliDeps {
    * Returns the function that uninstalls the handler.
    */
   installSignalHandler?: (handler: () => void) => () => void;
+  /** How long a detached `run` watches for an immediate crash. Default LIVENESS_GRACE_MS; 0 skips the wait. */
+  livenessGraceMs?: number;
 }
 
 export interface CliContext {
@@ -98,6 +100,7 @@ export interface CliContext {
   /** True when the caller injected its own output sink. */
   quiet: boolean;
   installSignalHandler: (handler: () => void) => () => void;
+  livenessGraceMs: number;
   /** Passphrases and secret values obtained so far: scrubbed from rendered errors. */
   sensitive: Set<string>;
 }
@@ -184,6 +187,7 @@ export function resolveDeps(deps: ContainerCliDeps = {}): CliContext {
     interactive,
     quiet: deps.log !== undefined,
     installSignalHandler: deps.installSignalHandler ?? defaultInstallSignalHandler,
+    livenessGraceMs: deps.livenessGraceMs ?? LIVENESS_GRACE_MS,
     sensitive,
   };
 }

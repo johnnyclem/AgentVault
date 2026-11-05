@@ -59,6 +59,9 @@ import type { ResourceNames } from './validate.js';
 /** How long startAgent waits for the sidecar's {"event":"listening"} line. */
 export const PROXY_READY_TIMEOUT_MS = 20_000;
 export const PROXY_READY_POLL_MS = 250;
+/** How long the CLI watches a detached agent for an immediate crash. */
+export const LIVENESS_GRACE_MS = 1_500;
+export const LIVENESS_POLL_MS = 150;
 
 /**
  * StartAgentRequest plus knobs the shared contract does not carry. A plain
@@ -72,6 +75,14 @@ export interface StartAgentOptions extends StartAgentRequest {
   proxyReadyPollMs?: number;
   /** Keep stdin open (`docker run -i`) for a foreground run. Default false. */
   interactive?: boolean;
+  /**
+   * Detached runs: how long to watch for the agent dying right after it starts (a missing binary
+   * exits 127 *after* `docker run -d` has already returned success). 0 (the default) skips the
+   * check and its delay; the CLI turns it on with LIVENESS_GRACE_MS.
+   */
+  livenessGraceMs?: number;
+  /** Liveness poll interval. Default LIVENESS_POLL_MS. */
+  livenessPollMs?: number;
 }
 
 export interface AgentSummary {
@@ -382,6 +393,39 @@ async function waitForProxyReady(
   }
 }
 
+/**
+ * Watch a just-started detached agent for `graceMs`. Returns the exit code if it died (or is
+ * crash-looping under a restart policy) with a non-zero code inside the window, otherwise
+ * undefined: still running, exited 0 (a short job is legitimate), or the check could not be made.
+ */
+async function watchForEarlyExit(
+  runtime: ContainerRuntime,
+  agent: string,
+  containerName: string,
+  graceMs: number,
+  pollMs: number
+): Promise<{ exitCode: number; state: string } | undefined> {
+  if (!(graceMs > 0)) return undefined;
+  const deadline = Date.now() + graceMs;
+  for (;;) {
+    try {
+      const row = (await runtime.list({ agent, all: true })).find((c) => c.name === containerName);
+      if (row === undefined) return undefined;
+      if (row.state === 'exited' || row.state === 'dead' || row.state === 'restarting') {
+        const code = /\((-?\d+)\)/.exec(row.status)?.[1];
+        if (code === undefined) return undefined;
+        const exitCode = Number(code);
+        return exitCode === 0 ? undefined : { exitCode, state: row.state };
+      }
+    } catch {
+      return undefined;
+    }
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return undefined;
+    await sleep(Math.min(pollMs, remaining));
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Step 8: ledger and rollback
 // ---------------------------------------------------------------------------
@@ -600,7 +644,16 @@ async function startAgentChecked(request: StartAgentOptions): Promise<StartedAge
         ledger.agentContainer = true;
       });
       ledger.agentStarted = true;
-      return { ...started, containerId: id, warnings: [...warnings] };
+      // Best effort and after agentStarted: nothing here may throw into the rollback below,
+      // which would tear down an agent that is running fine.
+      const earlyExit = await watchForEarlyExit(
+        runtime,
+        agent,
+        names.container,
+        request.livenessGraceMs ?? 0,
+        request.livenessPollMs ?? LIVENESS_POLL_MS
+      );
+      return { ...started, containerId: id, warnings: [...warnings], ...(earlyExit !== undefined ? { earlyExit } : {}) };
     }
 
     // From here the agent may write to its volumes, so a failure keeps them.

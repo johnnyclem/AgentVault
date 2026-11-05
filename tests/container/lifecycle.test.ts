@@ -146,6 +146,10 @@ class FakeRuntime implements ContainerRuntime {
   /** Make the START of a container with this name fail the way docker reports a name clash. */
   nameClash: string | undefined;
   sidecarDies = false;
+  /** When set, the agent container is already dead the moment it starts, with this status text. */
+  agentDies: { state: string; status: string } | undefined;
+  /** Make list() throw (a daemon hiccup during the liveness watch). */
+  listThrows: Error | undefined;
   foregroundExit = 0;
   foregroundThrows: Error | undefined;
   proxyLogs: (poll: number) => string = () => `${LISTENING}\n`;
@@ -312,7 +316,7 @@ class FakeRuntime implements ContainerRuntime {
     const problem = this.assertCanStart(spec);
     if (problem) return Promise.reject(problem);
     this.started.push(spec);
-    const state = spec.role === 'proxy' && this.sidecarDies ? 'exited' : 'running';
+    const state = spec.role === 'proxy' && this.sidecarDies ? 'exited' : spec.role === 'agent' && this.agentDies ? this.agentDies.state : 'running';
     this.containers.set(spec.name, { spec, state, networks: new Set(spec.network === 'none' || spec.network === 'bridge' ? [] : [spec.network]) });
     return Promise.resolve({ id: `${'0123456789abcdef'.repeat(4)}` });
   }
@@ -329,6 +333,7 @@ class FakeRuntime implements ContainerRuntime {
 
   list(filter?: { agent?: string; all?: boolean }): Promise<ContainerInfo[]> {
     this.step('list', [filter]);
+    if (this.listThrows && this.started.some((s) => s.role === 'agent')) return Promise.reject(this.listThrows);
     const rows: ContainerInfo[] = [];
     for (const [name, c] of this.containers) {
       const agent = c.spec.labels[LABEL_AGENT] ?? '';
@@ -340,7 +345,12 @@ class FakeRuntime implements ContainerRuntime {
         name,
         image: c.spec.image,
         state: c.state,
-        status: c.state === 'running' ? 'Up 1 second' : `${c.state} (1) 1 second ago`,
+        status:
+          c.spec.role === 'agent' && this.agentDies && c.state === this.agentDies.state
+            ? this.agentDies.status
+            : c.state === 'running'
+              ? 'Up 1 second'
+              : `${c.state} (1) 1 second ago`,
         role: (c.spec.labels[LABEL_ROLE] as ContainerInfo['role'] | undefined) ?? 'unknown',
         agent,
         createdAt: '2026-11-05 05:15:00 +0000 UTC',
@@ -822,6 +832,73 @@ describe('startAgent, detached, network none', () => {
 // ---------------------------------------------------------------------------
 // Bridge (property e)
 // ---------------------------------------------------------------------------
+
+describe('detached liveness watch', () => {
+  const live = { livenessGraceMs: 200, livenessPollMs: 1 };
+
+  it('is off by default: no extra daemon calls, no earlyExit', async () => {
+    const fake = new FakeRuntime();
+    fake.agentDies = { state: 'exited', status: 'Exited (127) 1 second ago' };
+    const started = await startAgent(req(fake));
+    expect(started.earlyExit).toBeUndefined();
+    expect(fake.trace.filter((t) => t === 'list')).toHaveLength(1); // only the pre-start check
+  });
+
+  it('reports an agent that exited non-zero inside the window, and keeps the container', async () => {
+    const fake = new FakeRuntime();
+    fake.agentDies = { state: 'exited', status: 'Exited (127) 1 second ago' };
+    const started = await startAgent(req(fake, live));
+    expect(started.earlyExit).toEqual({ exitCode: 127, state: 'exited' });
+    expect(started.containerId).toBeDefined();
+    expect(fake.containers.has(`av-${AGENT}`)).toBe(true);
+    expect(fake.mutations.filter((m) => m.startsWith('remove') || m.startsWith('stop'))).toEqual([]);
+  });
+
+  it('reports a crash-looping agent (restart policy) using the code in its status', async () => {
+    const fake = new FakeRuntime();
+    fake.agentDies = { state: 'restarting', status: 'Restarting (3) 2 seconds ago' };
+    const started = await startAgent(req(fake, { ...live, restart: 'on-failure' }));
+    expect(started.earlyExit).toEqual({ exitCode: 3, state: 'restarting' });
+  });
+
+  it('treats a quick clean exit (code 0) as a finished job, not a failure', async () => {
+    const fake = new FakeRuntime();
+    fake.agentDies = { state: 'exited', status: 'Exited (0) 1 second ago' };
+    expect((await startAgent(req(fake, live))).earlyExit).toBeUndefined();
+  });
+
+  it('says nothing about an agent that is still running when the window closes', async () => {
+    const fake = new FakeRuntime();
+    const t0 = Date.now();
+    const started = await startAgent(req(fake, live));
+    expect(started.earlyExit).toBeUndefined();
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(150); // it really watched for the window
+    expect(fake.trace.filter((t) => t === 'list').length).toBeGreaterThan(2);
+  });
+
+  it('returns as soon as the agent is seen dead instead of waiting out the window', async () => {
+    const fake = new FakeRuntime();
+    fake.agentDies = { state: 'exited', status: 'Exited (1) 1 second ago' };
+    const t0 = Date.now();
+    await startAgent(req(fake, { livenessGraceMs: 5_000, livenessPollMs: 1 }));
+    expect(Date.now() - t0).toBeLessThan(2_000);
+  });
+
+  it('a daemon error while watching never fails the start or tears the running agent down', async () => {
+    const fake = new FakeRuntime();
+    fake.listThrows = new Error('daemon hiccup');
+    const started = await startAgent(req(fake, live));
+    expect(started.earlyExit).toBeUndefined();
+    expect(fake.containers.has(`av-${AGENT}`)).toBe(true);
+    expect(fake.mutations.filter((m) => m.startsWith('remove') || m.startsWith('stop'))).toEqual([]);
+  });
+
+  it('ignores a status it cannot read a code from', async () => {
+    const fake = new FakeRuntime();
+    fake.agentDies = { state: 'exited', status: 'Exited' };
+    expect((await startAgent(req(fake, live))).earlyExit).toBeUndefined();
+  });
+});
 
 describe('(e) network bridge', () => {
   it('starts, and warns through onWarning and StartedAgent.warnings', async () => {

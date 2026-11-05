@@ -107,6 +107,7 @@ export type { ContainerPackageOptions, ContainerPackageResult, PackagingRuntime 
 
 // Lifecycle
 export {
+  LIVENESS_GRACE_MS,
   PROXY_READY_POLL_MS,
   PROXY_READY_TIMEOUT_MS,
   listAgents as listContainerAgents,
