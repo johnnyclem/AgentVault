@@ -182,6 +182,7 @@ describe('resourceNames', () => {
     expect(n.container).toBe('av-my-agent');
     expect(n.proxy).toBe('av-my-agent-proxy');
     expect(n.network).toBe('av-my-agent-net');
+    expect(n.egress).toBe('av-my-agent-egress');
     expect(n.volume('data')).toBe('av-my-agent-data');
   });
 

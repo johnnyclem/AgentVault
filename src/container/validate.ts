@@ -122,7 +122,14 @@ export function parseUser(user: string): { uid: number; gid: number } {
 export interface ResourceNames {
   container: string;
   proxy: string;
+  /** The INTERNAL network: the agent and its sidecar, no route out. */
   network: string;
+  /**
+   * The sidecar's own egress network (non-internal, sidecar only). It must not
+   * be the shared default bridge: the sidecar listens on 0.0.0.0 and holds the
+   * real credentials, so every container on a shared bridge could use them.
+   */
+  egress: string;
   /** Docker volume name for a volume key. */
   volume: (key: string) => string;
 }
@@ -133,6 +140,7 @@ export function resourceNames(agent: string): ResourceNames {
     container: `av-${agent}`,
     proxy: `av-${agent}-proxy`,
     network: `av-${agent}-net`,
+    egress: `av-${agent}-egress`,
     volume: (key: string) => `av-${agent}-${assertVolumeKey(key)}`,
   };
 }

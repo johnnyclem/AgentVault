@@ -379,7 +379,13 @@ export interface StartAgentRequest {
   network?: NetworkMode;
   /** Required when network is 'proxy' or the manifest declares `secrets`. */
   proxyPlan?: ProxyPlan;
-  /** Docker network the sidecar uses to reach the internet. Default 'bridge'. */
+  /**
+   * Docker network the sidecar uses to reach the internet. Default: a dedicated
+   * per-agent network (resourceNames(agent).egress) that the lifecycle creates
+   * and removes, with only the sidecar on it. Passing 'bridge' puts the sidecar
+   * on the shared default bridge, where EVERY container on the host can reach
+   * it and spend the agent's credentials - the lifecycle warns when asked to.
+   */
   proxyEgressNetwork?: string;
   limits?: Partial<ResourceLimits>;
   /** Env the user typed (`--env K=V`). Subject to the secret-name denylist. */
