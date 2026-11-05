@@ -9,7 +9,7 @@ import * as http from 'node:http';
 import * as net from 'node:net';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_SERVER_TIMEOUTS, createCredentialProxy } from '../../../src/container/proxy/credential-proxy.js';
+import { DEFAULT_SERVER_TIMEOUTS, createCredentialProxy, upstreamErrorCode } from '../../../src/container/proxy/credential-proxy.js';
 import { deferred, rawExchange, rawRequest, route, send, sleep, startProxy, startUpstream, waitUntil, within } from './harness.js';
 import type { FakeUpstream, ProxyHarness } from './harness.js';
 
@@ -173,6 +173,8 @@ describe('body size limit', () => {
     expect(up.requests[0]!.ended).toBe(false);
     await waitUntil(() => p.logs.length === 1, 2_000, 'audit entry for the 413');
     expect(p.logs[0]!.status).toBe(413);
+    // We aborted the upstream ourselves; that is not an upstream fault.
+    expect(p.logs[0]).not.toHaveProperty('upstreamError');
   });
 });
 
@@ -213,6 +215,45 @@ describe('failure mapping', () => {
     for (const leak of ['ECONNREFUSED', 'ENOTFOUND', 'connect ECONN', 'getaddrinfo', '127.0.0.1', String(port), 'Error']) {
       expect(r.text + r.rawHeaders.join('\n')).not.toContain(leak);
     }
+  });
+
+  it('records only the error CODE of a failed upstream call in the audit entry', async () => {
+    const gone = await startUpstream();
+    const port = gone.port;
+    await gone.close();
+    const p = await proxy({ routes: [route('svc', `http://127.0.0.1:${port}`)] });
+    await send({ port: p.port, path: '/svc/x?key=sekrit' });
+    await waitUntil(() => p.logs.length === 1, 2_000, 'audit entry for the 502');
+    expect(p.logs[0]!.status).toBe(502);
+    expect(p.logs[0]!.upstreamError).toBe('ECONNREFUSED');
+    // A fixed identifier: no address, port, query or node message text rides along.
+    const line = JSON.stringify(p.logs[0]);
+    for (const leak of ['127.0.0.1', String(port), 'sekrit', 'connect ']) expect(line).not.toContain(leak);
+  });
+
+  it('records the code for an unresolvable host too', async () => {
+    const p = await proxy({ routes: [route('svc', 'http://no-such-host.invalid:81')] });
+    await send({ port: p.port, path: '/svc/x' });
+    await waitUntil(() => p.logs.length === 1, 2_000, 'audit entry for the 502');
+    expect(p.logs[0]!.upstreamError).toMatch(/^(ENOTFOUND|EAI_AGAIN)$/);
+    expect(JSON.stringify(p.logs[0])).not.toContain('no-such-host');
+  });
+
+  it('does not blame the upstream for a failure that is ours (504 timeout)', async () => {
+    const up = await upstream(() => undefined);
+    const p = await proxy({ routes: [route('svc', up)], upstreamTimeoutMs: 150 });
+    await send({ port: p.port, path: '/svc/x' });
+    await waitUntil(() => p.logs.length === 1, 2_000, 'audit entry for the 504');
+    expect(p.logs[0]!.status).toBe(504);
+    expect(p.logs[0]).not.toHaveProperty('upstreamError');
+  });
+
+  it('adds no upstreamError key to a request the upstream answered', async () => {
+    const up = await upstream();
+    const p = await proxy({ routes: [route('svc', up)] });
+    expect((await send({ port: p.port, path: '/svc/x' })).status).toBe(200);
+    await waitUntil(() => p.logs.length === 1, 2_000, 'audit entry');
+    expect(p.logs[0]).not.toHaveProperty('upstreamError');
   });
 
   it('answers 502 for an unresolvable upstream host without echoing the host', async () => {
@@ -502,5 +543,29 @@ describe('stdout contract of the default sink', () => {
     expect(line.trim().split('\n')).toHaveLength(1);
     expect(JSON.parse(line)).toMatchObject({ event: 'request', route: 'svc', method: 'GET', path: '/svc/a', status: 200 });
     expect(line).not.toContain('secret=q');
+  });
+});
+
+describe('upstreamErrorCode (what may reach the audit log)', () => {
+  it.each(['ECONNREFUSED', 'ENOTFOUND', 'ECONNRESET', 'SELF_SIGNED_CERT_IN_CHAIN', 'ERR_TLS_CERT_ALTNAME_INVALID'])(
+    'passes the node error code %s through',
+    (code) => {
+      expect(upstreamErrorCode(Object.assign(new Error('boom'), { code }))).toBe(code);
+    }
+  );
+
+  it.each([
+    ['free text carrying a URL and a key', 'connect to https://api.example.com/?key=sk-ant-123 failed'],
+    ['lower case', 'econnrefused'],
+    ['embedded newline (log injection)', 'ECONNRESET\n{"event":"forged"}'],
+    ['too long', 'E'.repeat(65)],
+    ['empty', ''],
+    ['leading digit', '1ERR'],
+  ])('drops a code that is %s', (_label, code) => {
+    expect(upstreamErrorCode({ code })).toBeUndefined();
+  });
+
+  it.each([[undefined], [null], ['ECONNREFUSED'], [42], [{}], [{ code: 7 }], [{ code: null }]])('drops a non-error value (%j)', (value) => {
+    expect(upstreamErrorCode(value)).toBeUndefined();
   });
 });

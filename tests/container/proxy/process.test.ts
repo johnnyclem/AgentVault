@@ -259,4 +259,20 @@ describe.skipIf(!openssl)('TLS to the upstream is verified, never skipped', () =
     expect(handshakeFailures).toBeGreaterThan(failuresBefore);
     expect(child.lines.join('\n')).not.toContain(REAL);
   });
+
+  it('names the TLS failure by code in the audit line, so an operator can tell a CA problem from an outage', async () => {
+    const child = start(configEnv([tlsRoute()], 0, { 'tls-key': REAL })); // untrusted: no NODE_EXTRA_CA_CERTS
+    const port = await child.listening();
+    const reply = await send({ port, path: '/tls/v1/x' });
+    expect(reply.status).toBe(502);
+    // The client still sees only the constant body; the diagnosis lives in the sidecar's own log.
+    expect(reply.text).toBe('{"error":"bad_gateway"}');
+    await waitUntil(() => child.lines.some((l) => l.includes('"event":"request"')), 3_000, 'audit line');
+    const audit = child.lines
+      .filter((l) => l.startsWith('{'))
+      .map((l) => JSON.parse(l) as { event?: string; status?: number; upstreamError?: string })
+      .find((e) => e.event === 'request' && e.status === 502);
+    expect(audit?.upstreamError).toMatch(/^(SELF_SIGNED_CERT_IN_CHAIN|DEPTH_ZERO_SELF_SIGNED_CERT|UNABLE_TO_VERIFY_LEAF_SIGNATURE|UNABLE_TO_GET_ISSUER_CERT_LOCALLY)$/);
+    expect(child.lines.join('\n')).not.toContain(REAL);
+  });
 });

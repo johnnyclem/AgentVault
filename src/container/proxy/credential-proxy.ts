@@ -125,6 +125,21 @@ export interface AuditEntry {
   bytesIn: number;
   /** Response body bytes written to the client. */
   bytesOut: number;
+  /**
+   * Node's error code when the upstream call itself failed (ENOTFOUND, ECONNREFUSED,
+   * SELF_SIGNED_CERT_IN_CHAIN, ...). A fixed identifier, never error text, so it cannot carry a
+   * URL or a secret. It is what turns an opaque 502 into something an operator can act on.
+   * Absent when the upstream answered.
+   */
+  upstreamError?: string;
+}
+
+/** Node error codes look like `ECONNRESET` / `ERR_TLS_CERT_ALTNAME_INVALID`; anything else is dropped. */
+const UPSTREAM_ERROR_CODE = /^[A-Z][A-Z0-9_]{1,63}$/;
+
+export function upstreamErrorCode(err: unknown): string | undefined {
+  const code = (err as { code?: unknown } | null)?.code;
+  return typeof code === 'string' && UPSTREAM_ERROR_CODE.test(code) ? code : undefined;
 }
 
 export interface ProxyTimeouts {
@@ -599,6 +614,7 @@ export function createCredentialProxy(options: CreateCredentialProxyOptions): ht
     let bytesOut = 0;
     let phase: 'pending' | 'streaming' | 'done' = 'pending';
     let upstreamReq: http.ClientRequest | undefined;
+    let upstreamError: string | undefined;
 
     req.on('error', noop);
     res.on('error', noop);
@@ -616,6 +632,7 @@ export function createCredentialProxy(options: CreateCredentialProxyOptions): ht
         durationMs: now() - startedAt,
         bytesIn,
         bytesOut,
+        ...(upstreamError ? { upstreamError } : {}),
       });
     });
 
@@ -727,7 +744,12 @@ export function createCredentialProxy(options: CreateCredentialProxyOptions): ht
           clientReq.destroy();
         })
       );
-      clientReq.on('error', failFromError);
+      clientReq.on('error', (err: unknown) => {
+        // Only the code is kept (see AuditEntry.upstreamError); the client still gets a constant body.
+        // A timeout/oversize abort is ours, not an upstream fault, so it is not blamed on it.
+        if (!tooLarge && !timedOut) upstreamError = upstreamErrorCode(err);
+        failFromError();
+      });
 
       clientReq.on(
         'response',
