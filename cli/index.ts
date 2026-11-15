@@ -87,6 +87,7 @@ import { mergeCommand } from './merge.js';
 // HyperVault — cloud mind ⇄ sovereign chain + archive bridge
 import { hypervaultCmd } from './commands/hypervault.js';
 import { totalRecallCmd } from './commands/total-recall.js';
+import { ledgerCmd } from './commands/ledger.js';
 
 // Container runtime — locked-down agent containers, snapshots and credentials
 import { containerCommand, psCommand, rmCommand, runCommand, stopCommand } from './commands/container.js';
@@ -189,6 +190,8 @@ export function createProgram(containerDeps: ContainerCliDeps = {}): Command {
   program.addCommand(hypervaultCmd);
   // Total Recall — write-once/read-many memory archive
   program.addCommand(totalRecallCmd);
+  // Ledger — append-only record agent hosts write to, anchored on a canister
+  program.addCommand(ledgerCmd);
 
   // Container runtime. `logs`, `stats` and `exec` already belong to the canister
   // commands above, so those verbs are only reachable as `container logs|stats|exec`.

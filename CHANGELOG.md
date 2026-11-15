@@ -4,6 +4,22 @@ All notable changes to AgentVault will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased] - Ledger gateway
+
+An on-chain record for agents that run somewhere else. Guide: [docs/guides/ledger.md](docs/guides/ledger.md).
+
+### Added
+- **`agentvault ledger serve`**: an HTTP gateway an agent host appends sealed records to. Entries are opaque ciphertext, numbered and hash-chained per stream, and fsynced to an append-only JSON Lines file before they are acknowledged. Appends are idempotent; one that skips ahead or rewrites a stored entry is refused with 409 and writes nothing. The bearer token comes from `AGENTVAULT_LEDGER_TOKEN`, never a flag, and the gateway binds to loopback by default.
+- **Anchoring on `memory_repo`.** With `--canister-id` and `--ic-host`, the gateway commits each stream's new entries to a `ledger` branch every `--anchor-interval` minutes (60 by default) and on a clean shutdown, keeping the certified reply as a receipt. `--digest-only` anchors the hashes without a copy of the entries. `agentvault ledger anchor` runs one pass and exits.
+- **`agentvault ledger status`** and **`agentvault ledger verify`**. `verify` re-derives every chain from disk, and with a canister reads each anchored commit back and checks it against the ledger, without needing a key.
+- **`agentvault/ledger`** exports the entry format, the store, the anchor and the server for embedding.
+
+### Known limits
+- One gateway serves one host with one token, and all of its streams share one canister owned by whoever runs it.
+- A `memory_repo` canister holds 10,000 commits and 64 MB. When it is full, anchoring fails and is reported while the gateway keeps accepting entries; rolling to a new canister is not automated.
+- Nothing restores an agent from its ledger yet.
+- The canister path is covered by tests against an in-memory stand-in, not a live replica.
+
 ## [Unreleased] - Container MVP
 
 Run agents in locked-down Docker containers on your own machine, as an alternative to compiling them to WASM for an ICP canister (PRD-00 to PRD-04, Phase 1). The default `package` target is unchanged. Guide: [docs/guides/container.md](docs/guides/container.md); example: [examples/container-notes](examples/container-notes).
