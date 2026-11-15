@@ -189,14 +189,20 @@ export class LedgerStore {
     return { head: prev!, appended: fresh.length };
   }
 
-  /** Entries after sequence number `after`, oldest first, at most `limit`. */
-  read(stream: string, options: { after?: number; limit?: number } = {}): LedgerEntry[] {
+  /**
+   * Entries after sequence number `after`, oldest first: at most `limit`, and no more than fit
+   * in `maxBytes` of stored lines, but always at least one when any remain.
+   */
+  read(stream: string, options: { after?: number; limit?: number; maxBytes?: number } = {}): LedgerEntry[] {
     const state = this.state(stream);
     const after = Math.max(0, options.after ?? 0);
     const limit = Math.max(0, options.limit ?? 100);
     const start = state.offsets[after];
     if (start === undefined || limit === 0) return [];
-    const end = state.offsets[after + limit] ?? state.size;
+    const endOf = (count: number): number => state.offsets[after + count] ?? state.size;
+    let count = Math.min(limit, state.offsets.length - after);
+    while (options.maxBytes !== undefined && count > 1 && endOf(count) - start > options.maxBytes) count -= 1;
+    const end = endOf(count);
     const buffer = Buffer.alloc(end - start);
     const fd = fs.openSync(state.file, 'r');
     try {

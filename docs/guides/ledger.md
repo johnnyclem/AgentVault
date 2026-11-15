@@ -144,6 +144,9 @@ Every route but health needs `Authorization: Bearer <token>`.
 | `GET /v1/streams/<stream>` | `{ head: { seq, hash }, anchored: { seq } }`, or 404 |
 | `GET /v1/streams/<stream>/entries?after=<seq>&limit=<n>` | entries after `seq`, with their chain fields |
 
+A read returns at most 500 entries and stops early at 8 MiB, so page with
+`after` until it returns none.
+
 A stream id is lowercase: `[a-z0-9][a-z0-9._-]{0,99}`. `kind` follows the same
 pattern, up to 64 characters. `at` is an ISO 8601 UTC instant with
 milliseconds. A payload is at most 256 KiB, an append at most 500 entries and

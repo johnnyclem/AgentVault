@@ -90,7 +90,7 @@ async function handle(
     if (after === null || limit === null || limit < 1 || limit > MAX_READ_LIMIT) {
       return send(response, 400, { error: 'invalid', message: `after must be a whole number and limit between 1 and ${MAX_READ_LIMIT}` });
     }
-    return send(response, 200, { entries: store.read(stream, { after, limit }), head: store.head(stream) });
+    return send(response, 200, { entries: store.read(stream, { after, limit, maxBytes: MAX_BODY_BYTES }), head: store.head(stream) });
   }
   if (request.method !== 'POST') return send(response, 405, { error: 'method_not_allowed' });
 

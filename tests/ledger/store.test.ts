@@ -129,6 +129,18 @@ describe('LedgerStore read', () => {
     expect(store.read('unknown')).toEqual([]);
     expect(Buffer.from(store.read(STREAM, { after: 2, limit: 1 })[0]!.payload, 'base64url').toString()).toBe('record 3');
   });
+
+  it('stops at a byte budget, but always returns the next entry', () => {
+    const store = LedgerStore.open(dir);
+    const big = 'x'.repeat(3_000);
+    store.append(STREAM, [1, 2, 3, 4].map((seq) => entry(seq, big)));
+    const lineBytes = fs.statSync(streamFile()).size / 4;
+    expect(store.read(STREAM, { maxBytes: lineBytes * 2 }).map((stored) => stored.seq)).toEqual([1, 2]);
+    expect(store.read(STREAM, { after: 2, maxBytes: lineBytes * 2 + 1 }).map((stored) => stored.seq)).toEqual([3, 4]);
+    // One entry larger than the whole budget still comes back, so a reader can always move on.
+    expect(store.read(STREAM, { after: 1, maxBytes: 10 }).map((stored) => stored.seq)).toEqual([2]);
+    expect(store.read(STREAM, { after: 1, limit: 1, maxBytes: lineBytes * 3 }).map((stored) => stored.seq)).toEqual([2]);
+  });
 });
 
 describe('LedgerStore integrity', () => {
