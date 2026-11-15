@@ -33,6 +33,7 @@ server.
 - [Quick Start](#quick-start)
 - [HyperVault](#hypervault)
 - [Total Recall](#total-recall)
+- [Ledger](#ledger)
 - [Example Agents](#example-agents)
 - [CLI Commands](#cli-commands)
 - [Environment Variables](#environment-variables)
@@ -60,6 +61,7 @@ server.
 - **Fault Tolerance** — mirrored canisters, cron-driven liveness checks, and auto-restore
 - **HyperVault Bridge** — reconstruct a cloud-hosted agent from chain alone
 - **Total Recall** — write-once/read-many archive of agent memories across assistants, with an optional append-only transcript, served over MCP
+- **Ledger** — an HTTP gateway that gives an agent hosted on an ordinary server an append-only, hash-chained record, anchored on a `memory_repo` canister
 - **MCP-Native** — `agentvault mcp serve` gives any MCP client that can launch a local server the HyperVault, wiki and Total Recall tools over stdio
 
 ## Installation
@@ -184,6 +186,25 @@ agentvault total-recall verify      # re-check the hash chains
 
 See [`docs/guides/total-recall.md`](docs/guides/total-recall.md).
 
+## Ledger
+
+An agent that runs on an ordinary server can still keep an on-chain record.
+Its host seals each memory and action and sends the ciphertext to
+`agentvault ledger serve`, which chains the entries per agent and anchors
+them as signed commits on a `memory_repo` canister. The gateway and the
+canister never see plaintext, and the canister's certified receipts show the
+record was not rewritten afterwards.
+
+```bash
+export AGENTVAULT_LEDGER_TOKEN=$(openssl rand -hex 32)
+agentvault ledger serve --canister-id <memory_repo id> --ic-host https://icp-api.io
+agentvault ledger status      # each stream's length, head, and what is not anchored yet
+agentvault ledger verify --canister-id <memory_repo id> --ic-host https://icp-api.io
+```
+
+See [`docs/guides/ledger.md`](docs/guides/ledger.md) for the HTTP API, the
+entry format and the canister's capacity.
+
 ## Example Agents
 
 The [`examples/`](examples) directory ships ready-to-package agents so you can
@@ -286,6 +307,7 @@ see the full workflow before writing your own:
 | `mint` | Scaffold a new Google ADK agent and write a local birthday record (no canister is deployed) |
 | `pilot` | Initialize a private ICP replica and deploy Guild canisters |
 | `hypervault` | Bridge a HyperVault cloud account across hot/warm/cold tiers (see [HyperVault](#hypervault)) |
+| `ledger` | Run, anchor, inspect and verify the ledger gateway (see [Ledger](#ledger)) |
 
 Run `agentvault <command> --help` for full option details, or see the
 [complete CLI reference](docs/cli/reference.md).
