@@ -6,6 +6,7 @@
  *   status   Each stream's length, head and anchored mark
  *   verify   Re-derive every chain from disk; with a canister, read its anchors back too
  *   rebuild  Rebuild a ledger from a canister's anchors alone, into a new directory
+ *   check    Check a canister from outside: who controls it, and the role the gateway would hold
  *
  * A host (a hosted bot server, for example) seals its own records and sends
  * only opaque bytes, so the gateway never sees what they say. The token that
@@ -16,6 +17,7 @@
  *   agentvault ledger serve --canister-id <id> --ic-host https://icp-api.io --anchor-interval 60
  *   agentvault ledger verify --canister-id <id> --ic-host https://icp-api.io
  *   agentvault ledger rebuild --canister-id <id> --ic-host https://icp-api.io --dir ./recovered
+ *   agentvault ledger check --canister-id <id> --ic-host https://icp-api.io --identity gateway.pem
  */
 
 import * as os from 'node:os';
@@ -35,14 +37,17 @@ import {
   MIN_TOKEN_LENGTH,
   MemoryRepoAnchor,
   anchorPending,
+  assessCanister,
   checkMemoryRepoAnchor,
   connectMemoryRepo,
   createLedgerServer,
+  readCanisterFacts,
   readMemoryRepo,
   readMemoryRepoHistory,
   rebuildFromMemoryRepo,
   startAnchorSchedule,
   type AnchorRecord,
+  type Finding,
   type MemoryRepoPort,
 } from '../../src/ledger/index.js';
 
@@ -89,11 +94,32 @@ function canisterTarget(options: CanisterOptions): { canisterId: string; host: s
   return { canisterId, host: options.icHost };
 }
 
+function printFinding({ level, text }: Finding): void {
+  const label = { ok: chalk.green('ok     '), note: chalk.gray('note   '), warn: chalk.yellow('warn   '), problem: chalk.red('PROBLEM') }[level];
+  console.log(`${label} ${text}`);
+}
+
+/**
+ * Says what the canister's settings mean for this gateway, before the first anchor does it at the
+ * end of an interval. A canister that cannot be read, or a warning, never stops the gateway: it
+ * keeps accepting entries either way.
+ */
+async function reportCanister(target: { canisterId: string; host: string }, gateway: string): Promise<void> {
+  try {
+    for (const finding of assessCanister(await readCanisterFacts(target), gateway)) {
+      if (finding.level === 'warn' || finding.level === 'problem') printFinding(finding);
+    }
+  } catch (error) {
+    console.error(chalk.yellow(`Could not read the canister's settings: ${error instanceof Error ? error.message : String(error)}`));
+  }
+}
+
 async function connect(options: CanisterOptions): Promise<MemoryRepoPort> {
   const { canisterId, host } = canisterTarget(options);
   const signer = signingIdentity(options);
   if (signer.warning) console.error(chalk.yellow(signer.warning));
   console.log(chalk.gray(`Signing as ${signer.principal} (${describeIdentitySource(signer.source)})`));
+  await reportCanister({ canisterId, host }, signer.principal);
   return connectMemoryRepo({ canisterId, host, identity: signer.identity, principal: signer.principal });
 }
 
@@ -282,6 +308,36 @@ ledgerCmd
         }
       }
       if (report.problems.length > 0) process.exit(1);
+    } catch (error) {
+      die(error instanceof Error ? error.message : String(error));
+    }
+  });
+
+ledgerCmd
+  .command('check')
+  .description('Check a canister from outside: who controls it, who owns its repository, and the role the gateway would hold')
+  .option('--canister-id <id>', 'memory_repo canister to check (or MEMORY_REPO_CANISTER_ID)')
+  .option('--ic-host <url>', 'Replica or boundary node URL, such as https://icp-api.io')
+  .option('--identity <pem>', "PEM file of the key the gateway signs with, to say what role it would hold there")
+  .option('--strict', 'Exit 1 on a warning as well as on a problem')
+  .option('--json', 'Print JSON')
+  .action(async (options: { canisterId?: string; icHost?: string; identity?: string; strict?: boolean; json?: boolean }) => {
+    try {
+      const { canisterId, host } = canisterTarget({ ...options, branch: DEFAULT_LEDGER_BRANCH });
+      // No key is needed to read a canister; one only names the gateway's role.
+      const gateway = options.identity
+        ? requireCliSigningIdentity({ identityPath: options.identity }).principal
+        : resolveServerSigningIdentity(process.env)?.principal;
+      const facts = await readCanisterFacts({ canisterId, host });
+      const findings = assessCanister(facts, gateway);
+      if (options.json) {
+        console.log(JSON.stringify({ ...facts, gateway: gateway ?? null, findings }, null, 2));
+      } else {
+        console.log(chalk.gray(`${canisterId}${gateway ? `  (gateway ${gateway})` : ''}`));
+        for (const finding of findings) printFinding(finding);
+      }
+      const failing = findings.some((finding) => finding.level === 'problem' || (options.strict && finding.level === 'warn'));
+      if (failing) process.exit(1);
     } catch (error) {
       die(error instanceof Error ? error.message : String(error));
     }

@@ -22,6 +22,8 @@ export {
   type MemoryRepoEvidence,
   type MemoryRepoPort,
 } from './memory-repo-anchor.js';
+export { assessCanister, readCanisterFacts, type CanisterFacts, type Finding, type FindingLevel } from './check.js';
+export { decodeControllers, readCanisterControl, type CanisterControl } from '../canister/memory-repo-control.js';
 export {
   rebuildFromMemoryRepo,
   type MemoryRepoHistoryPort,
