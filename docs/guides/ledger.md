@@ -142,6 +142,40 @@ The read-back is a query, so it trusts the replica that answers it. The
 receipt in `anchors.jsonl` is the part that needs no trust: it carries the
 canister's certified reply to the original commit.
 
+## Rebuild from the canister
+
+The gateway's disk is one copy of the ledger; the canister holds another, so if the disk is lost the
+ledger can be brought back from the canister alone:
+
+```bash
+agentvault ledger rebuild --canister-id <id> --ic-host https://icp-api.io --dir ./recovered
+AGENTVAULT_LEDGER_TOKEN=$(openssl rand -hex 32) agentvault ledger serve --dir ./recovered
+```
+
+It reads the `ledger` branch from its head back to the commit it forked from, takes each commit's
+checkpoint, and chains the entries again from the first, checking every hash on the way. What it
+writes is an ordinary ledger directory, so a host restores from it exactly as it would from the
+original gateway. It records the anchors it came from, so a gateway serving the result carries on
+from where the chain ends instead of anchoring it all again. Reads are anonymous queries: no key
+is needed, and nothing is written to the canister.
+
+What it can and cannot bring back:
+
+- **Only what was anchored.** Entries appended since the last anchor run lived only on the gateway's
+  disk. Shorten `--anchor-interval` for what must not be lost; a clean shutdown anchors what is
+  pending.
+- **Not ranges anchored with `--digest-only`.** Those commit only hashes, so the canister cannot
+  give the entries back. Such a stream is rebuilt up to that range, and the command says so.
+- **A stream with a range missing, or whose copies disagree**, is written as far as it can be
+  trusted and the command exits 1 with the reason. Nothing it could not verify is written.
+- **A canister's reply to a query comes from one replica.** It can leave the newest checkpoints out
+  (the receipts in `anchors.jsonl` are the certified record of what was anchored); it cannot invent
+  entries that chain. A host that sealed its entries, as the ledger expects, rejects any that it
+  did not seal.
+
+`--dir` has no default, so a live ledger is never written to by mistake, and a stream the directory
+already holds is left alone.
+
 ## HTTP API
 
 Every route but health needs `Authorization: Bearer <token>`.
@@ -177,8 +211,9 @@ A successful append returns `{ head, appended, anchored }`.
 
 ## What it does not do yet
 
-- **Restore.** The gateway reads entries back, but nothing rebuilds an agent
-  from them yet.
+- **Restoring an agent.** The gateway reads entries back, and `ledger rebuild`
+  brings the gateway itself back from the canister; turning entries into an
+  agent is the host's job (the ledger never reads what it holds).
 - **Per-agent canisters and self-custody.** All streams of a gateway share one
   canister owned by whoever runs it. An agent whose owner holds the canister
   and the key is the next step, not this one.

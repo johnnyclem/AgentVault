@@ -16,10 +16,20 @@ export {
   checkMemoryRepoAnchor,
   connectMemoryRepo,
   readMemoryRepo,
+  memoryRepoHistory,
+  readMemoryRepoHistory,
   type AnchorCheckResult,
   type MemoryRepoEvidence,
   type MemoryRepoPort,
 } from './memory-repo-anchor.js';
+export {
+  rebuildFromMemoryRepo,
+  type MemoryRepoHistoryPort,
+  type RebuildOptions,
+  type RebuildReport,
+  type RebuiltStream,
+  type RepoCommit,
+} from './rebuild.js';
 export {
   MAX_BODY_BYTES,
   MIN_TOKEN_LENGTH,

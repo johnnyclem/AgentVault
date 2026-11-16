@@ -5,6 +5,7 @@
  *   anchor   Anchor what is pending once, then exit
  *   status   Each stream's length, head and anchored mark
  *   verify   Re-derive every chain from disk; with a canister, read its anchors back too
+ *   rebuild  Rebuild a ledger from a canister's anchors alone, into a new directory
  *
  * A host (a hosted bot server, for example) seals its own records and sends
  * only opaque bytes, so the gateway never sees what they say. The token that
@@ -14,6 +15,7 @@
  *   AGENTVAULT_LEDGER_TOKEN=$(openssl rand -hex 32) agentvault ledger serve
  *   agentvault ledger serve --canister-id <id> --ic-host https://icp-api.io --anchor-interval 60
  *   agentvault ledger verify --canister-id <id> --ic-host https://icp-api.io
+ *   agentvault ledger rebuild --canister-id <id> --ic-host https://icp-api.io --dir ./recovered
  */
 
 import * as os from 'node:os';
@@ -37,6 +39,8 @@ import {
   connectMemoryRepo,
   createLedgerServer,
   readMemoryRepo,
+  readMemoryRepoHistory,
+  rebuildFromMemoryRepo,
   startAnchorSchedule,
   type AnchorRecord,
   type MemoryRepoPort,
@@ -245,5 +249,42 @@ addCanisterOptions(
     die(error instanceof Error ? error.message : String(error));
   }
 });
+
+ledgerCmd
+  .command('rebuild')
+  .description("Rebuild a ledger from a canister's anchors alone, into a new directory")
+  .requiredOption('--dir <dir>', 'Directory for the rebuilt ledger; there is no default, so a live ledger is never written to by mistake')
+  .option('--canister-id <id>', 'memory_repo canister the ledger was anchored to (or MEMORY_REPO_CANISTER_ID)')
+  .option('--ic-host <url>', 'Replica or boundary node URL, such as https://icp-api.io')
+  .option('--branch <name>', 'memory_repo branch the checkpoints were committed to', DEFAULT_LEDGER_BRANCH)
+  .option('--stream <id>', 'Rebuild only this stream')
+  .option('--json', 'Print JSON')
+  .action(async (options: StoreOptions & CanisterOptions & { stream?: string; json?: boolean }) => {
+    try {
+      // Queries are anonymous: rebuilding needs no key, and works when every other copy is gone.
+      const repo = await readMemoryRepoHistory(canisterTarget(options));
+      const store = LedgerStore.open(path.resolve(options.dir!));
+      const report = await rebuildFromMemoryRepo(repo, store, { branch: options.branch, stream: options.stream });
+      if (options.json) {
+        console.log(JSON.stringify({ dir: store.dir, ...report }, null, 2));
+      } else {
+        console.log(
+          chalk.gray(`Read ${report.commits} commits on '${report.branch}' of ${report.canisterId}; rebuilt into ${store.dir}`),
+        );
+        if (report.streams.length === 0) console.log('No streams were anchored');
+        for (const { stream, entries, head, complete } of report.streams) {
+          const state = complete ? chalk.green('ok     ') : chalk.yellow('PARTIAL');
+          console.log(`${state} ${chalk.bold(stream)}  ${entries} entries  head ${head?.hash.slice(0, 16) ?? '-'}`);
+        }
+        for (const problem of report.problems) console.log(chalk.red(`Problem: ${problem}`));
+        if (report.streams.length > 0) {
+          console.log(chalk.gray(`Serve it with: ${LEDGER_TOKEN_ENV}=$(openssl rand -hex 32) agentvault ledger serve --dir ${store.dir}`));
+        }
+      }
+      if (report.problems.length > 0) process.exit(1);
+    } catch (error) {
+      die(error instanceof Error ? error.message : String(error));
+    }
+  });
 
 export { ledgerCmd };

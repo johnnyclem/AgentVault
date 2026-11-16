@@ -13,6 +13,7 @@ An on-chain record for agents that run somewhere else. Guide: [docs/guides/ledge
 - **Anchoring on `memory_repo`.** With `--canister-id` and `--ic-host`, the gateway commits each stream's new entries to a `ledger` branch every `--anchor-interval` minutes (60 by default) and on a clean shutdown, keeping the certified reply as a receipt. `--digest-only` anchors the hashes without a copy of the entries. `agentvault ledger anchor` runs one pass and exits.
 - **`agentvault ledger status`** and **`agentvault ledger verify`**. `verify` re-derives every chain from disk, and with a canister reads each anchored commit back and checks it against the ledger, without needing a key.
 - **`agentvault/ledger`** exports the entry format, the store, the anchor and the server for embedding.
+- **`agentvault ledger rebuild`** brings a ledger back from the canister alone: it walks the `ledger` branch with anonymous queries, re-derives every chain, and writes a ledger directory that `ledger serve --dir` serves, so a host restores from it as it would from the original gateway. Needs no key. A stream whose anchored copy is missing a range, or was anchored with `--digest-only`, is rebuilt as far as it goes and the command says where it stops.
 - **`GET /v1/streams`** lists the gateway's streams a page at a time, with each stream's head and anchored mark, so a host that lost its own records can find what the ledger holds. A damaged stream is listed as corrupt instead of failing the page.
 
 ### Known limits
