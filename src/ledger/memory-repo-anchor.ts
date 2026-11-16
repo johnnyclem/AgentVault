@@ -19,11 +19,13 @@ import {
   explainMemoryRepoWriteError,
   memoryRepoErrorText,
   validateCanisterId,
+  type _SERVICE as MemoryRepoActor,
 } from '../canister/memory-repo-actor.js';
 import { callWithReceipt, receiptNetwork, recordCalls } from '../canister/memory-repo-receipts.js';
 import type { IcpWriteReceipt } from '../canister/memory-repo-receipts-types.js';
 import { ANCHOR_FORMAT, type AnchorCheckpoint, type LedgerAnchor } from './anchor.js';
 import { GENESIS_HASH, checkChain, chainEntry, type LedgerEntry } from './format.js';
+import type { MemoryRepoHistoryPort } from './rebuild.js';
 import type { AnchorEvidence, AnchorRecord } from './store.js';
 
 export const MEMORY_REPO_ANCHOR_KIND = 'icp-memory-repo';
@@ -172,6 +174,35 @@ export async function readMemoryRepo(options: {
       return commit ? commit.diff : null;
     },
   };
+}
+
+/** A memory_repo's history as rebuilding reads it, from the canister's own (Candid-shaped) replies. */
+export function memoryRepoHistory(
+  canisterId: string,
+  network: 'ic' | 'local',
+  reader: Pick<MemoryRepoActor, 'getBranches' | 'getCommit'>,
+): MemoryRepoHistoryPort {
+  return {
+    canisterId,
+    network,
+    async branchHeads() {
+      return new Map(await reader.getBranches());
+    },
+    async getCommit(commitId) {
+      // An optional value arrives as an empty or one-element array.
+      const [commit] = await reader.getCommit(commitId);
+      return commit
+        ? { id: commit.id, parent: commit.parent[0] ?? null, branch: commit.branch, timestamp: commit.timestamp, diff: commit.diff }
+        : null;
+    },
+  };
+}
+
+/** Reads a memory_repo canister's branches and commits, for rebuilding a ledger from it. Needs no key. */
+export async function readMemoryRepoHistory(options: { canisterId: string; host: string }): Promise<MemoryRepoHistoryPort> {
+  validateCanisterId(options.canisterId);
+  const agent = await createMemoryRepoAgent(options.host);
+  return memoryRepoHistory(options.canisterId, receiptNetwork(agent.rootKey), createMemoryRepoActor(options.canisterId, agent));
 }
 
 /**
