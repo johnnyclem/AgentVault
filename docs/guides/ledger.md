@@ -102,6 +102,15 @@ gateway.
 `agentvault ledger anchor` runs one anchor pass and exits, for a cron job
 instead of a long-running gateway.
 
+### What is public
+
+A `memory_repo` canister answers queries from anyone, so with entries inline (the default) everything
+anchored is public and permanent: the ciphertext a host sent, and any wrapped keys it sent with it.
+What keeps it private is the key the host sealed with, and nothing in the ledger can change that
+later. A host that wants only a commitment on chain starts the gateway with `--digest-only`, which
+publishes hashes and keeps the entries in the gateway's own files; the cost is that restoring then
+needs those files.
+
 ### Capacity
 
 One `memory_repo` canister holds at most 10,000 commits and 64 MB. An anchor
@@ -141,6 +150,7 @@ Every route but health needs `Authorization: Bearer <token>`.
 |---|---|
 | `GET /v1/health` | `{ ok, format, limits }` |
 | `POST /v1/streams/<stream>/entries` | append `{ "entries": [{ seq, kind, at, payload }] }` |
+| `GET /v1/streams?after=<stream>&limit=<n>` | the streams in id order, each with its head and anchored mark, and `next` to continue from (null at the end). A stream whose file is damaged is listed with `corrupt: true` |
 | `GET /v1/streams/<stream>` | `{ head: { seq, hash }, anchored: { seq } }`, or 404 |
 | `GET /v1/streams/<stream>/entries?after=<seq>&limit=<n>` | entries after `seq`, with their chain fields |
 

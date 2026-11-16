@@ -3,6 +3,7 @@
  * records to.
  *
  *   GET  /v1/health                               liveness and limits; no token
+ *   GET  /v1/streams?after=&limit=                the streams, a page at a time
  *   POST /v1/streams/<stream>/entries             append { entries: [...] }
  *   GET  /v1/streams/<stream>                     the stream's head and anchored mark
  *   GET  /v1/streams/<stream>/entries?after=&limit=   read entries back
@@ -16,7 +17,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import * as http from 'node:http';
 import { anchorPending, type AnchorOptions, type LedgerAnchor } from './anchor.js';
 import { LEDGER_FORMAT, MAX_APPEND_ENTRIES, MAX_PAYLOAD_BYTES, appendRequestSchema, isStreamId } from './format.js';
-import { LedgerConflictError, type AnchorRecord, type LedgerStore } from './store.js';
+import { LedgerConflictError, LedgerCorruptError, type AnchorRecord, type LedgerStore } from './store.js';
 
 /** The largest request body the gateway reads. */
 export const MAX_BODY_BYTES = 8 * 1024 * 1024;
@@ -33,6 +34,8 @@ export interface LedgerServerOptions {
 }
 
 const STREAM_ROUTE = /^\/v1\/streams\/([^/]+)(\/entries)?$/;
+const DEFAULT_LIST_LIMIT = 100;
+const MAX_LIST_LIMIT = 500;
 
 /** The gateway's HTTP server, not yet listening. */
 export function createLedgerServer(options: LedgerServerOptions): http.Server {
@@ -70,6 +73,16 @@ async function handle(
     });
   }
   if (!authorized(request)) return send(response, 401, { error: 'unauthorized' });
+
+  if (url.pathname === '/v1/streams') {
+    if (request.method !== 'GET') return send(response, 405, { error: 'method_not_allowed' });
+    const after = url.searchParams.get('after') ?? '';
+    const limit = wholeNumber(url.searchParams.get('limit') ?? String(DEFAULT_LIST_LIMIT));
+    if ((after !== '' && !isStreamId(after)) || limit === null || limit < 1 || limit > MAX_LIST_LIMIT) {
+      return send(response, 400, { error: 'invalid', message: `after must be a stream id and limit between 1 and ${MAX_LIST_LIMIT}` });
+    }
+    return send(response, 200, listStreams(options.store, after, limit));
+  }
 
   const route = STREAM_ROUTE.exec(url.pathname);
   if (!route) return send(response, 404, { error: 'not_found' });
@@ -116,6 +129,25 @@ async function handle(
     }
     throw error;
   }
+}
+
+/**
+ * One page of streams after `after`, in id order. A stream whose file no longer reads back is
+ * listed as corrupt rather than failing the page, so the healthy ones can still be found.
+ */
+function listStreams(store: LedgerStore, after: string, limit: number) {
+  const ids = store.streams().filter((id) => id > after);
+  const page = ids.slice(0, limit);
+  const streams = page.map((stream) => {
+    try {
+      const head = store.head(stream);
+      return { stream, head, anchored: { seq: store.anchoredSeq(stream) } };
+    } catch (error) {
+      if (error instanceof LedgerCorruptError) return { stream, head: null, corrupt: true };
+      throw error;
+    }
+  });
+  return { streams, next: ids.length > limit ? page.at(-1)! : null };
 }
 
 function digest(value: string): Buffer {

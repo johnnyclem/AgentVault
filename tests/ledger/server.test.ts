@@ -125,6 +125,56 @@ describe('ledger gateway', () => {
     expect(String(errors[0])).toMatch(/one writer/);
   });
 
+  it('lists streams a page at a time, with their heads and anchored marks', async () => {
+    expect((await call('GET', '/v1/streams')).body).toEqual({ streams: [], next: null });
+    for (const stream of ['bot-b', 'bot-a', 'space-1']) {
+      await call('POST', `/v1/streams/${stream}/entries`, { entries: [entry(1), entry(2)] });
+    }
+    const all = await call('GET', '/v1/streams');
+    expect(all.status).toBe(200);
+    expect(all.body).toEqual({
+      streams: ['bot-a', 'bot-b', 'space-1'].map((stream) => ({ stream, head: store.head(stream), anchored: { seq: 0 } })),
+      next: null,
+    });
+
+    const first = await call('GET', '/v1/streams?limit=2');
+    expect((first.body.streams as Array<{ stream: string }>).map((item) => item.stream)).toEqual(['bot-a', 'bot-b']);
+    expect(first.body.next).toBe('bot-b');
+    const second = await call('GET', '/v1/streams?limit=2&after=bot-b');
+    expect((second.body.streams as Array<{ stream: string }>).map((item) => item.stream)).toEqual(['space-1']);
+    expect(second.body.next).toBeNull();
+    // A page that ends exactly at the last stream has no next.
+    expect((await call('GET', '/v1/streams?limit=3')).body.next).toBeNull();
+  });
+
+  it('lists a damaged stream as corrupt without losing the healthy ones', async () => {
+    await call('POST', '/v1/streams/bot-a/entries', { entries: [entry(1)] });
+    await call('POST', '/v1/streams/bot-b/entries', { entries: [entry(1), entry(2)] });
+    // Reopened, so the gateway reads the damaged file from disk as a restart would.
+    fs.writeFileSync(path.join(dir, 'streams', 'bot-b.jsonl'), 'not a ledger entry\n');
+    await new Promise((resolve) => server.close(resolve));
+    store = LedgerStore.open(dir);
+    server = createLedgerServer({ store, token: TOKEN, onError: (error) => errors.push(error) });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+
+    const listed = await call('GET', '/v1/streams');
+    expect(listed.status).toBe(200);
+    expect(listed.body.streams).toEqual([
+      { stream: 'bot-a', head: store.head('bot-a'), anchored: { seq: 0 } },
+      { stream: 'bot-b', head: null, corrupt: true },
+    ]);
+    expect(errors).toEqual([]);
+  });
+
+  it('refuses a bad list request, and the list without the token', async () => {
+    expect((await call('GET', '/v1/streams', undefined, null)).status).toBe(401);
+    for (const query of ['limit=0', 'limit=501', 'limit=x', 'after=../x', 'after=Bot']) {
+      expect((await call('GET', `/v1/streams?${query}`)).status, query).toBe(400);
+    }
+    expect((await call('POST', '/v1/streams', { entries: [entry(1)] })).status).toBe(405);
+  });
+
   it('refuses to start with a short token', () => {
     expect(() => createLedgerServer({ store, token: 'short' })).toThrow(/at least 32 characters/);
   });
