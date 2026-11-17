@@ -90,6 +90,14 @@ principal. Two kinds of principal can write:
 - **Authorized principals:** the ones the owner added with `addAuthorizedPrincipal`
   (`agentvault memory authorize <principal>`). Only the owner can add or remove them.
 
+The owner can hand the repository to another principal with `agentvault memory transfer-ownership <principal> --yes`
+(`transferOwnership`). The new owner alone then adds and removes authorized principals and can freeze or switch the
+repository off. The previous owner keeps no access unless the new owner authorizes them, and principals already
+authorized stay authorized. The call is refused for the anonymous principal, for the current owner, and while the
+canister is frozen. This is the repository's owner, not the canister's controllers: who can replace its code or delete
+it is set on the Internet Computer (`dfx canister update-settings`), and `agentvault ledger check` shows both. A canister
+built before this release gets the method by upgrade (`dfx deploy memory_repo`), which keeps its owner and commits.
+
 A write from any other principal traps with `caller principal is not authorized`. AgentVault reports that as
 `SIGNER_NOT_AUTHORIZED` (403 from the webapp), with a message that names the principal and the `authorize`
 command the owner can run. A frozen or killed repo refuses all writes until the owner calls `manualUnlock` or
@@ -386,6 +394,7 @@ The Motoko canister exposes these methods:
 | `cherryPick(text)` | update | Cherry-pick commit |
 | `addAuthorizedPrincipal(principal)` | update | Let a principal write (owner only) |
 | `removeAuthorizedPrincipal(principal)` | update | Revoke a principal (owner only) |
+| `transferOwnership(principal)` | update | Hand the repository to another principal (owner only); the previous owner keeps no access |
 | `getSecurityStatus()` | query | Owner, frozen and killed flags, authorized principal count |
 
 Every update call refuses the anonymous principal (see [Who can write](#who-can-write)).

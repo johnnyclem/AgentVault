@@ -10,7 +10,8 @@
  *  1. HEAP LIMIT — Prim.rts_heap_size() checked on every write call; aborts at 64 MB.
  *  2. PRINCIPAL GUARDS — All state-mutating functions require an authorized caller.
  *     Owner is claimed on first call to initRepo(); subsequent attempts rejected.
- *  3. ALLOWED PRINCIPALS — Owner can grant/revoke write access to other principals.
+ *  3. ALLOWED PRINCIPALS — Owner can grant/revoke write access to other principals,
+ *     and hand ownership to another principal with transferOwnership().
  *  4. FROZEN MODE — Owner can freeze canister; all writes blocked until manualUnlock().
  *  5. KILL SWITCH — Owner can kill canister; all non-owner writes blocked until revive.
  *  6. INPUT VALIDATION — All string inputs bounded. Commit/branch/tag counts capped.
@@ -416,6 +417,27 @@ persistent actor MemoryRepo {
 
     allowedPrincipals := filtered;
     #ok("Principal removed: " # Principal.toText(p))
+  };
+
+  /// Hand the repository to another principal (owner only). The new owner is the only
+  /// principal that can then authorize, deauthorize, freeze or kill; the previous owner
+  /// keeps no access unless the new owner authorizes them. Writers the owner had already
+  /// authorized stay authorized.
+  public shared(msg) func transferOwnership(newOwner : Principal) : async { #ok : Text; #err : Text } {
+    assertWriteAllowed(msg.caller);
+    assertOwner(msg.caller);
+
+    if (Principal.isAnonymous(newOwner)) {
+      return #err("Cannot transfer ownership to the anonymous principal");
+    };
+    if (newOwner == owner) {
+      return #err("Principal is already the owner");
+    };
+
+    owner := newOwner;
+    // The owner needs no entry in the writers' list.
+    allowedPrincipals := Array.filter<Principal>(allowedPrincipals, func (x : Principal) : Bool { x != newOwner });
+    #ok("Ownership transferred to " # Principal.toText(newOwner))
   };
 
   /// Query security status.
