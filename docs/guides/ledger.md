@@ -124,6 +124,73 @@ commits are refused, the gateway reports the failure and keeps accepting
 entries, and nothing stored is lost. Raising these limits, or rolling to a
 fresh canister, is not automated yet.
 
+## A canister its owner holds
+
+By default whoever runs the gateway also owns the canister it anchors to, so the host that could
+rewrite the gateway's disk also holds the on-chain copy. To keep the record with someone else, the
+owner holds the canister and the gateway is only allowed to write to it. Each step is run by the
+person named:
+
+```bash
+# The owner: create the canister with their own identity, so they control it, and initialize it.
+# --no-wallet makes the identity itself the creator and controller.
+dfx deploy memory_repo --identity owner --no-wallet
+agentvault memory --canister-id <id> --host https://icp-api.io --identity owner.pem init soul.md
+
+# The host: a key of its own, and its principal (the principal alone goes to stdout).
+agentvault memory whoami --identity gateway.pem
+
+# The owner: allow that principal to write.
+agentvault memory --canister-id <id> --host https://icp-api.io --identity owner.pem authorize <gateway principal>
+
+# The host: run the gateway as that identity.
+agentvault ledger serve --canister-id <id> --ic-host https://icp-api.io --identity gateway.pem
+```
+
+**What an authorized gateway can and cannot do.** Checked against a local replica running this
+canister's code:
+
+| It can | It cannot |
+|---|---|
+| Create branches and add commits to them | Authorize or deauthorize anyone, freeze or unlock writes, switch the canister off or on (owner only: the canister traps) |
+| | Replace or reinstall the canister's code, stop it, delete it, or add a controller (controllers only: the Internet Computer rejects it) |
+| | Rewrite or remove a commit: a branch only ever moves forward by adding one, and `rebase` writes a new branch |
+
+**What the owner can do.** `agentvault memory deauthorize <principal>` stops the gateway at once: its next
+anchor is refused, the entries it already holds stay on its disk, and once the owner authorizes it
+again the backlog is anchored. `freeze` and `manualUnlock` (call them with `dfx canister call`) stop
+and resume every writer. Reading needs no key, so the owner can always `ledger rebuild` from the
+canister whatever the host does.
+
+**What delegation does not protect.**
+
+- A writer can fill the canister (10,000 commits, 64 MB), after which anchoring fails for everyone.
+  Revoke it and start a new canister; rolling over is not automated.
+- A writer can add a checkpoint that is wrong. `ledger rebuild` reports it (a commit that is not a
+  checkpoint, or anchors that disagree) and it cannot erase the honest ones.
+- Everything on a canister is public ([What is public](#what-is-public)); sealing is what keeps it
+  private.
+- The canister's **controllers**, not its repository owner, decide who can replace its code and so
+  erase it. Whoever created the canister is a controller, so the owner should be the one who ran
+  `dfx deploy`.
+
+**Checking it.** The controllers are published by the Internet Computer in a certificate the subnet
+signs, so anyone can look without a key, and without trusting the host:
+
+```bash
+agentvault ledger check --canister-id <id> --ic-host https://icp-api.io --identity gateway.pem
+```
+
+It reports who controls the canister, who owns the repository, whether writes are frozen or the
+canister is off, and the role the gateway holds (`--identity` only names it; no key is used to
+read). It warns when anyone besides the owner controls the canister, or when the gateway signs as
+the owner, and it fails (exit 1) when nothing can be anchored: no repository, the canister off, or
+nobody authorized. `--strict` fails on warnings too. `ledger serve` and `ledger anchor` run the same
+check at start and print any warning, so a gateway that is not authorized yet says so at once
+instead of at the end of its first interval. The canister does not say *which* principals are
+authorized, only how many, so the check cannot tell you the gateway is one of them: the first
+anchor is refused, with the command to run, if it is not.
+
 ## Check it
 
 ```bash
@@ -214,9 +281,11 @@ A successful append returns `{ head, appended, anchored }`.
 - **Restoring an agent.** The gateway reads entries back, and `ledger rebuild`
   brings the gateway itself back from the canister; turning entries into an
   agent is the host's job (the ledger never reads what it holds).
-- **Per-agent canisters and self-custody.** All streams of a gateway share one
-  canister owned by whoever runs it. An agent whose owner holds the canister
-  and the key is the next step, not this one.
+- **Several owners on one gateway.** A gateway anchors every stream to one
+  canister. An owner can hold that canister ([above](#a-canister-its-owner-holds)),
+  but serving many owners, each to their own canister, takes a gateway per
+  owner until streams can name their own target. Creating and funding a
+  canister for someone is not automated either.
 - **Deletion.** A ledger is append-only. A host that must forget a record
   destroys the key it sealed that stream with; the ciphertext stays.
 - **Several tokens.** One gateway serves one host.
