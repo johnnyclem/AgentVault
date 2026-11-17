@@ -7,8 +7,18 @@
  */
 
 export * from './format.js';
-export { LedgerStore, LedgerConflictError, LedgerCorruptError, type AnchorEvidence, type AnchorRecord } from './store.js';
-export { ANCHOR_FORMAT, anchorPending, type AnchorCheckpoint, type AnchorOptions, type LedgerAnchor } from './anchor.js';
+export { LedgerStore, LedgerConflictError, LedgerCorruptError, recordDestination, type AnchorEvidence, type AnchorRecord } from './store.js';
+export {
+  ANCHOR_FORMAT,
+  AnchorPassError,
+  anchorPending,
+  type AnchorCheckpoint,
+  type AnchorFailure,
+  type AnchorOptions,
+  type AnchorRouter,
+  type LedgerAnchor,
+} from './anchor.js';
+export { createDestinationRouter, destinationOf, type DestinationRouterOptions } from './anchor-router.js';
 export {
   MEMORY_REPO_ANCHOR_KIND,
   DEFAULT_LEDGER_BRANCH,
@@ -38,5 +48,6 @@ export {
   createLedgerServer,
   startAnchorSchedule,
   type AnchorSchedule,
+  type AnchoringOptions,
   type LedgerServerOptions,
 } from './server.js';

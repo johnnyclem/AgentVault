@@ -102,6 +102,10 @@ gateway.
 `agentvault ledger anchor` runs one anchor pass and exits, for a cron job
 instead of a long-running gateway.
 
+`--canister-id` is where streams that name no place of their own are anchored.
+A stream can name its own ([below](#several-owners-on-one-gateway)), and a
+gateway given a replica (`--ic-host`) but no `--canister-id` anchors only those.
+
 ### What is public
 
 A `memory_repo` canister answers queries from anyone, so with entries inline (the default) everything
@@ -191,6 +195,45 @@ instead of at the end of its first interval. The canister does not say *which* p
 authorized, only how many, so the check cannot tell you the gateway is one of them: the first
 anchor is refused, with the command to run, if it is not.
 
+## Several owners on one gateway
+
+A hosted service can keep every owner's record in a canister that owner holds without running a
+gateway for each. A stream names the canister it is anchored to, and the gateway signs as one
+identity that every owner has allowed on their own canister, as [above](#a-canister-its-owner-holds).
+
+```bash
+# Give the gateway a replica and an identity. With no --canister-id it anchors only streams that name a canister.
+agentvault ledger serve --ic-host https://icp-api.io --identity gateway.pem
+```
+
+The host asks the gateway which identity an owner has to allow, and names each stream's canister:
+
+```
+GET    /v1/identity                      → { "principal": "<what the owner runs `memory authorize` with>" }
+PUT    /v1/streams/<stream>/anchor       { "destination": "<canister id>" }
+GET    /v1/streams/<stream>/anchor       → { destination, named, anchoredSeq, headSeq, error }
+DELETE /v1/streams/<stream>/anchor       back to the default canister, or none
+```
+
+The stream need not hold entries yet, so a host can name the canister before it sends the first one.
+What follows, checked against local replicas with two owners and one gateway:
+
+- **How far a stream is anchored is counted at each canister.** Moving a stream anchors all of it at
+  the new canister, from its first entry, so that canister can be rebuilt on its own. The old one
+  keeps what it holds: a canister cannot be told to forget.
+- **A canister that refuses, or cannot be reached, holds up only the streams that use it.** The
+  others are anchored in the same pass, and the failures are reported together. An owner who
+  revoked the gateway sees nothing happen to anyone else.
+- **`GET …/anchor` says why a stream is behind**, in the words the canister gave, including the
+  `memory authorize` command the owner has to run. It is empty once the stream catches up, which it
+  does by itself when the owner allows the gateway again.
+- **A stream with no canister, on a gateway with no default, is not anchored.** `ledger status` shows
+  it as not anchored.
+- **`ledger verify --ic-host`** reads each anchor back from the canister it names (`--canister-id`
+  limits it to one), and `ledger rebuild` from an owner's canister returns only that owner's streams.
+- The gateway needs a token that lets a host choose where its streams are anchored, so that token
+  belongs to the host and not to the owners.
+
 ## Check it
 
 ```bash
@@ -254,6 +297,8 @@ Every route but health needs `Authorization: Bearer <token>`.
 | `GET /v1/streams?after=<stream>&limit=<n>` | the streams in id order, each with its head and anchored mark, and `next` to continue from (null at the end). A stream whose file is damaged is listed with `corrupt: true` |
 | `GET /v1/streams/<stream>` | `{ head: { seq, hash }, anchored: { seq } }`, or 404 |
 | `GET /v1/streams/<stream>/entries?after=<seq>&limit=<n>` | entries after `seq`, with their chain fields |
+| `GET /v1/identity` | `{ principal }`, the identity the gateway anchors as; 404 `anchoring_not_configured` when it has no replica |
+| `GET`, `PUT`, `DELETE /v1/streams/<stream>/anchor` | where a stream is anchored and how far, naming it (`{ destination }`), and putting it back with the rest; 409 `anchoring_not_configured` without a replica, 400 for a destination that is not a canister id |
 
 A read returns at most 500 entries and stops early at 8 MiB, so page with
 `after` until it returns none.
@@ -281,11 +326,10 @@ A successful append returns `{ head, appended, anchored }`.
 - **Restoring an agent.** The gateway reads entries back, and `ledger rebuild`
   brings the gateway itself back from the canister; turning entries into an
   agent is the host's job (the ledger never reads what it holds).
-- **Several owners on one gateway.** A gateway anchors every stream to one
-  canister. An owner can hold that canister ([above](#a-canister-its-owner-holds)),
-  but serving many owners, each to their own canister, takes a gateway per
-  owner until streams can name their own target. Creating and funding a
-  canister for someone is not automated either.
+- **Creating canisters for owners.** An owner can hold their own canister
+  ([above](#a-canister-its-owner-holds)) and one gateway can serve many of them
+  ([above](#several-owners-on-one-gateway)), but making and funding a canister
+  for someone who is not running `dfx` themselves is not automated.
 - **Deletion.** A ledger is append-only. A host that must forget a record
   destroys the key it sealed that stream with; the ciphertext stays.
 - **Several tokens.** One gateway serves one host.

@@ -7,6 +7,10 @@
  *   POST /v1/streams/<stream>/entries             append { entries: [...] }
  *   GET  /v1/streams/<stream>                     the stream's head and anchored mark
  *   GET  /v1/streams/<stream>/entries?after=&limit=   read entries back
+ *   GET  /v1/identity                             the principal the gateway anchors as
+ *   GET    /v1/streams/<stream>/anchor            where the stream is anchored, and how far
+ *   PUT    /v1/streams/<stream>/anchor            anchor it somewhere of its own: { destination }
+ *   DELETE /v1/streams/<stream>/anchor            back to the gateway's default
  *
  * Every route but health needs `Authorization: Bearer <token>`. The gateway
  * speaks plain HTTP and binds to loopback by default; put TLS in front of it
@@ -15,7 +19,7 @@
 
 import { createHash, timingSafeEqual } from 'node:crypto';
 import * as http from 'node:http';
-import { anchorPending, type AnchorOptions, type LedgerAnchor } from './anchor.js';
+import { AnchorPassError, anchorPending, type AnchorOptions, type AnchorRouter, type LedgerAnchor } from './anchor.js';
 import { LEDGER_FORMAT, MAX_APPEND_ENTRIES, MAX_PAYLOAD_BYTES, appendRequestSchema, isStreamId } from './format.js';
 import { LedgerConflictError, LedgerCorruptError, type AnchorRecord, type LedgerStore } from './store.js';
 
@@ -25,15 +29,29 @@ export const MAX_BODY_BYTES = 8 * 1024 * 1024;
 export const MIN_TOKEN_LENGTH = 32;
 const MAX_READ_LIMIT = 500;
 
+/** What the gateway needs to anchor streams to places of their own. */
+export interface AnchoringOptions {
+  /** The identity anchors are signed as: what an owner has to allow on their canister. */
+  writer: string;
+  /** Where a stream that names no place is anchored; none when absent. */
+  defaultDestination?: string;
+  /** Throws, with a message for the client, for a destination this anchor cannot use. */
+  validateDestination(destination: string): void;
+  /** Why the last attempt to anchor `stream` failed, or null. */
+  error(stream: string): string | null;
+}
+
 export interface LedgerServerOptions {
   store: LedgerStore;
   /** The bearer token clients present. */
   token: string;
+  /** Present when the gateway can anchor; without it streams cannot name a place of their own. */
+  anchoring?: AnchoringOptions;
   /** Called with errors the client is only told about as a 500. */
   onError?: (error: unknown) => void;
 }
 
-const STREAM_ROUTE = /^\/v1\/streams\/([^/]+)(\/entries)?$/;
+const STREAM_ROUTE = /^\/v1\/streams\/([^/]+)(\/entries|\/anchor)?$/;
 const DEFAULT_LIST_LIMIT = 100;
 const MAX_LIST_LIMIT = 500;
 
@@ -74,6 +92,12 @@ async function handle(
   }
   if (!authorized(request)) return send(response, 401, { error: 'unauthorized' });
 
+  if (url.pathname === '/v1/identity') {
+    if (request.method !== 'GET') return send(response, 405, { error: 'method_not_allowed' });
+    if (!options.anchoring) return send(response, 404, { error: 'anchoring_not_configured' });
+    return send(response, 200, { principal: options.anchoring.writer });
+  }
+
   if (url.pathname === '/v1/streams') {
     if (request.method !== 'GET') return send(response, 405, { error: 'method_not_allowed' });
     const after = url.searchParams.get('after') ?? '';
@@ -81,7 +105,7 @@ async function handle(
     if ((after !== '' && !isStreamId(after)) || limit === null || limit < 1 || limit > MAX_LIST_LIMIT) {
       return send(response, 400, { error: 'invalid', message: `after must be a stream id and limit between 1 and ${MAX_LIST_LIMIT}` });
     }
-    return send(response, 200, listStreams(options.store, after, limit));
+    return send(response, 200, listStreams(options.store, options.anchoring, after, limit));
   }
 
   const route = STREAM_ROUTE.exec(url.pathname);
@@ -90,12 +114,17 @@ async function handle(
   if (stream === null || !isStreamId(stream)) return send(response, 400, { error: 'invalid', message: 'Invalid stream id' });
   const { store } = options;
 
+  const anchoring = options.anchoring;
+  const destination = anchoredTo(store, anchoring, stream);
+
   if (!route[2]) {
     if (request.method !== 'GET') return send(response, 405, { error: 'method_not_allowed' });
     const head = store.head(stream);
     if (!head) return send(response, 404, { error: 'not_found' });
-    return send(response, 200, { head, anchored: { seq: store.anchoredSeq(stream) } });
+    return send(response, 200, { head, anchored: { seq: store.anchoredSeq(stream, destination ?? undefined) } });
   }
+
+  if (route[2] === '/anchor') return handleAnchor(request, response, options, stream);
 
   if (request.method === 'GET') {
     const after = wholeNumber(url.searchParams.get('after') ?? '0');
@@ -122,7 +151,7 @@ async function handle(
   }
   try {
     const { head, appended } = store.append(stream, parsed.data.entries);
-    return send(response, 200, { head, appended, anchored: { seq: store.anchoredSeq(stream) } });
+    return send(response, 200, { head, appended, anchored: { seq: store.anchoredSeq(stream, destination ?? undefined) } });
   } catch (error) {
     if (error instanceof LedgerConflictError) {
       return send(response, 409, { error: error.reason, message: error.message, head: error.head });
@@ -131,17 +160,71 @@ async function handle(
   }
 }
 
+/** Where a stream is anchored: the place it names, else the gateway's default, else nowhere. */
+function anchoredTo(store: LedgerStore, anchoring: AnchoringOptions | undefined, stream: string): string | null {
+  return store.anchorTarget(stream) ?? anchoring?.defaultDestination ?? null;
+}
+
+/** Where a stream is anchored, how far it has got, and why it has not got further. */
+function anchorStatus(store: LedgerStore, anchoring: AnchoringOptions, stream: string) {
+  const destination = anchoredTo(store, anchoring, stream);
+  return {
+    destination,
+    named: store.anchorTarget(stream) !== null,
+    anchoredSeq: destination ? store.anchoredSeq(stream, destination) : 0,
+    headSeq: store.head(stream)?.seq ?? 0,
+    error: anchoring.error(stream),
+  };
+}
+
+async function handleAnchor(
+  request: http.IncomingMessage,
+  response: http.ServerResponse,
+  options: LedgerServerOptions,
+  stream: string,
+): Promise<void> {
+  const { store, anchoring } = options;
+  if (!anchoring) return send(response, 409, { error: 'anchoring_not_configured', message: 'The gateway was started without a replica and an identity to anchor with' });
+  if (request.method === 'GET') return send(response, 200, anchorStatus(store, anchoring, stream));
+  if (request.method === 'DELETE') {
+    store.setAnchorTarget(stream, null);
+    return send(response, 200, anchorStatus(store, anchoring, stream));
+  }
+  if (request.method !== 'PUT') return send(response, 405, { error: 'method_not_allowed' });
+
+  const body = await readBody(request);
+  if (body === 'too_large') return send(response, 413, { error: 'too_large' });
+  let json: unknown;
+  try {
+    json = JSON.parse(body);
+  } catch {
+    return send(response, 400, { error: 'invalid', message: 'The body is not JSON' });
+  }
+  const named = typeof json === 'object' && json !== null && !Array.isArray(json) ? (json as Record<string, unknown>)['destination'] : undefined;
+  if (typeof named !== 'string' || named.length === 0 || named.length > 128) {
+    return send(response, 400, { error: 'invalid', message: 'destination must be a string of at most 128 characters' });
+  }
+  try {
+    anchoring.validateDestination(named);
+  } catch (error) {
+    return send(response, 400, { error: 'invalid', message: error instanceof Error ? error.message : 'Invalid destination' });
+  }
+  store.setAnchorTarget(stream, named);
+  return send(response, 200, anchorStatus(store, anchoring, stream));
+}
+
 /**
  * One page of streams after `after`, in id order. A stream whose file no longer reads back is
  * listed as corrupt rather than failing the page, so the healthy ones can still be found.
  */
-function listStreams(store: LedgerStore, after: string, limit: number) {
+function listStreams(store: LedgerStore, anchoring: AnchoringOptions | undefined, after: string, limit: number) {
   const ids = store.streams().filter((id) => id > after);
   const page = ids.slice(0, limit);
   const streams = page.map((stream) => {
     try {
       const head = store.head(stream);
-      return { stream, head, anchored: { seq: store.anchoredSeq(stream) } };
+      const destination = anchoredTo(store, anchoring, stream);
+      return { stream, head, anchored: { seq: store.anchoredSeq(stream, destination ?? undefined) } };
     } catch (error) {
       if (error instanceof LedgerCorruptError) return { stream, head: null, corrupt: true };
       throw error;
@@ -199,6 +282,8 @@ async function readBody(request: http.IncomingMessage): Promise<string | 'too_la
 export interface AnchorSchedule {
   /** Anchors now, or joins the run already in flight. */
   run(): Promise<void>;
+  /** Why the last attempt to anchor `stream` failed, or null when it did not. */
+  error(stream: string): string | null;
   /** Stops the timer and waits for a run in flight to finish. */
   stop(): Promise<void>;
 }
@@ -206,10 +291,12 @@ export interface AnchorSchedule {
 /**
  * Anchors what is pending every `intervalMs`. A failed run is reported and
  * retried at the next interval: what it did not anchor is still in the store.
+ * A stream that fails does not hold up the others: they are anchored, and
+ * reported, as the run finishes.
  */
 export function startAnchorSchedule(
   store: LedgerStore,
-  anchor: LedgerAnchor,
+  anchor: LedgerAnchor | AnchorRouter,
   options: AnchorOptions & {
     intervalMs: number;
     onAnchored?: (records: AnchorRecord[]) => void;
@@ -217,12 +304,20 @@ export function startAnchorSchedule(
   },
 ): AnchorSchedule {
   let running: Promise<void> | undefined;
+  let failures = new Map<string, string>();
   const run = (): Promise<void> => {
     running ??= anchorPending(store, anchor, options)
       .then((records) => {
+        failures = new Map();
         if (records.length > 0) options.onAnchored?.(records);
       })
-      .catch((error: unknown) => options.onError?.(error))
+      .catch((error: unknown) => {
+        if (error instanceof AnchorPassError) {
+          failures = new Map(error.failures.map((failure) => [failure.stream, failure.error instanceof Error ? failure.error.message : String(failure.error)]));
+          if (error.records.length > 0) options.onAnchored?.([...error.records]);
+        }
+        options.onError?.(error);
+      })
       .finally(() => {
         running = undefined;
       });
@@ -232,6 +327,7 @@ export function startAnchorSchedule(
   timer.unref();
   return {
     run,
+    error: (stream) => failures.get(stream) ?? null,
     async stop() {
       clearInterval(timer);
       await running;
