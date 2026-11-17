@@ -11,6 +11,8 @@
  *   GET    /v1/streams/<stream>/anchor            where the stream is anchored, and how far
  *   PUT    /v1/streams/<stream>/anchor            anchor it somewhere of its own: { destination }
  *   DELETE /v1/streams/<stream>/anchor            back to the gateway's default
+ *   POST /v1/canisters                            create a canister for an owner: { key, owner }
+ *   GET  /v1/canisters/<key>                      where creating it has got to
  *
  * Every route but health needs `Authorization: Bearer <token>`. The gateway
  * speaks plain HTTP and binds to loopback by default; put TLS in front of it
@@ -21,6 +23,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import * as http from 'node:http';
 import { AnchorPassError, anchorPending, type AnchorOptions, type AnchorRouter, type LedgerAnchor } from './anchor.js';
 import { LEDGER_FORMAT, MAX_APPEND_ENTRIES, MAX_PAYLOAD_BYTES, appendRequestSchema, isStreamId } from './format.js';
+import { ProvisionError, type ProvisionErrorCode, type ProvisionRecord } from '../canister/provision.js';
 import { LedgerConflictError, LedgerCorruptError, type AnchorRecord, type LedgerStore } from './store.js';
 
 /** The largest request body the gateway reads. */
@@ -41,16 +44,30 @@ export interface AnchoringOptions {
   error(stream: string): string | null;
 }
 
+/** What the gateway needs to create canisters for owners. */
+export interface ProvisioningOptions {
+  /**
+   * Starts creating a canister for `owner`, or says where an earlier request for `key` has got to.
+   * Throws a ProvisionError for a request that cannot be served.
+   */
+  begin(key: string, owner: string): ProvisionRecord;
+  get(key: string): ProvisionRecord | null;
+}
+
 export interface LedgerServerOptions {
   store: LedgerStore;
   /** The bearer token clients present. */
   token: string;
   /** Present when the gateway can anchor; without it streams cannot name a place of their own. */
   anchoring?: AnchoringOptions;
+  /** Present when the gateway may create canisters for owners, at its operator's expense. */
+  provisioning?: ProvisioningOptions;
   /** Called with errors the client is only told about as a 500. */
   onError?: (error: unknown) => void;
 }
 
+const CANISTER_ROUTE = /^\/v1\/canisters(?:\/([^/]+))?$/;
+const PROVISION_STATUS: Record<ProvisionErrorCode, number> = { invalid_key: 400, invalid_owner: 400, key_conflict: 409, limit_reached: 429 };
 const STREAM_ROUTE = /^\/v1\/streams\/([^/]+)(\/entries|\/anchor)?$/;
 const DEFAULT_LIST_LIMIT = 100;
 const MAX_LIST_LIMIT = 500;
@@ -97,6 +114,9 @@ async function handle(
     if (!options.anchoring) return send(response, 404, { error: 'anchoring_not_configured' });
     return send(response, 200, { principal: options.anchoring.writer });
   }
+
+  const canisters = CANISTER_ROUTE.exec(url.pathname);
+  if (canisters) return handleCanisters(request, response, options, canisters[1]);
 
   if (url.pathname === '/v1/streams') {
     if (request.method !== 'GET') return send(response, 405, { error: 'method_not_allowed' });
@@ -175,6 +195,51 @@ function anchorStatus(store: LedgerStore, anchoring: AnchoringOptions, stream: s
     headSeq: store.head(stream)?.seq ?? 0,
     error: anchoring.error(stream),
   };
+}
+
+/** A provisioning record as a client sees it: nothing of the gateway's own bookkeeping. */
+function canisterView(record: ProvisionRecord) {
+  const { key, owner, state, canisterId, moduleHash, error } = record;
+  return { key, owner, state, canisterId, moduleHash, error };
+}
+
+async function handleCanisters(
+  request: http.IncomingMessage,
+  response: http.ServerResponse,
+  options: LedgerServerOptions,
+  keySegment: string | undefined,
+): Promise<void> {
+  const { provisioning } = options;
+  if (!provisioning) return send(response, 404, { error: 'provisioning_not_configured' });
+
+  if (keySegment !== undefined) {
+    if (request.method !== 'GET') return send(response, 405, { error: 'method_not_allowed' });
+    const key = decodeSegment(keySegment);
+    const record = key === null ? null : provisioning.get(key);
+    return record ? send(response, 200, canisterView(record)) : send(response, 404, { error: 'not_found' });
+  }
+
+  if (request.method !== 'POST') return send(response, 405, { error: 'method_not_allowed' });
+  const body = await readBody(request);
+  if (body === 'too_large') return send(response, 413, { error: 'too_large' });
+  let json: unknown;
+  try {
+    json = JSON.parse(body);
+  } catch {
+    return send(response, 400, { error: 'invalid', message: 'The body is not JSON' });
+  }
+  const fields = typeof json === 'object' && json !== null && !Array.isArray(json) ? (json as Record<string, unknown>) : {};
+  if (typeof fields['key'] !== 'string' || typeof fields['owner'] !== 'string') {
+    return send(response, 400, { error: 'invalid', message: 'key and owner must be strings' });
+  }
+  try {
+    const record = provisioning.begin(fields['key'], fields['owner']);
+    // 200 once the canister is the owner's; 202 while it is being made, which the client asks about again.
+    return send(response, record.state === 'ready' ? 200 : 202, canisterView(record));
+  } catch (error) {
+    if (error instanceof ProvisionError) return send(response, PROVISION_STATUS[error.code], { error: error.code, message: error.message });
+    throw error;
+  }
 }
 
 async function handleAnchor(

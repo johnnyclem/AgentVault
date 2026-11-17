@@ -20,8 +20,10 @@
  *   agentvault ledger check --canister-id <id> --ic-host https://icp-api.io --identity gateway.pem
  */
 
+import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { gunzipSync } from 'node:zlib';
 import { Command } from 'commander';
 import chalk from 'chalk';
 import {
@@ -30,7 +32,9 @@ import {
   resolveServerSigningIdentity,
   type SigningIdentity,
 } from '../../src/canister/identity.js';
-import { validateCanisterId } from '../../src/canister/memory-repo-actor.js';
+import { isLocalReplicaHost, validateCanisterId } from '../../src/canister/memory-repo-actor.js';
+import { CanisterProvisioner, ProvisionStore } from '../../src/canister/provision.js';
+import { CYCLES_LEDGER_ID, icProvisioningPorts } from '../../src/canister/provision-ic.js';
 import {
   DEFAULT_LEDGER_BRANCH,
   LedgerStore,
@@ -51,6 +55,7 @@ import {
   type AnchorRecord,
   type AnchoringOptions,
   type Finding,
+  type ProvisioningOptions,
 } from '../../src/ledger/index.js';
 
 export const LEDGER_TOKEN_ENV = 'AGENTVAULT_LEDGER_TOKEN';
@@ -139,7 +144,68 @@ async function anchoringFor(options: CanisterOptions, store: LedgerStore) {
     branch: options.branch,
     connect: (canisterId) => connectMemoryRepo({ canisterId, host, identity: signer.identity, principal: signer.principal }),
   });
-  return { router, writer: signer.principal, defaultDestination };
+  return { router, writer: signer.principal, defaultDestination, identity: signer.identity, host };
+}
+
+interface ProvisionFlags {
+  provisionWasm?: string;
+  provisionCycles: string;
+  maxCanisters?: string;
+  cyclesLedger: string;
+}
+
+/** The most one canister may be created with, in trillions of cycles: a typo must not spend a treasury. */
+const MAX_PROVISION_TRILLIONS = 20;
+const MIN_PROVISION_TRILLIONS = 0.2;
+/** What one install_code message can carry, with room for its envelope. */
+const MAX_WASM_BYTES = 1_900_000;
+
+/**
+ * Lets the gateway create a canister for an owner and hand it over, at the operator's expense, when
+ * it was told to. Nothing here is on by default: a gateway that can spend must be asked to, with a
+ * cap on how many canisters it may ever create.
+ */
+async function provisioningFor(
+  flags: ProvisionFlags,
+  anchoring: Awaited<ReturnType<typeof anchoringFor>>,
+  store: LedgerStore,
+): Promise<ProvisioningOptions | undefined> {
+  if (!flags.provisionWasm) {
+    if (flags.maxCanisters !== undefined) die('--max-canisters only applies with --provision-wasm');
+    return undefined;
+  }
+  if (!anchoring) die('Creating canisters needs a replica and an identity: name --ic-host');
+  const trillions = Number(flags.provisionCycles);
+  if (!Number.isFinite(trillions) || trillions < MIN_PROVISION_TRILLIONS || trillions > MAX_PROVISION_TRILLIONS) {
+    die(`--provision-cycles is trillions of cycles per canister, from ${MIN_PROVISION_TRILLIONS} to ${MAX_PROVISION_TRILLIONS}`);
+  }
+  const limit = Number(flags.maxCanisters);
+  if (flags.maxCanisters === undefined || !Number.isInteger(limit) || limit < 1) {
+    die('Set --max-canisters to the most canisters this gateway may ever create; it spends your cycles');
+  }
+  let wasm: Uint8Array;
+  try {
+    wasm = fs.readFileSync(flags.provisionWasm);
+  } catch {
+    die(`Cannot read ${flags.provisionWasm}`);
+  }
+  if (wasm[0] === 0x1f && wasm[1] === 0x8b) wasm = gunzipSync(wasm);
+  if (wasm.length > MAX_WASM_BYTES) die(`${flags.provisionWasm} is larger than one install message can carry`);
+
+  const cycles = BigInt(Math.round(trillions * 1e12));
+  const source = isLocalReplicaHost(anchoring.host) ? ('local' as const) : { cyclesLedger: flags.cyclesLedger };
+  const provisioner = new CanisterProvisioner({
+    ports: await icProvisioningPorts({ host: anchoring.host, identity: anchoring.identity, source }),
+    store: new ProvisionStore(store.dir),
+    treasury: anchoring.writer,
+    wasm,
+    cycles,
+    limit,
+    writers: [anchoring.writer],
+    log: (message) => console.log(chalk.gray(message)),
+  });
+  console.log(chalk.gray(`Creating canisters: ${trillions}T cycles each, at most ${limit}, memory_repo code ${provisioner.moduleHash}`));
+  return { begin: (key, owner) => provisioner.begin(key, owner), get: (key) => provisioner.get(key) };
 }
 
 function anchoringOptions(
@@ -171,8 +237,12 @@ addCanisterOptions(
     .option('--host <address>', 'Address to listen on', '127.0.0.1')
     .option('--port <port>', 'Port to listen on', String(DEFAULT_PORT))
     .option('--anchor-interval <minutes>', 'Minutes between anchor runs', String(DEFAULT_ANCHOR_INTERVAL_MINUTES))
-    .option('--digest-only', 'Anchor only the hashes of each range, not a copy of its entries'),
-).action(async (options: StoreOptions & CanisterOptions & { host: string; port: string; anchorInterval: string; digestOnly?: boolean }) => {
+    .option('--digest-only', 'Anchor only the hashes of each range, not a copy of its entries')
+    .option('--provision-wasm <file>', 'Let hosts have canisters created for their owners, installed with this memory_repo wasm (needs --max-canisters)')
+    .option('--provision-cycles <trillions>', 'Cycles each created canister is funded with, in trillions', '1')
+    .option('--max-canisters <n>', 'The most canisters this gateway may ever create')
+    .option('--cycles-ledger <id>', 'The cycles ledger that pays for them, off a local replica', CYCLES_LEDGER_ID),
+).action(async (options: StoreOptions & CanisterOptions & ProvisionFlags & { host: string; port: string; anchorInterval: string; digestOnly?: boolean }) => {
   const token = process.env[LEDGER_TOKEN_ENV] ?? '';
   if (token.length < MIN_TOKEN_LENGTH) {
     die(`Set ${LEDGER_TOKEN_ENV} to a secret of at least ${MIN_TOKEN_LENGTH} characters, for example: openssl rand -hex 32`);
@@ -184,6 +254,7 @@ addCanisterOptions(
 
   const store = openStore(options);
   const anchoring = await anchoringFor(options, store);
+  const provisioning = await provisioningFor(options, anchoring, store);
   const schedule = anchoring
     ? startAnchorSchedule(store, anchoring.router, {
         intervalMs: minutes * 60_000,
@@ -197,6 +268,7 @@ addCanisterOptions(
     store,
     token,
     anchoring: anchoring && schedule ? anchoringOptions(anchoring, (stream) => schedule.error(stream)) : undefined,
+    provisioning,
     onError: (error) => console.error(chalk.red(`Request failed: ${error instanceof Error ? error.message : String(error)}`)),
   });
   server.listen(port, options.host, () => {

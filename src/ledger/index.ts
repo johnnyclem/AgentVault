@@ -50,4 +50,5 @@ export {
   type AnchorSchedule,
   type AnchoringOptions,
   type LedgerServerOptions,
+  type ProvisioningOptions,
 } from './server.js';
