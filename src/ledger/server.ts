@@ -7,7 +7,7 @@
  *   POST /v1/streams/<stream>/entries             append { entries: [...] }
  *   GET  /v1/streams/<stream>                     the stream's head and anchored mark
  *   GET  /v1/streams/<stream>/entries?after=&limit=   read entries back
- *   GET  /v1/identity                             the principal the gateway anchors as
+ *   GET  /v1/identity                             the principal the gateway anchors as, and whether it can create canisters
  *   GET    /v1/streams/<stream>/anchor            where the stream is anchored, and how far
  *   PUT    /v1/streams/<stream>/anchor            anchor it somewhere of its own: { destination }
  *   DELETE /v1/streams/<stream>/anchor            back to the gateway's default
@@ -112,7 +112,8 @@ async function handle(
   if (url.pathname === '/v1/identity') {
     if (request.method !== 'GET') return send(response, 405, { error: 'method_not_allowed' });
     if (!options.anchoring) return send(response, 404, { error: 'anchoring_not_configured' });
-    return send(response, 200, { principal: options.anchoring.writer });
+    // `provisioning` is how a host tells a gateway that can make canisters from one that cannot.
+    return send(response, 200, { principal: options.anchoring.writer, provisioning: options.provisioning !== undefined });
   }
 
   const canisters = CANISTER_ROUTE.exec(url.pathname);

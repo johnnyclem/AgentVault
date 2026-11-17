@@ -54,7 +54,7 @@ afterEach(async () => {
 describe('who the gateway anchors as', () => {
   it('tells a client with the token the principal an owner has to allow, and nobody else', async () => {
     await start(configured());
-    expect(await call('GET', '/v1/identity')).toEqual({ status: 200, body: { principal: WRITER } });
+    expect(await call('GET', '/v1/identity')).toEqual({ status: 200, body: { principal: WRITER, provisioning: false } });
     expect((await call('GET', '/v1/identity', undefined, null)).status).toBe(401);
     expect((await call('POST', '/v1/identity', {})).status).toBe(405);
   });

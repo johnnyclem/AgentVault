@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { ProvisionError, type ProvisionRecord } from '../../src/canister/provision.js';
-import { LedgerStore, createLedgerServer, type ProvisioningOptions } from '../../src/ledger/index.js';
+import { LedgerStore, createLedgerServer, type AnchoringOptions, type ProvisioningOptions } from '../../src/ledger/index.js';
 
 const TOKEN = 'test-token-0123456789abcdef0123456789abcdef';
 const OWNER = 'vuxfy-i2pqn-4de5c-swdky-vff7j-6adn4-zdsyr-3i2xd-6sbyv-peol7-eqe';
@@ -30,9 +30,9 @@ const record = (changes: Partial<ProvisionRecord> = {}): ProvisionRecord => ({
   ...changes,
 });
 
-async function start(provisioning: ProvisioningOptions | undefined): Promise<void> {
+async function start(provisioning: ProvisioningOptions | undefined, anchoring?: AnchoringOptions): Promise<void> {
   const store = LedgerStore.open(dir);
-  server = createLedgerServer({ store, token: TOKEN, provisioning, onError: (error) => errors.push(error) });
+  server = createLedgerServer({ store, token: TOKEN, provisioning, anchoring, onError: (error) => errors.push(error) });
   await new Promise<void>((resolve) => server!.listen(0, '127.0.0.1', resolve));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 }
@@ -176,6 +176,17 @@ describe('who may ask', () => {
     expect((await call('POST', '/v1/canisters', { key: 'order-1', owner: OWNER }, 'wrong-token-0123456789abcdef0123456789')).status).toBe(401);
     expect((await call('GET', '/v1/canisters/order-1', undefined, null)).status).toBe(401);
     expect(seen).toEqual([]);
+  });
+
+  it('says on its identity route whether it can create canisters, so a host need not guess', async () => {
+    const anchoring: AnchoringOptions = { writer: OWNER, validateDestination: () => undefined, error: () => null };
+
+    await start(provisioning(() => record()), anchoring);
+    expect(await call('GET', '/v1/identity')).toEqual({ status: 200, body: { principal: OWNER, provisioning: true } });
+    await new Promise((resolve) => server!.close(resolve));
+
+    await start(undefined, anchoring);
+    expect(await call('GET', '/v1/identity')).toEqual({ status: 200, body: { principal: OWNER, provisioning: false } });
   });
 
   it('is not there unless the gateway was told it may create canisters', async () => {

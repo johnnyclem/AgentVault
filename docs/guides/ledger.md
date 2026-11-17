@@ -359,7 +359,7 @@ Every route but health needs `Authorization: Bearer <token>`.
 | `GET /v1/streams?after=<stream>&limit=<n>` | the streams in id order, each with its head and anchored mark, and `next` to continue from (null at the end). A stream whose file is damaged is listed with `corrupt: true` |
 | `GET /v1/streams/<stream>` | `{ head: { seq, hash }, anchored: { seq } }`, or 404 |
 | `GET /v1/streams/<stream>/entries?after=<seq>&limit=<n>` | entries after `seq`, with their chain fields |
-| `GET /v1/identity` | `{ principal }`, the identity the gateway anchors as; 404 `anchoring_not_configured` when it has no replica |
+| `GET /v1/identity` | `{ principal, provisioning }`: the identity the gateway anchors as, and whether it was started with `--provision-wasm`; 404 `anchoring_not_configured` when it has no replica |
 | `POST /v1/canisters`, `GET /v1/canisters/<key>` | create a canister for an owner and hand it over, and say where that has got to; 404 `provisioning_not_configured` unless started with `--provision-wasm`; see [above](#creating-a-canister-for-an-owner) |
 | `GET`, `PUT`, `DELETE /v1/streams/<stream>/anchor` | where a stream is anchored and how far, naming it (`{ destination }`), and putting it back with the rest; 409 `anchoring_not_configured` without a replica, 400 for a destination that is not a canister id |
 
