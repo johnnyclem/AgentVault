@@ -5,6 +5,7 @@
  *   <dir>/ledger.json              manifest
  *   <dir>/streams/<stream>.jsonl   one chained entry per line
  *   <dir>/anchors.jsonl            one line per anchored range
+ *   <dir>/anchor-targets.json      where each stream that names its own is anchored
  *
  * One process owns a directory. Appends are synchronous and fsynced before
  * they are acknowledged, so an acknowledged entry survives a crash. A crash in
@@ -32,6 +33,8 @@ import {
 const MANIFEST_FILE = 'ledger.json';
 const STREAMS_DIR = 'streams';
 const ANCHORS_FILE = 'anchors.jsonl';
+const TARGETS_FILE = 'anchor-targets.json';
+const TARGETS_FORMAT = 'agentvault-ledger-targets/v1';
 const STREAM_EXTENSION = '.jsonl';
 
 /** Proof, in the anchor's own terms, that a range was written somewhere durable. */
@@ -50,7 +53,15 @@ export interface AnchorRecord {
   /** The chain hash of entry `to`. */
   head: string;
   anchoredAt: string;
+  /** Where the range was anchored, when the anchor says; older records name it in their evidence. */
+  destination?: string;
   evidence: AnchorEvidence;
+}
+
+/** Where an anchored range was kept, or null when the record does not say. */
+export function recordDestination(record: AnchorRecord): string | null {
+  const named = record.evidence['canisterId'];
+  return record.destination ?? (typeof named === 'string' ? named : null);
 }
 
 /** An append the stream cannot take: it skips ahead, or it rewrites an entry already stored. */
@@ -81,7 +92,9 @@ interface StreamState {
 
 export class LedgerStore {
   private readonly streamStates = new Map<string, StreamState>();
-  private readonly anchored = new Map<string, number>();
+  /** For each stream, the last entry anchored to each destination, and `null` for any of them. */
+  private readonly anchored = new Map<string, Map<string | null, number>>();
+  private readonly targets = new Map<string, string>();
 
   private constructor(readonly dir: string) {}
 
@@ -99,8 +112,18 @@ export class LedgerStore {
       atomicWriteFileSync(manifestPath, `${JSON.stringify({ format: LEDGER_FORMAT, createdAt: new Date().toISOString() })}\n`);
     }
     const store = new LedgerStore(resolved);
-    for (const record of store.anchors()) {
-      store.anchored.set(record.stream, Math.max(store.anchored.get(record.stream) ?? 0, record.to));
+    for (const record of store.anchors()) store.markAnchored(record);
+    const targetsPath = path.join(resolved, TARGETS_FILE);
+    if (fs.existsSync(targetsPath)) {
+      const saved = readJson(targetsPath);
+      const named = isRecord(saved) && saved['format'] === TARGETS_FORMAT ? saved['targets'] : undefined;
+      if (!isRecord(named)) throw new LedgerCorruptError(`${targetsPath} is not a ${TARGETS_FORMAT} file`);
+      for (const [stream, destination] of Object.entries(named)) {
+        if (!isStreamId(stream) || typeof destination !== 'string' || !destination) {
+          throw new LedgerCorruptError(`${targetsPath} names a destination that is not valid`);
+        }
+        store.targets.set(stream, destination);
+      }
     }
     return store;
   }
@@ -226,9 +249,46 @@ export class LedgerStore {
     return { ...checkChain(stream, entries), entries: entries.length };
   }
 
-  /** The last sequence number of `stream` that has been anchored; 0 when none has. */
-  anchoredSeq(stream: string): number {
-    return this.anchored.get(stream) ?? 0;
+  /**
+   * The last sequence number of `stream` that has been anchored to `destination`; 0 when none has.
+   * Without a destination, the last one anchored anywhere.
+   */
+  anchoredSeq(stream: string, destination?: string): number {
+    return this.anchored.get(stream)?.get(destination ?? null) ?? 0;
+  }
+
+  /** Where `stream` is anchored when it names its own place, or null. */
+  anchorTarget(stream: string): string | null {
+    return this.targets.get(stream) ?? null;
+  }
+
+  /** Every stream that names its own place to be anchored, and where. */
+  anchorTargets(): Record<string, string> {
+    return Object.fromEntries([...this.targets].sort(([a], [b]) => a.localeCompare(b)));
+  }
+
+  /**
+   * Names where `stream` is anchored from now on, or with null puts it back with the rest. What
+   * was already anchored stays where it is. A stream need not hold entries yet.
+   */
+  setAnchorTarget(stream: string, destination: string | null): void {
+    if (!isStreamId(stream)) throw new Error(`Invalid stream id: ${JSON.stringify(stream)}`);
+    if (destination === null) {
+      if (!this.targets.delete(stream)) return;
+    } else {
+      if (this.targets.get(stream) === destination) return;
+      this.targets.set(stream, destination);
+    }
+    atomicWriteFileSync(
+      path.join(this.dir, TARGETS_FILE),
+      `${JSON.stringify({ format: TARGETS_FORMAT, targets: this.anchorTargets() })}\n`,
+    );
+  }
+
+  private markAnchored(record: AnchorRecord): void {
+    const marks = this.anchored.get(record.stream) ?? new Map<string | null, number>();
+    for (const key of new Set([null, recordDestination(record)])) marks.set(key, Math.max(marks.get(key) ?? 0, record.to));
+    this.anchored.set(record.stream, marks);
   }
 
   /** Every anchor recorded, oldest first; only `stream`'s when one is named. */
@@ -255,7 +315,7 @@ export class LedgerStore {
     } finally {
       fs.closeSync(fd);
     }
-    this.anchored.set(record.stream, Math.max(this.anchoredSeq(record.stream), record.to));
+    this.markAnchored(record);
   }
 
   private streamFile(stream: string): string {
@@ -317,12 +377,21 @@ function parseAnchor(line: string): AnchorRecord | null {
     return null;
   }
   if (!isRecord(value)) return null;
-  const { stream, from, to, head, anchoredAt, evidence } = value;
+  const { stream, from, to, head, anchoredAt, evidence, destination } = value;
   if (typeof stream !== 'string' || !isStreamId(stream)) return null;
   if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to)) return null;
   if (typeof head !== 'string' || typeof anchoredAt !== 'string') return null;
   if (!isRecord(evidence) || typeof evidence['kind'] !== 'string') return null;
-  return { stream, from: from as number, to: to as number, head, anchoredAt, evidence: evidence as AnchorEvidence };
+  if (destination !== undefined && typeof destination !== 'string') return null;
+  return {
+    stream,
+    from: from as number,
+    to: to as number,
+    head,
+    anchoredAt,
+    ...(destination === undefined ? {} : { destination }),
+    evidence: evidence as AnchorEvidence,
+  };
 }
 
 function readJson(file: string): unknown {

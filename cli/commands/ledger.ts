@@ -1,7 +1,7 @@
 /**
  * `agentvault ledger` — an append-only record that agent hosts write to
  *
- *   serve    Run the HTTP gateway, anchoring to a memory_repo canister when one is named
+ *   serve    Run the HTTP gateway, anchoring to memory_repo canisters when a replica is named
  *   anchor   Anchor what is pending once, then exit
  *   status   Each stream's length, head and anchored mark
  *   verify   Re-derive every chain from disk; with a canister, read its anchors back too
@@ -30,25 +30,27 @@ import {
   resolveServerSigningIdentity,
   type SigningIdentity,
 } from '../../src/canister/identity.js';
+import { validateCanisterId } from '../../src/canister/memory-repo-actor.js';
 import {
   DEFAULT_LEDGER_BRANCH,
   LedgerStore,
   MEMORY_REPO_ANCHOR_KIND,
   MIN_TOKEN_LENGTH,
-  MemoryRepoAnchor,
   anchorPending,
   assessCanister,
   checkMemoryRepoAnchor,
   connectMemoryRepo,
+  createDestinationRouter,
   createLedgerServer,
   readCanisterFacts,
   readMemoryRepo,
   readMemoryRepoHistory,
   rebuildFromMemoryRepo,
   startAnchorSchedule,
+  AnchorPassError,
   type AnchorRecord,
+  type AnchoringOptions,
   type Finding,
-  type MemoryRepoPort,
 } from '../../src/ledger/index.js';
 
 export const LEDGER_TOKEN_ENV = 'AGENTVAULT_LEDGER_TOKEN';
@@ -114,13 +116,37 @@ async function reportCanister(target: { canisterId: string; host: string }, gate
   }
 }
 
-async function connect(options: CanisterOptions): Promise<MemoryRepoPort> {
-  const { canisterId, host } = canisterTarget(options);
+/**
+ * How this gateway anchors, or null when it was not told where: a replica to anchor on (`--ic-host`)
+ * and an identity to sign with. A canister named with `--canister-id` is where streams that name
+ * no place of their own go; without one, only streams that name theirs are anchored.
+ */
+async function anchoringFor(options: CanisterOptions, store: LedgerStore) {
+  const defaultDestination = options.canisterId ?? process.env.MEMORY_REPO_CANISTER_ID;
+  if (!options.icHost && !defaultDestination) return null;
+  if (!options.icHost) die('Name the replica or boundary node with --ic-host (https://icp-api.io for mainnet)');
+  const host = options.icHost;
   const signer = signingIdentity(options);
   if (signer.warning) console.error(chalk.yellow(signer.warning));
   console.log(chalk.gray(`Signing as ${signer.principal} (${describeIdentitySource(signer.source)})`));
-  await reportCanister({ canisterId, host }, signer.principal);
-  return connectMemoryRepo({ canisterId, host, identity: signer.identity, principal: signer.principal });
+  if (defaultDestination) {
+    validateCanisterId(defaultDestination);
+    await reportCanister({ canisterId: defaultDestination, host }, signer.principal);
+  }
+  const router = createDestinationRouter({
+    store,
+    defaultDestination,
+    branch: options.branch,
+    connect: (canisterId) => connectMemoryRepo({ canisterId, host, identity: signer.identity, principal: signer.principal }),
+  });
+  return { router, writer: signer.principal, defaultDestination };
+}
+
+function anchoringOptions(
+  anchoring: NonNullable<Awaited<ReturnType<typeof anchoringFor>>>,
+  error: (stream: string) => string | null,
+): AnchoringOptions {
+  return { writer: anchoring.writer, defaultDestination: anchoring.defaultDestination, validateDestination: validateCanisterId, error };
 }
 
 function describeAnchors(records: readonly AnchorRecord[]): string {
@@ -129,7 +155,7 @@ function describeAnchors(records: readonly AnchorRecord[]): string {
 
 function addCanisterOptions(command: Command): Command {
   return command
-    .option('--canister-id <id>', 'memory_repo canister to anchor to (or MEMORY_REPO_CANISTER_ID)')
+    .option('--canister-id <id>', 'memory_repo canister: where streams that name no place of their own are anchored, and the only one `verify` checks (or MEMORY_REPO_CANISTER_ID)')
     .option('--ic-host <url>', 'Replica or boundary node URL, such as https://icp-api.io')
     .option('--identity <pem>', 'PEM file of the key anchors are signed with')
     .option('--branch <name>', 'memory_repo branch the checkpoints are committed to', DEFAULT_LEDGER_BRANCH);
@@ -157,9 +183,9 @@ addCanisterOptions(
   if (!Number.isFinite(minutes) || minutes <= 0) die('--anchor-interval must be a number of minutes above zero');
 
   const store = openStore(options);
-  const anchoring = options.canisterId || process.env.MEMORY_REPO_CANISTER_ID;
+  const anchoring = await anchoringFor(options, store);
   const schedule = anchoring
-    ? startAnchorSchedule(store, new MemoryRepoAnchor(await connect(options), options.branch), {
+    ? startAnchorSchedule(store, anchoring.router, {
         intervalMs: minutes * 60_000,
         inlineEntries: !options.digestOnly,
         onAnchored: (records) => console.log(`Anchored ${describeAnchors(records)}`),
@@ -170,13 +196,15 @@ addCanisterOptions(
   const server = createLedgerServer({
     store,
     token,
+    anchoring: anchoring && schedule ? anchoringOptions(anchoring, (stream) => schedule.error(stream)) : undefined,
     onError: (error) => console.error(chalk.red(`Request failed: ${error instanceof Error ? error.message : String(error)}`)),
   });
   server.listen(port, options.host, () => {
     const address = server.address();
     const bound = typeof address === 'object' && address ? `${address.address}:${address.port}` : `${options.host}:${port}`;
     console.log(`Ledger gateway listening on http://${bound} (${store.dir})`);
-    if (!schedule) console.log(chalk.yellow('No canister named: entries are stored here but not anchored.'));
+    if (!schedule) console.log(chalk.yellow('No replica named: entries are stored here but not anchored.'));
+    else if (!anchoring?.defaultDestination) console.log(chalk.gray('No default canister: only streams that name their own are anchored.'));
   });
 
   const shutdown = (): void => {
@@ -198,10 +226,12 @@ addCanisterOptions(
 ).action(async (options: StoreOptions & CanisterOptions & { digestOnly?: boolean }) => {
   try {
     const store = openStore(options);
-    const anchor = new MemoryRepoAnchor(await connect(options), options.branch);
-    const records = await anchorPending(store, anchor, { inlineEntries: !options.digestOnly });
+    const anchoring = await anchoringFor(options, store);
+    if (!anchoring) die('Name the replica with --ic-host, and a canister with --canister-id unless streams name their own');
+    const records = await anchorPending(store, anchoring.router, { inlineEntries: !options.digestOnly });
     console.log(records.length > 0 ? `Anchored ${describeAnchors(records)}` : 'Nothing to anchor');
   } catch (error) {
+    if (error instanceof AnchorPassError && error.records.length > 0) console.log(`Anchored ${describeAnchors([...error.records])}`);
     die(error instanceof Error ? error.message : String(error));
   }
 });
@@ -216,7 +246,8 @@ ledgerCmd
       const store = openStore(options);
       const streams = store.streams().map((stream) => {
         const head = store.head(stream);
-        return { stream, entries: head?.seq ?? 0, head: head?.hash ?? null, anchored: store.anchoredSeq(stream) };
+        const destination = store.anchorTarget(stream);
+        return { stream, entries: head?.seq ?? 0, head: head?.hash ?? null, destination, anchored: store.anchoredSeq(stream, destination ?? undefined) };
       });
       if (options.json) {
         console.log(JSON.stringify({ dir: store.dir, streams }, null, 2));
@@ -224,11 +255,12 @@ ledgerCmd
       }
       console.log(chalk.gray(store.dir));
       if (streams.length === 0) console.log('No streams yet');
-      for (const { stream, entries, head, anchored } of streams) {
+      for (const { stream, entries, head, destination, anchored } of streams) {
         const pending = entries - anchored;
         console.log(
           `${chalk.bold(stream)}  ${entries} entries  head ${head?.slice(0, 16) ?? '-'}  ` +
-            (pending === 0 ? chalk.green('anchored') : chalk.yellow(`${pending} not anchored`)),
+            (pending === 0 ? chalk.green('anchored') : chalk.yellow(`${pending} not anchored`)) +
+            (destination ? chalk.gray(`  -> ${destination}`) : ''),
         );
       }
     } catch (error) {
@@ -255,10 +287,17 @@ addCanisterOptions(
       }
     }
 
-    if (options.canisterId || process.env.MEMORY_REPO_CANISTER_ID) {
-      const repo = await readMemoryRepo(canisterTarget(options));
+    if (options.canisterId || process.env.MEMORY_REPO_CANISTER_ID || options.icHost) {
+      // Each anchor is read back from the canister it was written to; --canister-id narrows to one.
+      const { host } = canisterTarget({ ...options, canisterId: options.canisterId ?? 'unused' });
+      const only = options.canisterId ?? process.env.MEMORY_REPO_CANISTER_ID;
+      const repos = new Map<string, Awaited<ReturnType<typeof readMemoryRepo>>>();
       for (const record of store.anchors()) {
         if (record.evidence.kind !== MEMORY_REPO_ANCHOR_KIND) continue;
+        const named = record.evidence['canisterId'];
+        if (typeof named !== 'string' || (only && named !== only)) continue;
+        if (!repos.has(named)) repos.set(named, await readMemoryRepo({ canisterId: named, host }));
+        const repo = repos.get(named)!;
         const stored = store.read(record.stream, { after: record.from - 1, limit: record.to - record.from + 1 });
         const result = await checkMemoryRepoAnchor(repo, record, stored);
         const range = `${record.stream} ${record.from}-${record.to}`;

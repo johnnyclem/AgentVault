@@ -59,12 +59,16 @@ export interface MemoryRepoEvidence extends AnchorEvidence {
 export class MemoryRepoAnchor implements LedgerAnchor {
   readonly kind = MEMORY_REPO_ANCHOR_KIND;
   readonly maxCheckpointBytes = MAX_CHECKPOINT_BYTES;
+  /** The canister this keeps its checkpoints on. */
+  readonly destination: string;
   private branchReady = false;
 
   constructor(
     private readonly repo: MemoryRepoPort,
     private readonly branch: string = DEFAULT_LEDGER_BRANCH,
-  ) {}
+  ) {
+    this.destination = repo.canisterId;
+  }
 
   async anchor(checkpoint: AnchorCheckpoint): Promise<MemoryRepoEvidence> {
     await this.ensureBranch();

@@ -12,13 +12,14 @@ interface StoredCommit extends RepoCommit {
  * anchor and being read back as history.
  */
 export class FakeCanister implements MemoryRepoPort, MemoryRepoHistoryPort {
-  readonly canisterId = 'aaaaa-aa';
+  readonly canisterId: string;
   readonly network = 'local' as const;
   readonly commits: StoredCommit[] = [];
   readonly heads = new Map<string, string>();
   private clock = 1_700_000_000_000_000_000n;
 
-  constructor(options: { initialized?: boolean } = {}) {
+  constructor(options: { initialized?: boolean; canisterId?: string } = {}) {
+    this.canisterId = options.canisterId ?? 'aaaaa-aa';
     if (options.initialized ?? true) this.append('main', 'Genesis: Initialize from Soul.md', '# soul', ['genesis']);
   }
 
