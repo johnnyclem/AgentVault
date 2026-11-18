@@ -49,7 +49,7 @@ describe('creating a canister from the cycles ledger', () => {
   it.each([
     ['TemporarilyUnavailable', /temporarily unavailable/],
     ['FailedToCreate', /Nothing was lost/],
-    ['TooOld', /refused to create the canister \(TooOld\)/],
+    ['TooOld', /can no longer tell whether an earlier attempt already made this canister.*history/s],
     ['Duplicate', /refused to create the canister \(Duplicate\)/],
   ])('explains %s', async (kind, message) => {
     const refused = ledger({ Err: { [kind]: kind === 'Duplicate' ? { duplicate_of: 1n, canister_id: [] } : null } });
@@ -67,16 +67,79 @@ describe('creating a canister from the cycles ledger', () => {
  * What these interfaces send must decode against the full types the receiving canisters publish:
  * ours leave out the fields this never sets, which are optional there.
  */
+/**
+ * The cycles ledger's own published interface, read from the canister's certified metadata on the
+ * Internet Computer (module 70f8bd40…0bce, 2026-11-18). The reply types below are copied from it.
+ *
+ * The recovery path depends on the canister id inside the ledger's `Duplicate` reply. A stand-in that
+ * hands the handler a ready-made Principal skips the one place it can be lost, which is decoding the
+ * reply with the interface the gateway really uses. So the reply is encoded as the ledger sends it
+ * and decoded through that interface before the handler sees it.
+ */
+describe('recovering a creation the ledger already made', () => {
+  const ledgerReply = IDL.Variant({
+    Ok: IDL.Record({ block_id: IDL.Nat, canister_id: IDL.Principal }),
+    Err: IDL.Variant({
+      GenericError: IDL.Record({ message: IDL.Text, error_code: IDL.Nat }),
+      TemporarilyUnavailable: IDL.Null,
+      Duplicate: IDL.Record({ duplicate_of: IDL.Nat, canister_id: IDL.Opt(IDL.Principal) }),
+      CreatedInFuture: IDL.Record({ ledger_time: IDL.Nat64 }),
+      FailedToCreate: IDL.Record({ error: IDL.Text, refund_block: IDL.Opt(IDL.Nat), fee_block: IDL.Opt(IDL.Nat) }),
+      TooOld: IDL.Null,
+      InsufficientFunds: IDL.Record({ balance: IDL.Nat }),
+    }),
+  });
+  /** A ledger whose reply travels as bytes, through the interface the gateway uses to read it. */
+  function wireLedger(reply: unknown): CyclesLedger {
+    const service = cyclesLedgerIdl({ IDL }) as unknown as { _fields: Array<[string, IDL.FuncClass]> };
+    const [answer] = service._fields[0]![1].retTypes;
+    return {
+      create_canister: async () => IDL.decode([answer!], IDL.encode([ledgerReply], [reply]))[0],
+    } as unknown as CyclesLedger;
+  }
+
+  it('returns the canister the ledger says it already made, as it is read off the wire', async () => {
+    const earlier = wireLedger({ Err: { Duplicate: { duplicate_of: 3n, canister_id: [Principal.fromText(CANISTER)] } } });
+
+    await expect(createWithCyclesLedger(earlier, request)).resolves.toBe(CANISTER);
+  });
+
+  it('refuses, naming the reply, when a duplicate carries no canister to recover', async () => {
+    const empty = wireLedger({ Err: { Duplicate: { duplicate_of: 3n, canister_id: [] } } });
+
+    await expect(createWithCyclesLedger(empty, request)).rejects.toThrow(/refused to create the canister \(Duplicate\)/);
+  });
+
+  it('still reads every other answer through the same interface', async () => {
+    const created = wireLedger({ Ok: { block_id: 9n, canister_id: Principal.fromText(CANISTER) } });
+    await expect(createWithCyclesLedger(created, request)).resolves.toBe(CANISTER);
+
+    const poor = wireLedger({ Err: { InsufficientFunds: { balance: 1n } } });
+    await expect(createWithCyclesLedger(poor, request)).rejects.toThrow(/balance is too low/);
+
+    const failed = wireLedger({ Err: { FailedToCreate: { fee_block: [], refund_block: [4n], error: 'no subnet' } } });
+    await expect(createWithCyclesLedger(failed, request)).rejects.toThrow(/Nothing was lost/);
+
+    for (const reply of [{ TooOld: null }, { TemporarilyUnavailable: null }, { CreatedInFuture: { ledger_time: 5n } }, { GenericError: { message: 'x', error_code: 2n } }]) {
+      await expect(createWithCyclesLedger(wireLedger({ Err: reply }), request)).rejects.toThrow(/cycles ledger/);
+    }
+  });
+});
+
 describe('what goes on the wire', () => {
+  // As the cycles ledger publishes it; the management canister's settings are the same record.
   const officialSettings = IDL.Record({
-    controllers: IDL.Opt(IDL.Vec(IDL.Principal)),
-    compute_allocation: IDL.Opt(IDL.Nat),
-    memory_allocation: IDL.Opt(IDL.Nat),
     freezing_threshold: IDL.Opt(IDL.Nat),
-    reserved_cycles_limit: IDL.Opt(IDL.Nat),
-    log_visibility: IDL.Opt(IDL.Variant({ controllers: IDL.Null, public: IDL.Null })),
-    wasm_memory_limit: IDL.Opt(IDL.Nat),
     wasm_memory_threshold: IDL.Opt(IDL.Nat),
+    environment_variables: IDL.Opt(IDL.Vec(IDL.Record({ value: IDL.Text, name: IDL.Text }))),
+    controllers: IDL.Opt(IDL.Vec(IDL.Principal)),
+    reserved_cycles_limit: IDL.Opt(IDL.Nat),
+    log_visibility: IDL.Opt(
+      IDL.Variant({ controllers: IDL.Null, public: IDL.Null, allowed_viewers: IDL.Vec(IDL.Principal) }),
+    ),
+    wasm_memory_limit: IDL.Opt(IDL.Nat),
+    memory_allocation: IDL.Opt(IDL.Nat),
+    compute_allocation: IDL.Opt(IDL.Nat),
   });
   const argTypes = (factory: IDL.InterfaceFactory, method: string): IDL.Type[] => {
     const service = factory({ IDL }) as unknown as { _fields: Array<[string, IDL.FuncClass]> };
@@ -113,13 +176,13 @@ describe('what goes on the wire', () => {
     const officialAnswer = IDL.Variant({
       Ok: IDL.Record({ block_id: IDL.Nat, canister_id: IDL.Principal }),
       Err: IDL.Variant({
-        InsufficientFunds: IDL.Record({ balance: IDL.Nat }),
-        TooOld: IDL.Null,
-        CreatedInFuture: IDL.Record({ ledger_time: IDL.Nat64 }),
+        GenericError: IDL.Record({ message: IDL.Text, error_code: IDL.Nat }),
         TemporarilyUnavailable: IDL.Null,
         Duplicate: IDL.Record({ duplicate_of: IDL.Nat, canister_id: IDL.Opt(IDL.Principal) }),
-        FailedToCreate: IDL.Record({ fee_block: IDL.Opt(IDL.Nat), refund_block: IDL.Opt(IDL.Nat), error: IDL.Text }),
-        GenericError: IDL.Record({ message: IDL.Text, error_code: IDL.Nat }),
+        CreatedInFuture: IDL.Record({ ledger_time: IDL.Nat64 }),
+        FailedToCreate: IDL.Record({ error: IDL.Text, refund_block: IDL.Opt(IDL.Nat), fee_block: IDL.Opt(IDL.Nat) }),
+        TooOld: IDL.Null,
+        InsufficientFunds: IDL.Record({ balance: IDL.Nat }),
       }),
     });
 
@@ -128,9 +191,15 @@ describe('what goes on the wire', () => {
       { Err: { InsufficientFunds: { balance: 1n } } },
       { Err: { FailedToCreate: { fee_block: [], refund_block: [4n], error: 'no subnet' } } },
       { Err: { TooOld: null } },
+      { Err: { Duplicate: { duplicate_of: 3n, canister_id: [Principal.fromText(CANISTER)] } } },
     ]) {
       const [decoded] = IDL.decode([answer!], IDL.encode([officialAnswer], [value])) as unknown as [Record<string, unknown>];
       expect(Object.keys(decoded)).toEqual(Object.keys(value));
+      // The outer tag is not enough: what the gateway reads inside the reply has to survive too.
+      const sent = value as { Ok?: object; Err?: { Duplicate?: { canister_id: Principal[] } } };
+      const got = decoded as { Ok?: object; Err?: { Duplicate?: { canister_id: Principal[] } } };
+      if (sent.Ok) expect(got.Ok).toEqual(sent.Ok);
+      if (sent.Err?.Duplicate) expect(got.Err?.Duplicate?.canister_id).toEqual(sent.Err.Duplicate.canister_id);
     }
   });
 

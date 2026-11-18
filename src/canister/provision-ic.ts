@@ -74,7 +74,7 @@ export const managementIdl: IDL.InterfaceFactory = ({ IDL }) => {
   });
 };
 
-/** The cycles ledger's errors carry payloads this does not read, so they are accepted as they come. */
+/** The cycles ledger's errors carry payloads this does not read, so they are accepted as they come; `Duplicate` is the one it does. */
 export const cyclesLedgerIdl: IDL.InterfaceFactory = ({ IDL }) => {
   const settings = IDL.Record({
     controllers: IDL.Opt(IDL.Vec(IDL.Principal)),
@@ -95,7 +95,10 @@ export const cyclesLedgerIdl: IDL.InterfaceFactory = ({ IDL }) => {
           TooOld: IDL.Reserved,
           CreatedInFuture: IDL.Reserved,
           TemporarilyUnavailable: IDL.Reserved,
-          Duplicate: IDL.Reserved,
+          // Read, not skipped: it carries the canister an earlier, unanswered attempt made, which is how
+          // a retry after a crash finds it instead of paying for another. Only the field that is read is
+          // declared, so a reply with more fields still decodes.
+          Duplicate: IDL.Record({ canister_id: IDL.Opt(IDL.Principal) }),
           FailedToCreate: IDL.Reserved,
           GenericError: IDL.Reserved,
         }),
@@ -148,6 +151,10 @@ export function cyclesLedgerErrorText(error: Record<string, unknown>): string {
       return 'The cycles ledger is temporarily unavailable. Try again.';
     case 'FailedToCreate':
       return 'The cycles ledger could not create the canister. Nothing was lost; try again.';
+    case 'TooOld':
+      // The ledger only recognizes a repeated creation for a day. After that it cannot say whether an
+      // earlier attempt made a canister, and making another could pay twice, so this stops and asks.
+      return "The cycles ledger can no longer tell whether an earlier attempt already made this canister (TooOld). Check the gateway's cycles ledger history before trying again.";
     default:
       return `The cycles ledger refused to create the canister (${kind ?? 'unknown'}).`;
   }

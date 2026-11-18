@@ -288,12 +288,23 @@ What to know:
   send more at any time. Letting the gateway do it is not built.
 - **Upgrading is the owner's job.** They are the only controller, so a new `memory_repo` is theirs to
   install.
-- **The cycles ledger path is unproven.** It follows the ledger's published interface and its
-  handling of every answer is tested, but a local replica has no cycles ledger to run it against, so
-  create one canister with a small `--provision-cycles` before relying on it.
+- **The cycles ledger path has not been run against the cycles ledger.** What is established is
+  offline: the request and every reply type match the interface the ledger itself publishes (read from
+  its certified metadata), and each reply, including the canister id inside a `Duplicate`, is decoded
+  through the interface this uses before it is acted on. A local replica has no cycles ledger, so
+  nothing here has paid for a canister from one. Before relying on it, make one canister on the
+  Internet Computer with a small `--max-canisters 1`, and keep the evidence: the build and its
+  `memory_repo` hash (printed at start), the gateway's cycles ledger balance before and after, the
+  `POST` and `GET` answers, and `ledger check` on the result. `ledger check` shows the controllers,
+  the installed hash and the repository owner; that the gateway is a writer shows only in its first
+  accepted anchor, because the canister reports how many writers it has, not who they are.
 - **A crash between creating a canister and writing its record** can leave one canister the gateway
-  does not know about. On the cycles ledger the retry is recognized and returns it; elsewhere the
-  canister stays under the gateway's control and its cycles can be recovered.
+  does not know about. On the cycles ledger, retrying with the same creation time lets the ledger
+  answer `Duplicate` with the canister it made, which is returned instead of paying again. That is
+  how the reply is read, and it has not been seen happen: the ledger only recognizes a repeat for
+  about a day, after which it answers `TooOld` and the gateway stops and says so rather than risk
+  paying twice. Off the cycles ledger there is no such check; the canister stays under the gateway's
+  control and its cycles can be recovered.
 - The token that can ask for canisters can spend the gateway's cycles, so it belongs to the host.
 
 ## Check it
