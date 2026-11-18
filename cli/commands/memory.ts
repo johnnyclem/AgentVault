@@ -645,14 +645,16 @@ memoryCmd
     }
   });
 
-// ─── memory authorize / deauthorize ─────────────────────────────────────────
+// ─── memory authorize / deauthorize / transfer-ownership ────────────────────
+
+type OwnerAction = 'authorize' | 'deauthorize' | 'transfer-ownership';
 
 /**
- * Have the repo owner add or remove a principal that may write. The canister
- * accepts these from the owner only.
+ * Have the repo owner add or remove a principal that may write, or hand the
+ * repository to another principal. The canister accepts these from the owner only.
  */
 async function changeAuthorization(
-  action: 'authorize' | 'deauthorize',
+  action: OwnerAction,
   principalText: string,
   cmd: Command,
 ): Promise<void> {
@@ -667,9 +669,11 @@ async function changeAuthorization(
   }
 
   const signer = signerOrExit(parentOpts);
-  const spinner = ora(
-    action === 'authorize' ? `Authorizing ${principalText}...` : `Removing ${principalText}...`,
-  ).start();
+  const spinner = ora({
+    authorize: `Authorizing ${principalText}...`,
+    deauthorize: `Removing ${principalText}...`,
+    'transfer-ownership': `Transferring ownership to ${principalText}...`,
+  }[action]).start();
 
   try {
     const canisterId = resolveCanisterId(parentOpts);
@@ -678,7 +682,9 @@ async function changeAuthorization(
 
     const result = action === 'authorize'
       ? await actor.addAuthorizedPrincipal(principal)
-      : await actor.removeAuthorizedPrincipal(principal);
+      : action === 'deauthorize'
+        ? await actor.removeAuthorizedPrincipal(principal)
+        : await actor.transferOwnership(principal);
 
     if ('ok' in result) {
       spinner.succeed(chalk.green(result.ok));
@@ -687,7 +693,11 @@ async function changeAuthorization(
       process.exit(1);
     }
   } catch (error) {
-    spinner.fail(chalk.red(action === 'authorize' ? 'Authorize failed' : 'Deauthorize failed'));
+    spinner.fail(chalk.red({
+      authorize: 'Authorize failed',
+      deauthorize: 'Deauthorize failed',
+      'transfer-ownership': 'Transfer failed',
+    }[action]));
     printWriteError(error, signer);
     process.exit(1);
   }
@@ -704,5 +714,18 @@ memoryCmd
   .description('Revoke a principal\'s write access (repo owner only)')
   .argument('<principal>', 'Principal to remove')
   .action((principal: string, _opts: unknown, cmd: Command) => changeAuthorization('deauthorize', principal, cmd));
+
+memoryCmd
+  .command('transfer-ownership')
+  .description('Hand the repository to another principal (repo owner only); you keep no access afterwards')
+  .argument('<principal>', 'The new owner')
+  .option('--yes', 'Confirm: only the new owner can take it back')
+  .action((principal: string, opts: { yes?: boolean }, cmd: Command) => {
+    if (!opts.yes) {
+      console.error(chalk.red('Transferring ownership cannot be undone without the new owner. Run again with --yes to confirm.'));
+      process.exit(1);
+    }
+    return changeAuthorization('transfer-ownership', principal, cmd);
+  });
 
 export { memoryCmd };

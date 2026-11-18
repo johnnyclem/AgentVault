@@ -234,6 +234,79 @@ What follows, checked against local replicas with two owners and one gateway:
 - The gateway needs a token that lets a host choose where its streams are anchored, so that token
   belongs to the host and not to the owners.
 
+## Creating a canister for an owner
+
+For an owner who is not running `dfx`, the gateway can make the canister and hand it over. The host
+asks with the owner's principal; the gateway creates a canister, pays for it, installs `memory_repo`,
+makes the owner its repository owner and its only controller, and keeps a writer's access for itself.
+The owner's record is then somewhere the host can write to but cannot rewrite, take down or hand to
+someone else.
+
+```bash
+# Build the code once: dfx build memory_repo --network ic → .dfx/ic/canisters/memory_repo/memory_repo.wasm
+agentvault ledger serve --ic-host https://icp-api.io --identity gateway.pem \
+  --provision-wasm memory_repo.wasm --max-canisters 500 --provision-cycles 1
+```
+
+This is off unless asked for, and it spends the gateway's cycles, so `--max-canisters` is required: it
+is the most canisters this gateway will ever create. `--provision-cycles` (trillions, from 0.2 to 20,
+default 1) is what each is funded with, and the amount is fixed here, never taken from a request. On
+the Internet Computer the gateway's identity pays from its **cycles ledger balance**: convert ICP with
+`dfx cycles convert`, then send cycles to the gateway's principal (`GET /v1/identity` or
+`agentvault memory whoami --identity gateway.pem`) with `dfx cycles transfer`. A local replica has no
+cycles ledger, so there the management canister's provisional API pays instead. Creating a canister
+costs about 0.5 trillion cycles on a 13-node subnet and storage about 4 trillion per GiB-year, as the
+[cost page](https://docs.internetcomputer.org/building-apps/essentials/gas-cost) lists; check the
+current figures before budgeting.
+
+```
+POST /v1/canisters          { "key": "order-1042", "owner": "<principal>" }   → 202 while it is made, 200 when ready
+GET  /v1/canisters/<key>    { key, owner, state, canisterId, moduleHash, error }
+```
+
+`state` is `pending`, `ready` or `failed`. The key is the host's own idempotency key: ask again with it
+and nothing is made twice, and a request that failed is picked up from the step it stopped at. The
+steps are separate calls to the Internet Computer, so each run reads what the canister already is and
+does only what is missing. Once `ready`, the host names the canister for the owner's streams
+([above](#several-owners-on-one-gateway)) and the owner allows nothing more: the gateway is already a
+writer.
+
+| After the handover the host can | The host cannot |
+|---|---|
+| Write commits and branches (it is an authorized writer) | Authorize or deauthorize anyone, freeze, or switch the repository off: owner only |
+| Top the canister up with cycles (no control needed) | Reinstall, stop or delete the canister, or change its controllers: the Internet Computer refuses |
+
+Checked against a local replica: the owner ends as the repository's owner and the canister's only
+controller; the gateway can write but is refused every one of the rest; an interrupted run resumes on
+the same canister; and `ledger check` on the result says only the owner controls it. The code a
+canister was installed with is shown by `ledger check`, and its hash is printed when the gateway
+starts, so an owner can compare the two.
+
+What to know:
+
+- **Nothing tops a canister up later.** It starts with the cycles above; the host (or the owner) can
+  send more at any time. Letting the gateway do it is not built.
+- **Upgrading is the owner's job.** They are the only controller, so a new `memory_repo` is theirs to
+  install.
+- **The cycles ledger path has not been run against the cycles ledger.** What is established is
+  offline: the request and every reply type match the interface the ledger itself publishes (read from
+  its certified metadata), and each reply, including the canister id inside a `Duplicate`, is decoded
+  through the interface this uses before it is acted on. A local replica has no cycles ledger, so
+  nothing here has paid for a canister from one. Before relying on it, make one canister on the
+  Internet Computer with a small `--max-canisters 1`, and keep the evidence: the build and its
+  `memory_repo` hash (printed at start), the gateway's cycles ledger balance before and after, the
+  `POST` and `GET` answers, and `ledger check` on the result. `ledger check` shows the controllers,
+  the installed hash and the repository owner; that the gateway is a writer shows only in its first
+  accepted anchor, because the canister reports how many writers it has, not who they are.
+- **A crash between creating a canister and writing its record** can leave one canister the gateway
+  does not know about. On the cycles ledger, retrying with the same creation time lets the ledger
+  answer `Duplicate` with the canister it made, which is returned instead of paying again. That is
+  how the reply is read, and it has not been seen happen: the ledger only recognizes a repeat for
+  about a day, after which it answers `TooOld` and the gateway stops and says so rather than risk
+  paying twice. Off the cycles ledger there is no such check; the canister stays under the gateway's
+  control and its cycles can be recovered.
+- The token that can ask for canisters can spend the gateway's cycles, so it belongs to the host.
+
 ## Check it
 
 ```bash
@@ -297,7 +370,8 @@ Every route but health needs `Authorization: Bearer <token>`.
 | `GET /v1/streams?after=<stream>&limit=<n>` | the streams in id order, each with its head and anchored mark, and `next` to continue from (null at the end). A stream whose file is damaged is listed with `corrupt: true` |
 | `GET /v1/streams/<stream>` | `{ head: { seq, hash }, anchored: { seq } }`, or 404 |
 | `GET /v1/streams/<stream>/entries?after=<seq>&limit=<n>` | entries after `seq`, with their chain fields |
-| `GET /v1/identity` | `{ principal }`, the identity the gateway anchors as; 404 `anchoring_not_configured` when it has no replica |
+| `GET /v1/identity` | `{ principal, provisioning }`: the identity the gateway anchors as, and whether it was started with `--provision-wasm`; 404 `anchoring_not_configured` when it has no replica |
+| `POST /v1/canisters`, `GET /v1/canisters/<key>` | create a canister for an owner and hand it over, and say where that has got to; 404 `provisioning_not_configured` unless started with `--provision-wasm`; see [above](#creating-a-canister-for-an-owner) |
 | `GET`, `PUT`, `DELETE /v1/streams/<stream>/anchor` | where a stream is anchored and how far, naming it (`{ destination }`), and putting it back with the rest; 409 `anchoring_not_configured` without a replica, 400 for a destination that is not a canister id |
 
 A read returns at most 500 entries and stops early at 8 MiB, so page with
@@ -326,10 +400,9 @@ A successful append returns `{ head, appended, anchored }`.
 - **Restoring an agent.** The gateway reads entries back, and `ledger rebuild`
   brings the gateway itself back from the canister; turning entries into an
   agent is the host's job (the ledger never reads what it holds).
-- **Creating canisters for owners.** An owner can hold their own canister
-  ([above](#a-canister-its-owner-holds)) and one gateway can serve many of them
-  ([above](#several-owners-on-one-gateway)), but making and funding a canister
-  for someone who is not running `dfx` themselves is not automated.
+- **Topping canisters up.** A canister it creates for an owner
+  ([above](#creating-a-canister-for-an-owner)) starts with the cycles you set and
+  runs on them; nothing sends more later.
 - **Deletion.** A ledger is append-only. A host that must forget a record
   destroys the key it sealed that stream with; the ciphertext stays.
 - **Several tokens.** One gateway serves one host.

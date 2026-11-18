@@ -103,8 +103,8 @@ describe('memory CLI Command', () => {
     expect(memoryCmd.commands.find((c) => c.name() === 'deauthorize')?.description()).toContain('owner');
   });
 
-  it('should have all 13 subcommands', () => {
-    expect(memoryCmd.commands).toHaveLength(13);
+  it('should have all 14 subcommands', () => {
+    expect(memoryCmd.commands).toHaveLength(14);
     const names = memoryCmd.commands.map(c => c.name()).sort();
     expect(names).toEqual([
       'authorize',
@@ -119,6 +119,7 @@ describe('memory CLI Command', () => {
       'rebase',
       'show',
       'status',
+      'transfer-ownership',
       'whoami',
     ]);
   });
