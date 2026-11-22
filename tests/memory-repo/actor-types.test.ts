@@ -46,9 +46,9 @@ describe('MemoryRepo Actor Types', () => {
     it('should produce a service with all its methods', () => {
       const service = idlFactory({ IDL: mockIDL }) as Record<string, unknown>;
       const expectedMethods = [
-        // Security (7)
+        // Security (8)
         'freeze', 'manualUnlock', 'killCanister', 'reviveCanister',
-        'addAuthorizedPrincipal', 'removeAuthorizedPrincipal', 'getSecurityStatus',
+        'addAuthorizedPrincipal', 'removeAuthorizedPrincipal', 'transferOwnership', 'getSecurityStatus',
         // Core (11)
         'initRepo', 'commit', 'commitToBranch', 'getCommit', 'log', 'getCurrentState',
         'getRepoStatus', 'getBranches', 'createBranch', 'createBranchFrom', 'switchBranch',
@@ -59,7 +59,7 @@ describe('MemoryRepo Actor Types', () => {
       for (const method of expectedMethods) {
         expect(service).toHaveProperty(method);
       }
-      expect(Object.keys(service)).toHaveLength(24);
+      expect(Object.keys(service)).toHaveLength(25);
     });
 
     it('declares only methods canister/memory-repo.did has, with the same arity and query mode', () => {
@@ -87,7 +87,7 @@ describe('MemoryRepo Actor Types', () => {
 
       const updateMethods = [
         'freeze', 'manualUnlock', 'killCanister', 'reviveCanister',
-        'addAuthorizedPrincipal', 'removeAuthorizedPrincipal',
+        'addAuthorizedPrincipal', 'removeAuthorizedPrincipal', 'transferOwnership',
         'initRepo', 'commit', 'commitToBranch', 'createBranch', 'createBranchFrom', 'switchBranch',
         'rebase', 'merge', 'cherryPick',
       ];
@@ -250,11 +250,11 @@ describe('MemoryRepo Actor Types', () => {
   });
 
   describe('_SERVICE Interface', () => {
-    it('should define all 19 expected methods', () => {
+    it('should define all 20 expected methods', () => {
       const methodNames: (keyof _SERVICE)[] = [
         // Security
         'freeze', 'manualUnlock', 'killCanister', 'reviveCanister',
-        'addAuthorizedPrincipal', 'removeAuthorizedPrincipal', 'getSecurityStatus',
+        'addAuthorizedPrincipal', 'removeAuthorizedPrincipal', 'transferOwnership', 'getSecurityStatus',
         // Core
         'initRepo', 'commit', 'getCommit', 'log', 'getCurrentState',
         'getRepoStatus', 'getBranches', 'createBranch', 'switchBranch',
@@ -262,7 +262,7 @@ describe('MemoryRepo Actor Types', () => {
         'rebase', 'merge', 'cherryPick',
       ];
 
-      expect(methodNames).toHaveLength(19);
+      expect(methodNames).toHaveLength(20);
     });
   });
 });

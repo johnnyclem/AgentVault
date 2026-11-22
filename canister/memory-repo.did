@@ -87,6 +87,7 @@ service : {
   reviveCanister            : () -> (variant { ok : text; err : text });
   addAuthorizedPrincipal    : (principal) -> (variant { ok : text; err : text });
   removeAuthorizedPrincipal : (principal) -> (variant { ok : text; err : text });
+  transferOwnership         : (principal) -> (variant { ok : text; err : text });
   getSecurityStatus         : () -> (SecurityStatus) query;
 
   // ── Repository Lifecycle ────────────────────────────────────────────────

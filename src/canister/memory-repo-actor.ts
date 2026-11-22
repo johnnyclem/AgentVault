@@ -111,6 +111,7 @@ export interface _SERVICE {
   reviveCanister: () => Promise<OperationResult>;
   addAuthorizedPrincipal: (p: Principal) => Promise<OperationResult>;
   removeAuthorizedPrincipal: (p: Principal) => Promise<OperationResult>;
+  transferOwnership: (newOwner: Principal) => Promise<OperationResult>;
   getSecurityStatus: () => Promise<SecurityStatus>;
 
   // Repository Lifecycle

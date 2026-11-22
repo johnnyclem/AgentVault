@@ -118,6 +118,7 @@ beforeEach(() => {
   canister.actor = {
     addAuthorizedPrincipal: vi.fn().mockResolvedValue({ ok: `Principal authorized: ${OTHER}` }),
     removeAuthorizedPrincipal: vi.fn().mockResolvedValue({ ok: `Principal removed: ${OTHER}` }),
+    transferOwnership: vi.fn().mockResolvedValue({ ok: `Ownership transferred to ${OTHER}` }),
     initRepo: vi.fn().mockResolvedValue({ ok: 'genesis-1' }),
     commit: vi.fn().mockResolvedValue({ ok: 'commit-1' }),
     getCommit: vi.fn().mockResolvedValue([]),
@@ -293,5 +294,48 @@ describe('memory writes and reads', () => {
 
     expect(run.code, run.stderr).toBe(0);
     expect(await agentPrincipal()).toBe('2vxsx-fae');
+  });
+});
+
+describe('memory transfer-ownership', () => {
+  const args = (owner: { pem: string }, ...rest: string[]) => ['transfer-ownership', OTHER, ...rest, '--identity', pemFile(owner as never), '--canister-id', CANISTER_ID, '--host', HOST];
+
+  it('hands the repository over, signing as the owner, once confirmed', async () => {
+    const owner = ed25519Key();
+
+    const run = await runMemory(args(owner, '--yes'));
+
+    expect(run.code, run.stderr).toBe(0);
+    expect(run.stdout).toContain(`Signing as ${owner.principal}`);
+    expect(run.stdout).toContain(`Ownership transferred to ${OTHER}`);
+    expect(await agentPrincipal()).toBe(owner.principal);
+    expect(canister.actor.transferOwnership).toHaveBeenCalledTimes(1);
+    expect(canister.actor.transferOwnership!.mock.calls[0]![0].toText()).toBe(OTHER);
+  });
+
+  it('asks for --yes, and does nothing without it', async () => {
+    const run = await runMemory(args(ed25519Key()));
+
+    expect(run.code).toBe(1);
+    expect(run.stderr).toContain('--yes');
+    expect(canister.created).toHaveLength(0);
+    expect(canister.actor.transferOwnership).not.toHaveBeenCalled();
+  });
+
+  it('refuses a malformed principal before calling the canister', async () => {
+    const run = await runMemory(['transfer-ownership', 'not-a-principal', '--yes', '--identity', pemFile(ed25519Key()), '--canister-id', CANISTER_ID, '--host', HOST]);
+
+    expect(run.code).toBe(1);
+    expect(run.stderr).toMatch(/not a valid principal/i);
+    expect(canister.created).toHaveLength(0);
+  });
+
+  it("reports the canister's refusal", async () => {
+    canister.actor.transferOwnership = vi.fn().mockResolvedValue({ err: 'Principal is already the owner' });
+
+    const run = await runMemory(args(ed25519Key(), '--yes'));
+
+    expect(run.code).toBe(1);
+    expect(run.stderr + run.stdout).toContain('Principal is already the owner');
   });
 });

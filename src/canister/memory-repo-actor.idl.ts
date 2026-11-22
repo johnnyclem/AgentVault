@@ -73,6 +73,7 @@ export const idlFactory = ({ IDL }: any) => IDL.Service({
   reviveCanister: IDL.Func([], [OperationResultVariant(IDL)], []),
   addAuthorizedPrincipal: IDL.Func([IDL.Principal], [OperationResultVariant(IDL)], []),
   removeAuthorizedPrincipal: IDL.Func([IDL.Principal], [OperationResultVariant(IDL)], []),
+  transferOwnership: IDL.Func([IDL.Principal], [OperationResultVariant(IDL)], []),
   getSecurityStatus: IDL.Func([], [SecurityStatusRecord(IDL)], ['query']),
 
   // ── Repository Lifecycle ──────────────────────────────────────────────
