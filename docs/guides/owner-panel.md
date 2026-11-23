@@ -69,6 +69,7 @@ writer identity is for.
   first, then freeze. The panel disables the writer controls while frozen and says why.
 - **"Lasts" is an estimate at the idle burn the canister reports.** On the first mainnet canister
   the balance fell about 13% faster than that over 34 minutes, so treat it as a ceiling.
-- Checked: the whole flow in a browser against a local replica; the page against mainnet in a
-  browser, read-only; and the panel's code against the live canister. Changing writers on mainnet
-  through the page was not run (the same canister code was changed on the replica).
+- Checked, in a browser: the whole flow against a local replica, and on the first mainnet
+  canister the public view, the owner's view, freezing and unfreezing, and authorizing and then
+  removing a writer. The canister's state was identical before and after. Removing a *real* writer,
+  and anything with a key that is not the owner's, were only checked on the replica.
