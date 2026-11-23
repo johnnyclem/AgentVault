@@ -81,6 +81,26 @@ export class ProvisionError extends Error {
   }
 }
 
+/** The most one canister may be created with, in trillions of cycles: a typo must not spend a treasury. */
+export const MAX_PROVISION_TRILLIONS = 20;
+/**
+ * The least. The network takes about 0.5T out of what a new canister is sent, for creating it: one
+ * created on the Internet Computer with 1T held 0.498T afterwards, installation included. A canister
+ * sent less than about 0.5T would have nothing left to run on, and one sent just over it would freeze
+ * within days. This leaves at least about 0.25T, roughly eight months of what that canister burned
+ * idle (1.0 billion cycles a day), and is a bound on typos, not a recommendation: the default is 1.
+ */
+export const MIN_PROVISION_TRILLIONS = 0.75;
+
+/** `--provision-cycles` as cycles: trillions, between the floor and the ceiling. Throws a message for the operator. */
+export function parseProvisionCycles(text: string): bigint {
+  const trillions = Number(text);
+  if (text.trim() === '' || !Number.isFinite(trillions) || trillions < MIN_PROVISION_TRILLIONS || trillions > MAX_PROVISION_TRILLIONS) {
+    throw new Error(`--provision-cycles is trillions of cycles per canister, from ${MIN_PROVISION_TRILLIONS} to ${MAX_PROVISION_TRILLIONS}`);
+  }
+  return BigInt(Math.round(trillions * 1e12));
+}
+
 const KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const RECORD_FORMAT = 'agentvault-provision/v1';
 /** What a repository is initialized with: the canister needs some text, and nothing reads it. */

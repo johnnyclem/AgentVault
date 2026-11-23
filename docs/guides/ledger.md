@@ -249,15 +249,25 @@ agentvault ledger serve --ic-host https://icp-api.io --identity gateway.pem \
 ```
 
 This is off unless asked for, and it spends the gateway's cycles, so `--max-canisters` is required: it
-is the most canisters this gateway will ever create. `--provision-cycles` (trillions, from 0.2 to 20,
+is the most canisters this gateway will ever create. `--provision-cycles` (trillions, from 0.75 to 20,
 default 1) is what each is funded with, and the amount is fixed here, never taken from a request. On
 the Internet Computer the gateway's identity pays from its **cycles ledger balance**: convert ICP with
 `dfx cycles convert`, then send cycles to the gateway's principal (`GET /v1/identity` or
 `agentvault memory whoami --identity gateway.pem`) with `dfx cycles transfer`. A local replica has no
-cycles ledger, so there the management canister's provisional API pays instead. Creating a canister
-costs about 0.5 trillion cycles on a 13-node subnet and storage about 4 trillion per GiB-year, as the
-[cost page](https://docs.internetcomputer.org/building-apps/essentials/gas-cost) lists; check the
-current figures before budgeting.
+cycles ledger, so there the management canister's provisional API pays instead.
+
+What it costs, as observed on the Internet Computer on 2026-11-23: the network takes its charge for
+creating a canister out of what the canister is sent. One was created with 1 trillion cycles and held
+0.498 trillion afterwards (after its installation and one anchor), so about 0.5 trillion went on
+creating and setting it up. That is close to the 0.5 trillion the
+[cost page](https://docs.internetcomputer.org/building-apps/essentials/gas-cost) gives for a 13-node
+subnet; which subnet this canister landed on was not checked. The cycles ledger also takes 100 million cycles per creation from the gateway's
+balance, on top of the amount, so each canister costs the gateway 1.0001 trillion at the default. That
+is why the minimum is 0.75 trillion: it leaves a canister at least about 0.25 trillion to run on. The
+floor is inferred from that one creation and the cost page; creating below it was not tried, and the
+default of 1 is the value that was used. That canister burned about 1.0 billion cycles a day idle at
+5.7 MB, so its balance lasts about 16 months at that size, and storage adds to it (the cost page lists
+about 4 trillion per GiB-year).
 
 ```
 POST /v1/canisters          { "key": "order-1042", "owner": "<principal>" }   → 202 while it is made, 200 when ready
@@ -276,7 +286,7 @@ writer.
 | Write commits and branches (it is an authorized writer) | Authorize or deauthorize anyone, freeze, or switch the repository off: owner only |
 | Top the canister up with cycles (no control needed) | Reinstall, stop or delete the canister, or change its controllers: the Internet Computer refuses |
 
-Checked against a local replica: the owner ends as the repository's owner and the canister's only
+Checked against a local replica, and once on the Internet Computer (below): the owner ends as the repository's owner and the canister's only
 controller; the gateway can write but is refused every one of the rest; an interrupted run resumes on
 the same canister; and `ledger check` on the result says only the owner controls it. The code a
 canister was installed with is shown by `ledger check`, and its hash is printed when the gateway
@@ -284,27 +294,36 @@ starts, so an owner can compare the two.
 
 What to know:
 
-- **Nothing tops a canister up later.** It starts with the cycles above; the host (or the owner) can
-  send more at any time. Letting the gateway do it is not built.
+- **Nothing tops a canister up later.** It starts with the cycles above, which last about 16 months
+  at the size the first one had; the host (or the owner) can send more at any time. Letting the gateway
+  do it is not built.
 - **Upgrading is the owner's job.** They are the only controller, so a new `memory_repo` is theirs to
   install.
-- **The cycles ledger path has not been run against the cycles ledger.** What is established is
-  offline: the request and every reply type match the interface the ledger itself publishes (read from
-  its certified metadata), and each reply, including the canister id inside a `Duplicate`, is decoded
-  through the interface this uses before it is acted on. A local replica has no cycles ledger, so
-  nothing here has paid for a canister from one. Before relying on it, make one canister on the
-  Internet Computer with a small `--max-canisters 1`, and keep the evidence: the build and its
+- **The cycles ledger path has been run once, on the Internet Computer.** On 2026-11-23, from the build
+  that merged this feature, one canister was created for a separate owner key with
+  `--max-canisters 1 --provision-cycles 1`; it was `ready` about 30 seconds after the request. What
+  was observed: the gateway's cycles ledger balance fell by exactly 1.0001 trillion in that one
+  creation (the 1 trillion plus the ledger's 100 million fee); `ledger check` and the canister's own
+  status showed the owner as the only controller and the installed code hash equal to the wasm's;
+  asked for the canister's status, the owner was answered and the gateway was refused ("not allowed to
+  read the canister status"); and the gateway's first anchor was accepted. That last one is the only
+  way to see that the gateway is a writer, because the canister reports how many writers it has, not
+  who they are. It is one creation from one build on one day: evidence that this works, not a
+  guarantee, and it tried neither a second canister nor any failure. The identities involved are not
+  published here. Do the same before relying on it with your own build: keep the build and its
   `memory_repo` hash (printed at start), the gateway's cycles ledger balance before and after, the
-  `POST` and `GET` answers, and `ledger check` on the result. `ledger check` shows the controllers,
-  the installed hash and the repository owner; that the gateway is a writer shows only in its first
-  accepted anchor, because the canister reports how many writers it has, not who they are.
+  `POST` and `GET` answers, `ledger check`, and the first accepted anchor.
 - **A crash between creating a canister and writing its record** can leave one canister the gateway
   does not know about. On the cycles ledger, retrying with the same creation time lets the ledger
-  answer `Duplicate` with the canister it made, which is returned instead of paying again. That is
-  how the reply is read, and it has not been seen happen: the ledger only recognizes a repeat for
-  about a day, after which it answers `TooOld` and the gateway stops and says so rather than risk
-  paying twice. Off the cycles ledger there is no such check; the canister stays under the gateway's
-  control and its cycles can be recovered.
+  answer `Duplicate` with the canister it made, which is returned instead of paying again. That reply
+  was observed on the Internet Computer: replaying the identical creation call returned `Duplicate`
+  carrying the canister's id, the gateway's handler returned that same canister, and nothing was
+  charged. The replay was made with too little balance left to pay for a second canister, so it could
+  not have created one. An actual crash between creating the canister and saving its record was not
+  staged. The ledger only recognizes a repeat for about a day, after which it answers `TooOld` and the
+  gateway stops and says so rather than risk paying twice; that was not tried. Off the cycles ledger
+  there is no such check; the canister stays under the gateway's control and its cycles can be
+  recovered.
 - The token that can ask for canisters can spend the gateway's cycles, so it belongs to the host.
 
 ## Check it
