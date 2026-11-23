@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import { Archive, Blocks, Bot, DatabaseBackup, ListChecks, Network, Server, Settings, Vault, Wallet } from 'lucide-react'
+import { Archive, Blocks, Bot, DatabaseBackup, KeyRound, ListChecks, Network, Server, Settings, Vault, Wallet } from 'lucide-react'
 
 export interface NavItem {
   label: string
@@ -31,6 +31,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Canisters', href: '/canisters', icon: Server },
       { label: 'Networks', href: '/networks', icon: Network },
       { label: 'On-chain', href: '/on-chain', icon: Blocks },
+      { label: 'Owner', href: '/owner', icon: KeyRound },
     ],
   },
   {
