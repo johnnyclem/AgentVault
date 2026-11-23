@@ -265,9 +265,10 @@ subnet; which subnet this canister landed on was not checked. The cycles ledger 
 balance, on top of the amount, so each canister costs the gateway 1.0001 trillion at the default. That
 is why the minimum is 0.75 trillion: it leaves a canister at least about 0.25 trillion to run on. The
 floor is inferred from that one creation and the cost page; creating below it was not tried, and the
-default of 1 is the value that was used. That canister burned about 1.0 billion cycles a day idle at
-5.7 MB, so its balance lasts about 16 months at that size, and storage adds to it (the cost page lists
-about 4 trillion per GiB-year).
+default of 1 is the value that was used. That canister reports an idle burn of about 1.0 billion cycles
+a day at 5.7 MB, and its balance fell by about 1.14 billion a day over 34 minutes, so it lasts about
+14 months at that size, and storage adds to it (the cost page lists about 4 trillion per GiB-year).
+Why it burns more than it reports was not found.
 
 ```
 POST /v1/canisters          { "key": "order-1042", "owner": "<principal>" }   → 202 while it is made, 200 when ready
@@ -294,7 +295,7 @@ starts, so an owner can compare the two.
 
 What to know:
 
-- **Nothing tops a canister up later.** It starts with the cycles above, which last about 16 months
+- **Nothing tops a canister up later.** It starts with the cycles above, which last about 14 months
   at the size the first one had; the host (or the owner) can send more at any time. Letting the gateway
   do it is not built.
 - **Upgrading is the owner's job.** They are the only controller, so a new `memory_repo` is theirs to
