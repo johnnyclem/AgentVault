@@ -182,11 +182,11 @@ describe('who may ask', () => {
     const anchoring: AnchoringOptions = { writer: OWNER, validateDestination: () => undefined, error: () => null };
 
     await start(provisioning(() => record()), anchoring);
-    expect(await call('GET', '/v1/identity')).toEqual({ status: 200, body: { principal: OWNER, provisioning: true } });
+    expect(await call('GET', '/v1/identity')).toEqual({ status: 200, body: { principal: OWNER, provisioning: true, orders: false } });
     await new Promise((resolve) => server!.close(resolve));
 
     await start(undefined, anchoring);
-    expect(await call('GET', '/v1/identity')).toEqual({ status: 200, body: { principal: OWNER, provisioning: false } });
+    expect(await call('GET', '/v1/identity')).toEqual({ status: 200, body: { principal: OWNER, provisioning: false, orders: false } });
   });
 
   it('is not there unless the gateway was told it may create canisters', async () => {

@@ -32,7 +32,9 @@ import {
   resolveServerSigningIdentity,
   type SigningIdentity,
 } from '../../src/canister/identity.js';
-import { isLocalReplicaHost, validateCanisterId } from '../../src/canister/memory-repo-actor.js';
+import { createMemoryRepoAgent, isLocalReplicaHost, validateCanisterId } from '../../src/canister/memory-repo-actor.js';
+import { DEFAULT_QUOTE_MINUTES, OrderService, OrderStore, orderView, parsePriceXdr } from '../../src/canister/payments.js';
+import { icPaymentPorts } from '../../src/canister/payments-ic.js';
 import { CanisterProvisioner, ProvisionStore, parseProvisionCycles } from '../../src/canister/provision.js';
 import { CYCLES_LEDGER_ID, icProvisioningPorts } from '../../src/canister/provision-ic.js';
 import {
@@ -55,6 +57,7 @@ import {
   type AnchorRecord,
   type AnchoringOptions,
   type Finding,
+  type OrdersOptions,
   type ProvisioningOptions,
 } from '../../src/ledger/index.js';
 
@@ -154,6 +157,16 @@ interface ProvisionFlags {
   cyclesLedger: string;
 }
 
+interface OrderFlags {
+  orderPriceXdr?: string;
+  orderQuoteMinutes: string;
+}
+
+/** What the cycles ledger takes from the gateway on top of a canister's cycles, in cycles. */
+const CYCLES_LEDGER_FEE = 100_000_000n;
+/** How often unpaid and paid orders are looked at. */
+const ORDER_POLL_MS = 30_000;
+
 /** What one install_code message can carry, with room for its envelope. */
 const MAX_WASM_BYTES = 1_900_000;
 
@@ -166,7 +179,7 @@ async function provisioningFor(
   flags: ProvisionFlags,
   anchoring: Awaited<ReturnType<typeof anchoringFor>>,
   store: LedgerStore,
-): Promise<ProvisioningOptions | undefined> {
+): Promise<{ options: ProvisioningOptions; provisioner: CanisterProvisioner; cycles: bigint } | undefined> {
   if (!flags.provisionWasm) {
     if (flags.maxCanisters !== undefined) die('--max-canisters only applies with --provision-wasm');
     return undefined;
@@ -203,7 +216,53 @@ async function provisioningFor(
     log: (message) => console.log(chalk.gray(message)),
   });
   console.log(chalk.gray(`Creating canisters: ${Number(cycles) / 1e12}T cycles each, at most ${limit}, memory_repo code ${provisioner.moduleHash}`));
-  return { begin: (key, owner) => provisioner.begin(key, owner), get: (key) => provisioner.get(key) };
+  return { options: { begin: (key, owner) => provisioner.begin(key, owner), get: (key) => provisioner.get(key) }, provisioner, cycles };
+}
+
+/**
+ * Lets the gateway sell canisters for ICP, when it was told a price. A sale pays for a canister the
+ * provisioner then makes, so it needs provisioning, and the ICP ledger and the minting canister only
+ * exist on the Internet Computer.
+ */
+async function ordersFor(
+  flags: OrderFlags,
+  anchoring: Awaited<ReturnType<typeof anchoringFor>>,
+  provisioned: Awaited<ReturnType<typeof provisioningFor>>,
+  store: LedgerStore,
+): Promise<{ options: OrdersOptions; service: OrderService } | undefined> {
+  if (flags.orderPriceXdr === undefined) return undefined;
+  if (!anchoring || !provisioned) die('Selling canisters needs --provision-wasm and --max-canisters, and a replica: name --ic-host');
+  let priceCycles: bigint;
+  try {
+    // A price below what a canister costs would lose money on every sale.
+    priceCycles = parsePriceXdr(flags.orderPriceXdr, provisioned.cycles + CYCLES_LEDGER_FEE);
+  } catch (error) {
+    die(error instanceof Error ? error.message : String(error));
+  }
+  const quoteMinutes = Number(flags.orderQuoteMinutes);
+  if (!Number.isFinite(quoteMinutes) || quoteMinutes < 1 || quoteMinutes > 1440) die('--order-quote-minutes is how long a quoted amount holds: 1 to 1440');
+
+  const agent = await createMemoryRepoAgent(anchoring.host, anchoring.identity);
+  const service = new OrderService({
+    ports: icPaymentPorts({ agent, treasury: anchoring.writer }),
+    store: new OrderStore(store.dir),
+    provisioner: provisioned.provisioner,
+    treasury: anchoring.writer,
+    priceCycles,
+    quoteMs: quoteMinutes * 60_000,
+    log: (message) => console.log(chalk.gray(message)),
+  });
+  console.log(chalk.gray(`Selling canisters: ${Number(priceCycles) / 1e12} XDR each, paid in ICP to ${anchoring.writer}`));
+  return {
+    service,
+    options: {
+      create: async (key, owner) => orderView(await service.create(key, owner), anchoring.writer),
+      get: (key) => {
+        const record = service.get(key);
+        return record ? orderView(record, anchoring.writer) : null;
+      },
+    },
+  };
 }
 
 function anchoringOptions(
@@ -239,8 +298,10 @@ addCanisterOptions(
     .option('--provision-wasm <file>', 'Let hosts have canisters created for their owners, installed with this memory_repo wasm (needs --max-canisters)')
     .option('--provision-cycles <trillions>', 'Cycles each created canister is funded with, in trillions', '1')
     .option('--max-canisters <n>', 'The most canisters this gateway may ever create')
-    .option('--cycles-ledger <id>', 'The cycles ledger that pays for them, off a local replica', CYCLES_LEDGER_ID),
-).action(async (options: StoreOptions & CanisterOptions & ProvisionFlags & { host: string; port: string; anchorInterval: string; digestOnly?: boolean }) => {
+    .option('--cycles-ledger <id>', 'The cycles ledger that pays for them, off a local replica', CYCLES_LEDGER_ID)
+    .option('--order-price-xdr <xdr>', 'Sell canisters for ICP at this price in XDR (a trillion cycles each); needs --provision-wasm')
+    .option('--order-quote-minutes <minutes>', 'How long a quoted amount of ICP holds', String(DEFAULT_QUOTE_MINUTES)),
+).action(async (options: StoreOptions & CanisterOptions & ProvisionFlags & OrderFlags & { host: string; port: string; anchorInterval: string; digestOnly?: boolean }) => {
   const token = process.env[LEDGER_TOKEN_ENV] ?? '';
   if (token.length < MIN_TOKEN_LENGTH) {
     die(`Set ${LEDGER_TOKEN_ENV} to a secret of at least ${MIN_TOKEN_LENGTH} characters, for example: openssl rand -hex 32`);
@@ -250,9 +311,14 @@ addCanisterOptions(
   const minutes = Number(options.anchorInterval);
   if (!Number.isFinite(minutes) || minutes <= 0) die('--anchor-interval must be a number of minutes above zero');
 
+  // Refused before anything connects: the ICP ledger and the minting canister are on the Internet Computer only.
+  if (options.orderPriceXdr !== undefined && options.icHost && isLocalReplicaHost(options.icHost)) {
+    die('Selling canisters for ICP needs the Internet Computer: the ICP ledger and the cycles minting canister are not on a local replica');
+  }
   const store = openStore(options);
   const anchoring = await anchoringFor(options, store);
-  const provisioning = await provisioningFor(options, anchoring, store);
+  const provisioned = await provisioningFor(options, anchoring, store);
+  const selling = await ordersFor(options, anchoring, provisioned, store);
   const schedule = anchoring
     ? startAnchorSchedule(store, anchoring.router, {
         intervalMs: minutes * 60_000,
@@ -266,7 +332,8 @@ addCanisterOptions(
     store,
     token,
     anchoring: anchoring && schedule ? anchoringOptions(anchoring, (stream) => schedule.error(stream)) : undefined,
-    provisioning,
+    provisioning: provisioned?.options,
+    orders: selling?.options,
     onError: (error) => console.error(chalk.red(`Request failed: ${error instanceof Error ? error.message : String(error)}`)),
   });
   server.listen(port, options.host, () => {
@@ -277,7 +344,9 @@ addCanisterOptions(
     else if (!anchoring?.defaultDestination) console.log(chalk.gray('No default canister: only streams that name their own are anchored.'));
   });
 
+  const watcher = selling?.service.start(ORDER_POLL_MS);
   const shutdown = (): void => {
+    watcher?.stop();
     server.close(() => {
       // Anchor what arrived since the last run, so a planned stop leaves nothing pending.
       void (schedule ? schedule.run().then(() => schedule.stop()) : Promise.resolve()).finally(() => process.exit(0));

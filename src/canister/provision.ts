@@ -209,11 +209,21 @@ export class CanisterProvisioner {
     return this.options.store.get(key) ?? record;
   }
 
-  private record(key: string, owner: string): ProvisionRecord {
+  /** Throws a ProvisionError for a key or an owner no canister could be made for, so a payment is not taken for one. */
+  validate(key: string, owner: string): void {
     if (!KEY_PATTERN.test(key)) {
       throw new ProvisionError('invalid_key', 'The key is 1 to 128 letters, digits, dots, colons, dashes or underscores');
     }
     this.assertOwner(owner);
+  }
+
+  /** How many more canisters this may create before it reaches its limit. */
+  remaining(): number {
+    return Math.max(0, this.options.limit - this.options.store.count());
+  }
+
+  private record(key: string, owner: string): ProvisionRecord {
+    this.validate(key, owner);
     const existing = this.options.store.get(key);
     if (existing) {
       if (existing.owner !== owner) {
