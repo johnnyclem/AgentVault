@@ -232,9 +232,6 @@ async function ordersFor(
 ): Promise<{ options: OrdersOptions; service: OrderService } | undefined> {
   if (flags.orderPriceXdr === undefined) return undefined;
   if (!anchoring || !provisioned) die('Selling canisters needs --provision-wasm and --max-canisters, and a replica: name --ic-host');
-  if (isLocalReplicaHost(anchoring.host)) {
-    die('Selling canisters for ICP needs the Internet Computer: the ICP ledger and the cycles minting canister are not on a local replica');
-  }
   let priceCycles: bigint;
   try {
     // A price below what a canister costs would lose money on every sale.
@@ -314,6 +311,10 @@ addCanisterOptions(
   const minutes = Number(options.anchorInterval);
   if (!Number.isFinite(minutes) || minutes <= 0) die('--anchor-interval must be a number of minutes above zero');
 
+  // Refused before anything connects: the ICP ledger and the minting canister are on the Internet Computer only.
+  if (options.orderPriceXdr !== undefined && options.icHost && isLocalReplicaHost(options.icHost)) {
+    die('Selling canisters for ICP needs the Internet Computer: the ICP ledger and the cycles minting canister are not on a local replica');
+  }
   const store = openStore(options);
   const anchoring = await anchoringFor(options, store);
   const provisioned = await provisioningFor(options, anchoring, store);
