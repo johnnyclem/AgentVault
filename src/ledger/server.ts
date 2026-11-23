@@ -13,6 +13,8 @@
  *   DELETE /v1/streams/<stream>/anchor            back to the gateway's default
  *   POST /v1/canisters                            create a canister for an owner: { key, owner }
  *   GET  /v1/canisters/<key>                      where creating it has got to
+ *   POST /v1/orders                               sell a canister for ICP: { key, owner }; says where to pay and how much
+ *   GET  /v1/orders/<key>                         where the order has got to: paid, being made, ready
  *
  * Every route but health needs `Authorization: Bearer <token>`. The gateway
  * speaks plain HTTP and binds to loopback by default; put TLS in front of it
@@ -23,6 +25,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import * as http from 'node:http';
 import { AnchorPassError, anchorPending, type AnchorOptions, type AnchorRouter, type LedgerAnchor } from './anchor.js';
 import { LEDGER_FORMAT, MAX_APPEND_ENTRIES, MAX_PAYLOAD_BYTES, appendRequestSchema, isStreamId } from './format.js';
+import type { orderView } from '../canister/payments.js';
 import { ProvisionError, type ProvisionErrorCode, type ProvisionRecord } from '../canister/provision.js';
 import { LedgerConflictError, LedgerCorruptError, type AnchorRecord, type LedgerStore } from './store.js';
 
@@ -54,6 +57,16 @@ export interface ProvisioningOptions {
   get(key: string): ProvisionRecord | null;
 }
 
+/** What the gateway needs to sell canisters for ICP. */
+export interface OrdersOptions {
+  /**
+   * Opens an order for `owner`, or returns the one already open for `key`.
+   * Throws a ProvisionError for a request that cannot be served.
+   */
+  create(key: string, owner: string): Promise<ReturnType<typeof orderView>>;
+  get(key: string): ReturnType<typeof orderView> | null;
+}
+
 export interface LedgerServerOptions {
   store: LedgerStore;
   /** The bearer token clients present. */
@@ -62,11 +75,14 @@ export interface LedgerServerOptions {
   anchoring?: AnchoringOptions;
   /** Present when the gateway may create canisters for owners, at its operator's expense. */
   provisioning?: ProvisioningOptions;
+  /** Present when the gateway sells canisters for ICP; needs provisioning. */
+  orders?: OrdersOptions;
   /** Called with errors the client is only told about as a 500. */
   onError?: (error: unknown) => void;
 }
 
 const CANISTER_ROUTE = /^\/v1\/canisters(?:\/([^/]+))?$/;
+const ORDER_ROUTE = /^\/v1\/orders(?:\/([^/]+))?$/;
 const PROVISION_STATUS: Record<ProvisionErrorCode, number> = { invalid_key: 400, invalid_owner: 400, key_conflict: 409, limit_reached: 429 };
 const STREAM_ROUTE = /^\/v1\/streams\/([^/]+)(\/entries|\/anchor)?$/;
 const DEFAULT_LIST_LIMIT = 100;
@@ -113,11 +129,17 @@ async function handle(
     if (request.method !== 'GET') return send(response, 405, { error: 'method_not_allowed' });
     if (!options.anchoring) return send(response, 404, { error: 'anchoring_not_configured' });
     // `provisioning` is how a host tells a gateway that can make canisters from one that cannot.
-    return send(response, 200, { principal: options.anchoring.writer, provisioning: options.provisioning !== undefined });
+    return send(response, 200, {
+      principal: options.anchoring.writer,
+      provisioning: options.provisioning !== undefined,
+      orders: options.orders !== undefined,
+    });
   }
 
   const canisters = CANISTER_ROUTE.exec(url.pathname);
   if (canisters) return handleCanisters(request, response, options, canisters[1]);
+  const orders = ORDER_ROUTE.exec(url.pathname);
+  if (orders) return handleOrders(request, response, options, orders[1]);
 
   if (url.pathname === '/v1/streams') {
     if (request.method !== 'GET') return send(response, 405, { error: 'method_not_allowed' });
@@ -237,6 +259,43 @@ async function handleCanisters(
     const record = provisioning.begin(fields['key'], fields['owner']);
     // 200 once the canister is the owner's; 202 while it is being made, which the client asks about again.
     return send(response, record.state === 'ready' ? 200 : 202, canisterView(record));
+  } catch (error) {
+    if (error instanceof ProvisionError) return send(response, PROVISION_STATUS[error.code], { error: error.code, message: error.message });
+    throw error;
+  }
+}
+
+async function handleOrders(
+  request: http.IncomingMessage,
+  response: http.ServerResponse,
+  options: LedgerServerOptions,
+  keySegment: string | undefined,
+): Promise<void> {
+  const { orders } = options;
+  if (!orders) return send(response, 404, { error: 'orders_not_configured' });
+
+  if (keySegment !== undefined) {
+    if (request.method !== 'GET') return send(response, 405, { error: 'method_not_allowed' });
+    const key = decodeSegment(keySegment);
+    const order = key === null ? null : orders.get(key);
+    return order ? send(response, 200, order) : send(response, 404, { error: 'not_found' });
+  }
+
+  if (request.method !== 'POST') return send(response, 405, { error: 'method_not_allowed' });
+  const body = await readBody(request);
+  if (body === 'too_large') return send(response, 413, { error: 'too_large' });
+  let json: unknown;
+  try {
+    json = JSON.parse(body);
+  } catch {
+    return send(response, 400, { error: 'invalid', message: 'The body is not JSON' });
+  }
+  const fields = typeof json === 'object' && json !== null && !Array.isArray(json) ? (json as Record<string, unknown>) : {};
+  if (typeof fields['key'] !== 'string' || typeof fields['owner'] !== 'string') {
+    return send(response, 400, { error: 'invalid', message: 'key and owner must be strings' });
+  }
+  try {
+    return send(response, 200, await orders.create(fields['key'], fields['owner']));
   } catch (error) {
     if (error instanceof ProvisionError) return send(response, PROVISION_STATUS[error.code], { error: error.code, message: error.message });
     throw error;

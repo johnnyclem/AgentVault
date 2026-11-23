@@ -327,6 +327,87 @@ What to know:
   recovered.
 - The token that can ask for canisters can spend the gateway's cycles, so it belongs to the host.
 
+## Selling canisters for ICP
+
+A gateway that creates canisters can also let people pay for them, in ICP, from any wallet. A host asks
+for an order, shows the buyer where to send ICP and how much, and the gateway does the rest: it turns the
+ICP into cycles and has the canister created and handed over, as above. Nobody has to hold an account
+with the host or the gateway, and the gateway converts what an order receives as soon as the order is paid.
+
+```bash
+agentvault ledger serve --ic-host https://icp-api.io --identity gateway.pem \
+  --provision-wasm memory_repo.wasm --max-canisters 20 --provision-cycles 1 \
+  --order-price-xdr 2
+```
+
+`--order-price-xdr` is the price in XDR, the unit cycles are priced in (one XDR is one trillion
+cycles). It must be at least what a canister costs the gateway (the cycles it is created with and the
+cycles ledger's fee), and at most 1,000. The buyer pays in ICP: the price at the rate the cycles minting
+canister states, rounded up, plus the ledger fee for the transfer that mints. With the rate seen when this
+was written (1 ICP = 1.4723 XDR), 2 XDR is about 1.3585 ICP. Because the price is set in XDR, what the
+gateway earns does not move with ICP's price in dollars. Orders need the Internet Computer: the ICP ledger
+and the minting canister are not on a local replica.
+
+```bash
+curl -s -X POST localhost:8787/v1/orders -H "authorization: Bearer $AGENTVAULT_LEDGER_TOKEN" \
+  -d '{"key":"order-1","owner":"<owner principal>"}'
+```
+
+```json
+{
+  "key": "order-1", "owner": "…", "state": "awaiting_payment",
+  "deposit": { "owner": "<the gateway>", "subaccount": "<64 hex>", "accountId": "<64 hex>" },
+  "price": { "e8s": "135851881", "expiresAt": "2026-11-23T04:06:28.545Z" },
+  "paidE8s": "0", "shortfallE8s": "135851881", "canisterId": null, "error": null
+}
+```
+
+The buyer sends ICP to `deposit.accountId` (a wallet or exchange that takes an ICP account identifier) or
+to the `owner` and `subaccount` (an ICRC-1 account). Each order has an account of its own, made from its
+key, and only the gateway can move what is sent there. `GET /v1/orders/<key>` says where it has got to:
+
+| `state` | |
+|---|---|
+| `awaiting_payment` | the account holds less than `price.e8s`; `shortfallE8s` is the difference, and sending the rest to the same account completes it |
+| `converting` | the ICP is being sent to the minting canister, and cycles minted from it |
+| `provisioning` | the canister is being created, installed and handed over |
+| `ready` | `canisterId` is the owner's |
+| `failed` | something no retry will change went wrong after payment; `error` says what, and the operator has to look |
+| `expired` | nothing was paid within a week |
+
+How it behaves:
+
+- **A quote holds for `--order-quote-minutes` (30), and five minutes more.** A payment seen inside that
+  time is taken at the quoted amount, even if ICP has moved since. After it, the price is worked out
+  again at the current rate. Once an unpaid order's quote has run out, asking for the same order again gives a new one.
+- **An overpayment is converted whole**, and the extra stays with the gateway as cycles. Nothing is
+  refunded.
+- **Orders count against `--max-canisters` when they are opened**, so nobody can pay for a canister the
+  gateway is no longer allowed to create.
+- **Each step is written down before it is taken.** The transfer to the minting canister is sent with a
+  creation time fixed in the order, so a restart repeats the same transfer, which the ledger recognizes
+  and answers with the block it already made, instead of paying twice. Minting from a block is asked
+  again until it answers. The canister's creation is the same safe, resumable process as above, and is
+  started again after a restart.
+- **The ledger only recognizes a repeated transfer for a day.** If an order cannot be converted for longer
+  than that, it fails with `TxTooOld` rather than risk sending twice; check the order's account and the
+  minting canister's account before trying again.
+- **ICP that arrives after an order has expired, or after its conversion started, is not converted.** It
+  stays in the order's account. Sending it back is by hand, from that subaccount of the gateway's account.
+
+What was checked, and what was not:
+
+- The account derivation reproduces two real addresses: the account an earlier deposit to this gateway was
+  sent to, and the minting canister's account for it that the same gateway's conversion went to.
+- Against the Internet Computer, from the code in this repository, read-only: the rate, an account's
+  balance (both through the interfaces the canisters publish), and an order opened and watched, which
+  stayed `awaiting_payment` and called nothing that spends.
+- The calls that spend, the transfer to the minting canister and the request to mint, are built to the
+  published interfaces and tested against replies encoded as the canisters send them (including the
+  `TxDuplicate` reply, whose payload is read). **They have not been run with real ICP.** Before relying on
+  this, make one small purchase with your own build and keep the order's `GET` answers, the ledger block,
+  and the gateway's cycles ledger balance before and after.
+
 ## Check it
 
 ```bash
@@ -390,8 +471,9 @@ Every route but health needs `Authorization: Bearer <token>`.
 | `GET /v1/streams?after=<stream>&limit=<n>` | the streams in id order, each with its head and anchored mark, and `next` to continue from (null at the end). A stream whose file is damaged is listed with `corrupt: true` |
 | `GET /v1/streams/<stream>` | `{ head: { seq, hash }, anchored: { seq } }`, or 404 |
 | `GET /v1/streams/<stream>/entries?after=<seq>&limit=<n>` | entries after `seq`, with their chain fields |
-| `GET /v1/identity` | `{ principal, provisioning }`: the identity the gateway anchors as, and whether it was started with `--provision-wasm`; 404 `anchoring_not_configured` when it has no replica |
+| `GET /v1/identity` | `{ principal, provisioning, orders }`: the identity the gateway anchors as, whether it was started with `--provision-wasm`, and whether with `--order-price-xdr`; 404 `anchoring_not_configured` when it has no replica |
 | `POST /v1/canisters`, `GET /v1/canisters/<key>` | create a canister for an owner and hand it over, and say where that has got to; 404 `provisioning_not_configured` unless started with `--provision-wasm`; see [above](#creating-a-canister-for-an-owner) |
+| `POST /v1/orders`, `GET /v1/orders/<key>` | sell a canister for ICP: say where to pay and how much, and where the order has got to; 404 `orders_not_configured` unless started with `--order-price-xdr`; see [above](#selling-canisters-for-icp) |
 | `GET`, `PUT`, `DELETE /v1/streams/<stream>/anchor` | where a stream is anchored and how far, naming it (`{ destination }`), and putting it back with the rest; 409 `anchoring_not_configured` without a replica, 400 for a destination that is not a canister id |
 
 A read returns at most 500 entries and stops early at 8 MiB, so page with
@@ -423,6 +505,8 @@ A successful append returns `{ head, appended, anchored }`.
 - **Topping canisters up.** A canister it creates for an owner
   ([above](#creating-a-canister-for-an-owner)) starts with the cycles you set and
   runs on them; nothing sends more later.
+- **Refunds.** An overpayment, a payment after an order expired, and ICP sent for an order that failed all
+  stay in the order's account on the gateway. Returning them is by hand.
 - **Deletion.** A ledger is append-only. A host that must forget a record
   destroys the key it sealed that stream with; the ciphertext stays.
 - **Several tokens.** One gateway serves one host.
