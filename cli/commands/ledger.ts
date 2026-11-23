@@ -33,7 +33,7 @@ import {
   type SigningIdentity,
 } from '../../src/canister/identity.js';
 import { isLocalReplicaHost, validateCanisterId } from '../../src/canister/memory-repo-actor.js';
-import { CanisterProvisioner, ProvisionStore } from '../../src/canister/provision.js';
+import { CanisterProvisioner, ProvisionStore, parseProvisionCycles } from '../../src/canister/provision.js';
 import { CYCLES_LEDGER_ID, icProvisioningPorts } from '../../src/canister/provision-ic.js';
 import {
   DEFAULT_LEDGER_BRANCH,
@@ -154,9 +154,6 @@ interface ProvisionFlags {
   cyclesLedger: string;
 }
 
-/** The most one canister may be created with, in trillions of cycles: a typo must not spend a treasury. */
-const MAX_PROVISION_TRILLIONS = 20;
-const MIN_PROVISION_TRILLIONS = 0.2;
 /** What one install_code message can carry, with room for its envelope. */
 const MAX_WASM_BYTES = 1_900_000;
 
@@ -175,9 +172,11 @@ async function provisioningFor(
     return undefined;
   }
   if (!anchoring) die('Creating canisters needs a replica and an identity: name --ic-host');
-  const trillions = Number(flags.provisionCycles);
-  if (!Number.isFinite(trillions) || trillions < MIN_PROVISION_TRILLIONS || trillions > MAX_PROVISION_TRILLIONS) {
-    die(`--provision-cycles is trillions of cycles per canister, from ${MIN_PROVISION_TRILLIONS} to ${MAX_PROVISION_TRILLIONS}`);
+  let cycles: bigint;
+  try {
+    cycles = parseProvisionCycles(flags.provisionCycles);
+  } catch (error) {
+    die(error instanceof Error ? error.message : String(error));
   }
   const limit = Number(flags.maxCanisters);
   if (flags.maxCanisters === undefined || !Number.isInteger(limit) || limit < 1) {
@@ -192,7 +191,6 @@ async function provisioningFor(
   if (wasm[0] === 0x1f && wasm[1] === 0x8b) wasm = gunzipSync(wasm);
   if (wasm.length > MAX_WASM_BYTES) die(`${flags.provisionWasm} is larger than one install message can carry`);
 
-  const cycles = BigInt(Math.round(trillions * 1e12));
   const source = isLocalReplicaHost(anchoring.host) ? ('local' as const) : { cyclesLedger: flags.cyclesLedger };
   const provisioner = new CanisterProvisioner({
     ports: await icProvisioningPorts({ host: anchoring.host, identity: anchoring.identity, source }),
@@ -204,7 +202,7 @@ async function provisioningFor(
     writers: [anchoring.writer],
     log: (message) => console.log(chalk.gray(message)),
   });
-  console.log(chalk.gray(`Creating canisters: ${trillions}T cycles each, at most ${limit}, memory_repo code ${provisioner.moduleHash}`));
+  console.log(chalk.gray(`Creating canisters: ${Number(cycles) / 1e12}T cycles each, at most ${limit}, memory_repo code ${provisioner.moduleHash}`));
   return { begin: (key, owner) => provisioner.begin(key, owner), get: (key) => provisioner.get(key) };
 }
 
